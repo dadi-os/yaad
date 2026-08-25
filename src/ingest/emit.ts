@@ -1,0 +1,60 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import type { Config } from "../config.js";
+import type { DwarClient } from "../dwar/client.js";
+import { YaadError } from "../errors.js";
+import { parse } from "../routers/v1/schemas.js";
+import type { CandidateState } from "./candidates.js";
+import { emitOperationsInput, emitOperationsToolSchema, type Operation } from "./operations.js";
+
+export function loadExtractionPrompt(serviceRoot: string): string {
+  return readFileSync(join(serviceRoot, "prompts/extraction.md"), "utf8");
+}
+
+export async function emitOperations(opts: {
+  dwar: DwarClient;
+  config: Config;
+  occurredAt: string;
+  text: string;
+  candidates: CandidateState;
+}): Promise<Operation[]> {
+  const system = loadExtractionPrompt(opts.config.serviceRoot);
+  const user = JSON.stringify({
+    occurred_at: opts.occurredAt,
+    text: opts.text,
+    candidates: opts.candidates,
+  });
+  const response = await opts.dwar.reason({
+    system,
+    user,
+    tools: [
+      {
+        name: "emit_operations",
+        description:
+          "Emit the memory operations to apply for this utterance. Call this tool exactly once.",
+        input_schema: emitOperationsToolSchema,
+      },
+    ],
+  });
+  if (response.stop_reason !== "tool_use") {
+    throw new YaadError(
+      502,
+      "extraction_failed",
+      `Dwar returned stop_reason ${response.stop_reason} instead of tool_use`,
+    );
+  }
+  const uses = response.content.filter((block) => block.type === "tool_use");
+  const emit = uses.filter((block) => block.type === "tool_use" && block.name === "emit_operations");
+  if (emit.length !== 1) {
+    throw new YaadError(
+      502,
+      "extraction_failed",
+      `expected exactly one emit_operations tool call, got ${emit.length}`,
+    );
+  }
+  const block = emit[0];
+  if (!block || block.type !== "tool_use") {
+    throw new YaadError(502, "extraction_failed", "emit_operations tool call missing");
+  }
+  return parse(emitOperationsInput, block.input).operations;
+}

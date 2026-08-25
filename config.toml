@@ -1,0 +1,71 @@
+[embedding]
+dimension = 1536
+batch_size = 64
+
+[hnsw]
+ef_search = 40
+
+[page]
+default_size = 50
+max_size = 200
+
+[search]
+default_limit = 10
+max_limit = 100
+
+[dwar]
+# Reasoning can sit on thinking for a while. Raise if ingest hits timeouts; lower to fail faster.
+timeout_seconds = 120
+attempts = 3
+backoff_seconds = [0.5, 1.0, 2.0]
+
+[ingest]
+# Minimum cosine similarity (1 - distance) for an ANN hit to be handed to the model.
+# Raise to pass fewer, closer nodes. Lower to include weaker neighbors.
+candidate_similarity_floor = 0.35
+# Cap on ANN candidates after the floor. Raise for more context; lower to keep the prompt small.
+candidate_limit = 20
+# Cap on current edges attached to candidates. Raise if the model keeps recreating known relationships.
+edge_context_limit = 50
+
+[recall]
+# Minimum cosine similarity for a node to become an anchor. Raise to require a closer match.
+# Never widen this in code when nothing clears it.
+anchor_similarity_floor = 0.4
+# Cap on anchors. Raise to start traversal from more places; lower to keep the seed tight.
+anchor_limit = 8
+# Hard stop on BFS depth. Raise to walk further; lower to stay local.
+hop_cap = 3
+# Score a newly discovered node must beat to count toward marginal yield.
+# Raise to treat more nodes as noise; lower to keep expanding on weaker finds.
+relevance_threshold = 0.15
+# Minimum number of new above-threshold nodes a hop must add or expansion stops.
+# Raise to stop sooner; set to 1 to continue as long as anything useful appears.
+marginal_yield_minimum = 1
+# Estimated-token cap on accumulated relevant content (chars/4 of title+body).
+# Raise to return more text; lower to keep Magaj's context small.
+token_budget = 4000
+# Coverage is the mean of the top this many returned scores. Raise to judge a broader slice.
+coverage_top_n = 5
+# sufficient is coverage >= this. Raise to say "I don't know" more often.
+coverage_floor = 0.25
+# Default number of ranked nodes returned when the caller omits limit.
+default_limit = 20
+# Recency uses exp(-ln(2) * age_days / half_life) on occurred_at, or created_at if occurred_at is null.
+# Raise to treat older nodes as still fresh; lower to prefer recent ones.
+recency_half_life_days = 30
+
+[recall.weights]
+# Mix of the 0–1 components. They do not need to sum to 1; scale them relative to each other.
+# Raise semantic to trust ANN more; raise proximity to prefer nearby graph nodes.
+semantic = 0.4
+proximity = 0.2
+recency = 0.15
+frequency = 0.1
+edge_confidence = 0.15
+
+[recall.kind_priors]
+# Multipliers on the weighted sum. 1.0 is neutral. Raise a kind to boost it at the same hop and similarity.
+person = 1.0
+memory = 1.0
+plan = 1.0

@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_USER: yaad
+      POSTGRES_PASSWORD: yaad
+      POSTGRES_DB: yaad
+    ports:
+      - "5432:5432"
+    volumes:
+      - yaad_pg:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U yaad -d yaad"]
+      interval: 2s
+      timeout: 5s
+      retries: 20
+
+  yaad:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://yaad:yaad@postgres:5432/yaad
+      HOST: 0.0.0.0
+      PORT: "8080"
+    expose:
+      - "8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  yaad_pg:
