@@ -1,8 +1,7 @@
 # Yaad
+Memory for Dadi. People, memories, plans, and the edges between them. A portal at `yaad.dadi` comes later.
 
-Memory for Dadi. People, memories, plans, and the edges between them. Magaj is the primary caller. A portal at `yaad.dadi` comes later.
-
-Yaad is a data API, not a tool API. Tool wrappers live in Magaj. There is no auth. Yaad stays on the private mesh and is never published to a host interface.
+Yaad is a data API, not a tool API. There is no auth. Yaad stays on the private mesh and is never published to a host interface.
 
 ## Node kinds
 
@@ -81,7 +80,7 @@ The response repeats the operations with resolved ids and a count by type.
 4. **Gate.** After each hop, stop when newly discovered nodes scoring at or above `relevance_threshold` fall below `marginal_yield_minimum`, or the hop cap is hit, or the estimated token budget is exhausted (title+body chars / 4 of nodes above the relevance threshold).
 5. **Return.** Top `limit` nodes with detail and the path edges back toward the anchors.
 
-**Coverage** is the mean of the top `coverage_top_n` returned scores, 0 when nothing is returned. **`sufficient`** is `coverage >= coverage_floor`. Low coverage is explicit so Magaj can say it does not know rather than proceed on thin context.
+**Coverage** is the mean of the top `coverage_top_n` returned scores, 0 when nothing is returned. **`sufficient`** is `coverage >= coverage_floor`. Low coverage is explicit.
 
 `debug: true` adds a `scores` object on every returned node. Use that to tune weights.
 

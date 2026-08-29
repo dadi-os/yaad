@@ -43,7 +43,7 @@ relevance_threshold = 0.15
 # Raise to stop sooner; set to 1 to continue as long as anything useful appears.
 marginal_yield_minimum = 1
 # Estimated-token cap on accumulated relevant content (chars/4 of title+body).
-# Raise to return more text; lower to keep Magaj's context small.
+# Raise to return more text.
 token_budget = 4000
 # Coverage is the mean of the top this many returned scores. Raise to judge a broader slice.
 coverage_top_n = 5
