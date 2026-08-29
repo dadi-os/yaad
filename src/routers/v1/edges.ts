@@ -12,6 +12,9 @@ export async function registerEdges(app: FastifyInstance): Promise<void> {
     const body = parse(createEdgeBody, request.body);
     await getNode(app.db, body.src_id, undefined);
     await getNode(app.db, body.dst_id, undefined);
+    if (body.src_id === body.dst_id) {
+      throw new YaadError(422, "invalid_request", "create_edge src_id must not equal dst_id");
+    }
     const now = new Date();
     const rows = await app.db
       .insert(edge)

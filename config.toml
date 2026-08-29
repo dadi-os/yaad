@@ -15,7 +15,8 @@ max_limit = 100
 
 [dwar]
 # Reasoning can sit on thinking for a while. Raise if ingest hits timeouts; lower to fail faster.
-timeout_seconds = 120
+# Must exceed dwar's own retry.timeout_seconds (300) or a slow-but-successful call gets killed.
+timeout_seconds = 330
 attempts = 3
 backoff_seconds = [0.5, 1.0, 2.0]
 
