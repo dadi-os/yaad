@@ -50,6 +50,6 @@ export async function buildApp(
   });
 
   app.get("/health", async () => ({ status: "ok" }));
-  await app.register(registerV1, { prefix: "/v1" });
+  await app.register(registerV1);
   return app;
 }

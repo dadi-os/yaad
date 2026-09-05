@@ -22,7 +22,7 @@ after(async () => {
   await handle.close();
 });
 
-test("POST /v1/edges rejects a self-loop", async () => {
+test("POST /edges rejects a self-loop", async () => {
   await resetGraph(handle.sql);
   const id = await insertMemory(handle.db, {
     title: "self",
@@ -35,7 +35,7 @@ test("POST /v1/edges rejects a self-loop", async () => {
   });
   const res = await app.inject({
     method: "POST",
-    url: "/v1/edges",
+    url: "/edges",
     payload: { src_id: id, dst_id: id, type: "RELATED" },
   });
   assert.equal(res.statusCode, 422);

@@ -53,7 +53,7 @@ export function createDwarClient(config: Config): DwarClient {
 
   async function embedBatch(texts: string[]): Promise<number[][]> {
     const data = await withRetry(config, () =>
-      http.post("/v1/embed", { texts }).then((res) => res.data),
+      http.post("/embed", { texts }).then((res) => res.data),
     );
     const parsed = embedResponseSchema.safeParse(data);
     if (!parsed.success) {
@@ -98,7 +98,7 @@ export function createDwarClient(config: Config): DwarClient {
     async reason(args): Promise<DwarChatResponse> {
       const data = await withRetry(config, () =>
         http
-          .post("/v1/chat/reasoning", {
+          .post("/chat/reasoning", {
             system: args.system,
             messages: [{ role: "user", content: args.user }],
             tools: args.tools,

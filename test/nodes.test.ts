@@ -39,7 +39,7 @@ test("PATCH title writes one node_history row; unchanged fields write none", asy
 
   const patch = await app.inject({
     method: "PATCH",
-    url: `/v1/nodes/${id}`,
+    url: `/nodes/${id}`,
     payload: { title: "green dresser" },
   });
   assert.equal(patch.statusCode, 200);
@@ -56,7 +56,7 @@ test("PATCH title writes one node_history row; unchanged fields write none", asy
 
   const noop = await app.inject({
     method: "PATCH",
-    url: `/v1/nodes/${id}`,
+    url: `/nodes/${id}`,
     payload: { title: "green dresser" },
   });
   assert.equal(noop.statusCode, 200);
@@ -77,7 +77,7 @@ test("DELETE writes a deleted history row and closes incident edges", async () =
     sql: handle.sql,
     dwar: mockDwar({ dimension: dim }),
   });
-  const res = await app.inject({ method: "DELETE", url: `/v1/nodes/${b}` });
+  const res = await app.inject({ method: "DELETE", url: `/nodes/${b}` });
   assert.equal(res.statusCode, 204);
 
   const history = await handle.db.select().from(nodeHistory).where(eq(nodeHistory.nodeId, b));
@@ -92,7 +92,7 @@ test("DELETE writes a deleted history row and closes incident edges", async () =
   const open = await handle.db.select().from(edge).where(isNull(edge.validTo));
   assert.equal(open.length, 0);
 
-  const histRes = await app.inject({ method: "GET", url: `/v1/nodes/${b}/history` });
+  const histRes = await app.inject({ method: "GET", url: `/nodes/${b}/history` });
   assert.equal(histRes.statusCode, 200);
   assert.equal(histRes.json().history.length, 1);
   assert.equal(histRes.json().history[0].field, "deleted");
@@ -100,7 +100,7 @@ test("DELETE writes a deleted history row and closes incident edges", async () =
   await app.close();
 });
 
-test("POST /v1/history/search finds a correction by meaning", async () => {
+test("POST /history/search finds a correction by meaning", async () => {
   await resetGraph(handle.sql);
   const id = await insertMemory(handle.db, {
     title: "favorite color is blue",
@@ -122,14 +122,14 @@ test("POST /v1/history/search finds a correction by meaning", async () => {
 
   const patch = await app.inject({
     method: "PATCH",
-    url: `/v1/nodes/${id}`,
+    url: `/nodes/${id}`,
     payload: { title: "favorite color is green" },
   });
   assert.equal(patch.statusCode, 200);
 
   const search = await app.inject({
     method: "POST",
-    url: "/v1/history/search",
+    url: "/history/search",
     payload: { query: "color disparity" },
   });
   assert.equal(search.statusCode, 200);
