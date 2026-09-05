@@ -1,0 +1,9 @@
+services:
+  api:
+    build:
+      target: dev
+    volumes:
+      - .:/app
+      - /app/node_modules
+    ports:
+      - "8090:8080"

@@ -105,7 +105,7 @@ Weights live in `[recall.weights]`. They do not need to sum to 1. Raise semantic
 
 `config.toml` is checked in. It holds embedding dimension, embed batch size, HNSW `ef_search`, page sizes, search limit, Dwar timeout/retry, ingest candidate caps, and recall hop/score/coverage knobs. Change those in review.
 
-`.env` is environment and deployment only:
+Runtime addresses and ports are Compose environment, not a file:
 
 ```
 DATABASE_URL
@@ -115,28 +115,36 @@ PORT
 LOG_LEVEL
 ```
 
-Copy `.env.example` to `.env`. The process will not start if any of those are missing or if `config.toml` is malformed. Dimension mismatches from Dwar fail the write. A Dwar outage fails the write. The normal write path never stores a null embedding.
+The process will not start if any of those are missing or if `config.toml` is malformed. Dimension mismatches from Dwar fail the write. A Dwar outage fails the write. The normal write path never stores a null embedding.
 
-## Run locally
+## Run
 
-Postgres from compose, Yaad on the host (so you can curl it). Compose does not publish Yaad's port. That is intentional.
-
-```sh
-cp .env.example .env
-docker compose up -d postgres
-npm install
-npx drizzle-kit generate   # only when the schema changes
-npm run build
-npm test
-npm start
-```
-
-`GET http://127.0.0.1:8090/health` should return `{"status":"ok"}`. Point `DWAR_BASE_URL` at a running Dwar. Node create, patch (title/body), search, and backfill all call `POST /v1/embed`.
-
-To run Yaad inside compose as well:
+Everything runs through Compose. There is no host-run mode and no `.env` file.
 
 ```sh
 docker compose up --build
 ```
 
-Yaad then listens on `8080` on the compose network only. Reach it from another service on that network, or with `docker compose exec yaad`. There is no host port mapping.
+This builds the `dev` target (devDependencies installed, source bind-mounted, `tsx watch` for live reload) and publishes it on `http://localhost:8090`. `GET http://localhost:8090/health` should return `{"status":"ok"}`.
+
+Dwar needs to be reachable at `http://host.docker.internal:8080` — run it on your host per its own README, or point `DWAR_BASE_URL` in `docker-compose.yml` somewhere else if it's running elsewhere.
+
+Migrations:
+
+```sh
+docker compose run --rm api npm run db:migrate
+```
+
+Tests:
+
+```sh
+docker compose run --rm api npm test
+```
+
+Both run inside the same container image the app itself runs in — no separate host toolchain, no drift between "how I ran it" and "how it actually runs."
+
+To run the production shape (no bind mount, no published port, closer to how a real deploy would look):
+
+```sh
+docker compose -f docker-compose.yml up --build
+```

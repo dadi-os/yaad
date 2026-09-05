@@ -12,55 +12,25 @@ concurrency:
 
 jobs:
   ci:
-    name: CI (${{ matrix.task }})
+    name: CI
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        task: [test, typecheck]
-
-    services:
-      postgres:
-        image: pgvector/pgvector:pg18
-        env:
-          POSTGRES_USER: yaad
-          POSTGRES_PASSWORD: yaad
-          POSTGRES_DB: yaad
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U yaad -d yaad"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
-
-    env:
-      DATABASE_URL: postgres://yaad:yaad@localhost:5432/yaad
-      DWAR_BASE_URL: http://localhost:9999
-      HOST: 127.0.0.1
-      PORT: "8090"
-      LOG_LEVEL: silent
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
 
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: '22'
-          cache: 'npm'
-
-      - name: Install dependencies
-        run: npm ci
+      - name: Build dev image
+        run: docker compose -f docker-compose.yml -f docker-compose.override.yml build api
 
       - name: Run migrations
-        run: npm run db:migrate
+        run: docker compose -f docker-compose.yml -f docker-compose.override.yml run --rm api npm run db:migrate
 
-      - name: Typecheck
-        if: matrix.task == 'typecheck'
-        run: npm run build
+      - name: Run tests
+        run: docker compose -f docker-compose.yml -f docker-compose.override.yml run --rm api npm test
 
-      - name: Test
-        if: matrix.task == 'test'
-        run: npm test
+      - name: Build production image
+        run: docker compose -f docker-compose.yml build api
+
+      - name: Tear down
+        if: always()
+        run: docker compose -f docker-compose.yml down -v
