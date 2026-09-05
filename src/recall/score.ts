@@ -48,7 +48,7 @@ export function semanticScore(queryEmbedding: number[], nodeEmbedding: unknown):
 }
 
 export function kindPrior(kind: string, priors: Config["recall"]["kind_priors"]): number {
-  if (kind === "person" || kind === "memory" || kind === "plan") {
+  if (kind === "person" || kind === "memory" || kind === "plan" || kind === "place") {
     return priors[kind];
   }
   throw new Error(`invalid node kind: ${kind}`);

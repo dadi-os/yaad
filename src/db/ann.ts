@@ -1,7 +1,6 @@
 import type { Sql } from "./client.js";
 import type { NodeHistoryRow, NodeRow } from "./schema.js";
 import { YaadError } from "../errors.js";
-import type { NodeKind } from "../types/domain.js";
 import { cosineDistanceToSimilarity, toSqlVector } from "../vectors.js";
 
 export type AnnHit = {
@@ -17,35 +16,21 @@ export async function annSearch(opts: {
   efSearch: number;
   embedding: number[];
   limit: number;
-  kind?: NodeKind;
 }): Promise<AnnHit[]> {
   const vec = toSqlVector(opts.embedding);
   const rows = await opts.sql.begin(async (tx) => {
     await tx`SELECT set_config('hnsw.ef_search', ${String(opts.efSearch)}, true)`;
-    if (opts.kind) {
-      return tx<AnnRow[]>`
-        SELECT
-          id, kind, title, body, embedding,
-          occurred_at AS "occurredAt", salience, access_count AS "accessCount",
-          last_accessed_at AS "lastAccessedAt", source,
-          created_at AS "createdAt", updated_at AS "updatedAt",
-          (embedding <=> ${vec}::vector) AS distance
-        FROM node
-        WHERE embedding IS NOT NULL
-          AND kind = ${opts.kind}
-        ORDER BY embedding <=> ${vec}::vector
-        LIMIT ${opts.limit}
-      `;
-    }
     return tx<AnnRow[]>`
       SELECT
         id, kind, title, body, embedding,
-        occurred_at AS "occurredAt", salience, access_count AS "accessCount",
+        occurred_at AS "occurredAt", expires_at AS "expiresAt",
+        access_count AS "accessCount",
         last_accessed_at AS "lastAccessedAt", source,
         created_at AS "createdAt", updated_at AS "updatedAt",
         (embedding <=> ${vec}::vector) AS distance
       FROM node
       WHERE embedding IS NOT NULL
+        AND (expires_at IS NULL OR expires_at > now())
       ORDER BY embedding <=> ${vec}::vector
       LIMIT ${opts.limit}
     `;
@@ -106,7 +91,7 @@ function toNodeRow(row: AnnRow): NodeRow {
     body: row.body,
     embedding: row.embedding,
     occurredAt: toDate(row.occurredAt),
-    salience: Number(row.salience),
+    expiresAt: toDate(row.expiresAt),
     accessCount: Number(row.accessCount),
     lastAccessedAt: toDate(row.lastAccessedAt),
     source: row.source,

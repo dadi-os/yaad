@@ -1,4 +1,4 @@
-export type NodeKind = "person" | "memory" | "plan";
+export type NodeKind = "person" | "memory" | "plan" | "place";
 export type NodeSource = "manual" | "agent" | "ingest";
 export type PlanStatus = "idea" | "tentative" | "confirmed";
 
@@ -11,6 +11,13 @@ export type PlanDetail = {
   end_at: string | null;
   status: PlanStatus;
   recurrence: string | null;
+  series_id: string | null;
+};
+
+export type PlaceDetail = {
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
 };
 
 export type NodeRecord = {
@@ -19,7 +26,7 @@ export type NodeRecord = {
   title: string;
   body: string | null;
   occurred_at: string | null;
-  salience: number;
+  expires_at: string | null;
   access_count: number;
   last_accessed_at: string | null;
   source: NodeSource;

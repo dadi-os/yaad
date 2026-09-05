@@ -29,6 +29,14 @@ candidate_limit = 20
 # Cap on current edges attached to candidates. Raise if the model keeps recreating known relationships.
 edge_context_limit = 50
 
+[plan]
+# How far ahead recurring plans are materialized into individual rows.
+# Raise to see further out; lower to keep the table smaller.
+recurrence_horizon_days = 365
+# Hard cap on instances generated from one rule. A malformed rule that would
+# generate thousands of rows fails loudly instead of filling the table.
+max_instances_per_series = 500
+
 [recall]
 # Minimum cosine similarity for a node to become an anchor. Raise to require a closer match.
 # Never widen this in code when nothing clears it.
@@ -70,3 +78,4 @@ edge_confidence = 0.15
 person = 1.0
 memory = 1.0
 plan = 1.0
+place = 1.0

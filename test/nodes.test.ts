@@ -3,6 +3,7 @@ import { after, before, test } from "node:test";
 import { eq, isNull } from "drizzle-orm";
 import { buildApp } from "../src/app.js";
 import { edge, nodeHistory } from "../src/db/schema.js";
+import { applyOperations } from "../src/ingest/apply.js";
 import {
   axisVector,
   insertEdge,
@@ -25,28 +26,21 @@ after(async () => {
   await handle.close();
 });
 
-test("PATCH title writes one node_history row; unchanged fields write none", async () => {
+test("update_node title writes one node_history row; unchanged fields write none", async () => {
   await resetGraph(handle.sql);
   const id = await insertMemory(handle.db, {
     title: "blue dresser",
     embedding: axisVector(dim, 0),
   });
-  const app = await buildApp(config, {
-    db: handle.db,
-    sql: handle.sql,
-    dwar: mockDwar({ dimension: dim }),
-  });
+  const dwar = mockDwar({ dimension: dim });
 
-  const patch = await app.inject({
-    method: "PATCH",
-    url: `/nodes/${id}`,
-    payload: { title: "green dresser" },
+  await applyOperations({
+    db: handle.db,
+    dwar,
+    source: "agent",
+    config,
+    operations: [{ op: "update_node", node_id: id, title: "green dresser" }],
   });
-  assert.equal(patch.statusCode, 200);
-  const body = patch.json();
-  assert.equal(body.title, "green dresser");
-  assert.ok(body.updated_at);
-  assert.equal(body.valid_from, undefined);
 
   const rows = await handle.db.select().from(nodeHistory).where(eq(nodeHistory.nodeId, id));
   assert.equal(rows.length, 1);
@@ -54,31 +48,31 @@ test("PATCH title writes one node_history row; unchanged fields write none", asy
   assert.equal(rows[0]?.oldValue, "blue dresser");
   assert.equal(rows[0]?.newValue, "green dresser");
 
-  const noop = await app.inject({
-    method: "PATCH",
-    url: `/nodes/${id}`,
-    payload: { title: "green dresser" },
+  await applyOperations({
+    db: handle.db,
+    dwar,
+    source: "agent",
+    config,
+    operations: [{ op: "update_node", node_id: id, title: "green dresser" }],
   });
-  assert.equal(noop.statusCode, 200);
   const afterNoop = await handle.db.select().from(nodeHistory).where(eq(nodeHistory.nodeId, id));
   assert.equal(afterNoop.length, 1);
-
-  await app.close();
 });
 
-test("DELETE writes a deleted history row and closes incident edges", async () => {
+test("close_node writes a deleted history row and closes incident edges", async () => {
   await resetGraph(handle.sql);
   const a = await insertMemory(handle.db, { title: "keep", embedding: axisVector(dim, 0) });
   const b = await insertMemory(handle.db, { title: "gone", embedding: axisVector(dim, 1) });
   const edgeId = await insertEdge(handle.db, { src: a, dst: b, type: "RELATED" });
 
-  const app = await buildApp(config, {
+  const dwar = mockDwar({ dimension: dim });
+  await applyOperations({
     db: handle.db,
-    sql: handle.sql,
-    dwar: mockDwar({ dimension: dim }),
+    dwar,
+    source: "agent",
+    config,
+    operations: [{ op: "close_node", node_id: b, reason: "retracted" }],
   });
-  const res = await app.inject({ method: "DELETE", url: `/nodes/${b}` });
-  assert.equal(res.statusCode, 204);
 
   const history = await handle.db.select().from(nodeHistory).where(eq(nodeHistory.nodeId, b));
   assert.equal(history.length, 1);
@@ -92,11 +86,15 @@ test("DELETE writes a deleted history row and closes incident edges", async () =
   const open = await handle.db.select().from(edge).where(isNull(edge.validTo));
   assert.equal(open.length, 0);
 
+  const app = await buildApp(config, {
+    db: handle.db,
+    sql: handle.sql,
+    dwar,
+  });
   const histRes = await app.inject({ method: "GET", url: `/nodes/${b}/history` });
   assert.equal(histRes.statusCode, 200);
   assert.equal(histRes.json().history.length, 1);
   assert.equal(histRes.json().history[0].field, "deleted");
-
   await app.close();
 });
 
@@ -114,19 +112,20 @@ test("POST /history/search finds a correction by meaning", async () => {
       { match: "favorite color", axis: 0 },
     ],
   });
+
+  await applyOperations({
+    db: handle.db,
+    dwar,
+    source: "agent",
+    config,
+    operations: [{ op: "update_node", node_id: id, title: "favorite color is green" }],
+  });
+
   const app = await buildApp(config, {
     db: handle.db,
     sql: handle.sql,
     dwar,
   });
-
-  const patch = await app.inject({
-    method: "PATCH",
-    url: `/nodes/${id}`,
-    payload: { title: "favorite color is green" },
-  });
-  assert.equal(patch.statusCode, 200);
-
   const search = await app.inject({
     method: "POST",
     url: "/history/search",

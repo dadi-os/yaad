@@ -19,13 +19,13 @@ CREATE TABLE "node" (
 	"body" text,
 	"embedding" vector(1536),
 	"occurred_at" timestamp with time zone,
-	"salience" real DEFAULT 0 NOT NULL,
+	"expires_at" timestamp with time zone,
 	"access_count" integer DEFAULT 0 NOT NULL,
 	"last_accessed_at" timestamp with time zone,
 	"source" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
-	CONSTRAINT "node_kind_check" CHECK ("node"."kind" IN ('person', 'memory', 'plan')),
+	CONSTRAINT "node_kind_check" CHECK ("node"."kind" IN ('person', 'memory', 'plan', 'place')),
 	CONSTRAINT "node_source_check" CHECK ("node"."source" IN ('manual', 'agent', 'ingest'))
 );
 --> statement-breakpoint
@@ -48,15 +48,24 @@ CREATE TABLE "person_detail" (
 	"aliases" text[] DEFAULT '{}' NOT NULL
 );
 --> statement-breakpoint
+CREATE TABLE "place_detail" (
+	"node_id" uuid PRIMARY KEY NOT NULL,
+	"address" text,
+	"latitude" double precision,
+	"longitude" double precision
+);
+--> statement-breakpoint
 CREATE TABLE "plan_detail" (
 	"node_id" uuid PRIMARY KEY NOT NULL,
 	"end_at" timestamp with time zone,
 	"status" text NOT NULL,
 	"recurrence" text,
+	"series_id" uuid,
 	CONSTRAINT "plan_status_check" CHECK ("plan_detail"."status" IN ('idea', 'tentative', 'confirmed'))
 );
 --> statement-breakpoint
 ALTER TABLE "person_detail" ADD CONSTRAINT "person_detail_node_id_node_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."node"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "place_detail" ADD CONSTRAINT "place_detail_node_id_node_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."node"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "plan_detail" ADD CONSTRAINT "plan_detail_node_id_node_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."node"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "edge_src_id_idx" ON "edge" USING btree ("src_id");--> statement-breakpoint
 CREATE INDEX "edge_dst_id_idx" ON "edge" USING btree ("dst_id");--> statement-breakpoint
@@ -64,6 +73,7 @@ CREATE INDEX "edge_type_idx" ON "edge" USING btree ("type");--> statement-breakp
 CREATE INDEX "edge_src_id_current_idx" ON "edge" USING btree ("src_id") WHERE "edge"."valid_to" IS NULL;--> statement-breakpoint
 CREATE INDEX "node_kind_idx" ON "node" USING btree ("kind");--> statement-breakpoint
 CREATE INDEX "node_occurred_at_idx" ON "node" USING btree ("occurred_at");--> statement-breakpoint
+CREATE INDEX "node_live_idx" ON "node" USING btree ("kind") WHERE "node"."expires_at" IS NULL;--> statement-breakpoint
 CREATE INDEX "node_embedding_hnsw" ON "node" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint
 CREATE INDEX "node_history_node_id_idx" ON "node_history" USING btree ("node_id");--> statement-breakpoint
 CREATE INDEX "node_history_embedding_hnsw" ON "node_history" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint

@@ -1,15 +1,17 @@
-import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, or } from "drizzle-orm";
 import type { Db } from "./client.js";
 import {
   edge,
   node,
   nodeHistory,
   personDetail,
+  placeDetail,
   planDetail,
   type EdgeRow,
   type NodeHistoryRow,
   type NodeRow,
   type PersonDetailRow,
+  type PlaceDetailRow,
   type PlanDetailRow,
 } from "./schema.js";
 import { YaadError } from "../errors.js";
@@ -43,6 +45,15 @@ export async function getPlanDetail(db: Db, nodeId: string): Promise<PlanDetailR
   return row;
 }
 
+export async function getPlaceDetail(db: Db, nodeId: string): Promise<PlaceDetailRow> {
+  const rows = await db.select().from(placeDetail).where(eq(placeDetail.nodeId, nodeId));
+  const row = rows[0];
+  if (!row) {
+    throw new YaadError(500, "internal", `place_detail missing for node ${nodeId}`);
+  }
+  return row;
+}
+
 export async function getIncidentEdges(db: Db, nodeId: string): Promise<EdgeRow[]> {
   return getIncidentEdgesForIds(db, [nodeId]);
 }
@@ -60,11 +71,16 @@ export async function getIncidentEdgesForIds(db: Db, nodeIds: string[]): Promise
     );
 }
 
+/** Live nodes only — expired rows are omitted so graph expansion cannot bridge through them. */
 export async function getNodesByIds(db: Db, ids: string[]): Promise<NodeRow[]> {
   if (ids.length === 0) {
     return [];
   }
-  return db.select().from(node).where(inArray(node.id, ids));
+  const now = new Date();
+  return db
+    .select()
+    .from(node)
+    .where(and(inArray(node.id, ids), or(isNull(node.expiresAt), gt(node.expiresAt, now))));
 }
 
 /** Current edge only. Historical edge lookup not wired yet. */

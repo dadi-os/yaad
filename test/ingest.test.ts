@@ -57,6 +57,7 @@ test("ingest apply creates a node and an edge via temp_id", async () => {
     dwar,
     operations,
     source: "ingest",
+    config,
   });
   assert.equal(result.counts.create_node, 2);
   assert.equal(result.counts.create_edge, 1);

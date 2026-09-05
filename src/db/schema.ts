@@ -1,6 +1,7 @@
 import {
   check,
   date,
+  doublePrecision,
   index,
   integer,
   jsonb,
@@ -27,7 +28,7 @@ export const node = pgTable(
     body: text("body"),
     embedding: vector("embedding", { dimensions: embeddingDimension }),
     occurredAt: timestamptz("occurred_at"),
-    salience: real("salience").notNull().default(0),
+    expiresAt: timestamptz("expires_at"),
     accessCount: integer("access_count").notNull().default(0),
     lastAccessedAt: timestamptz("last_accessed_at"),
     source: text("source").notNull(),
@@ -35,10 +36,13 @@ export const node = pgTable(
     updatedAt: timestamptz("updated_at").notNull().defaultNow(),
   },
   (table) => [
-    check("node_kind_check", sql`${table.kind} IN ('person', 'memory', 'plan')`),
+    check("node_kind_check", sql`${table.kind} IN ('person', 'memory', 'plan', 'place')`),
     check("node_source_check", sql`${table.source} IN ('manual', 'agent', 'ingest')`),
     index("node_kind_idx").on(table.kind),
     index("node_occurred_at_idx").on(table.occurredAt),
+    index("node_live_idx")
+      .on(table.kind)
+      .where(sql`${table.expiresAt} IS NULL`),
     index("node_embedding_hnsw").using("hnsw", table.embedding.op("vector_cosine_ops")),
   ],
 );
@@ -82,16 +86,30 @@ export const personDetail = pgTable(
   (table) => [index("person_detail_aliases_gin").using("gin", table.aliases)],
 );
 
-export const planDetail = pgTable("plan_detail", {
+export const planDetail = pgTable(
+  "plan_detail",
+  {
+    nodeId: uuid("node_id")
+      .primaryKey()
+      .references(() => node.id, { onDelete: "cascade" }),
+    endAt: timestamptz("end_at"),
+    status: text("status").notNull(),
+    recurrence: text("recurrence"),
+    seriesId: uuid("series_id"),
+  },
+  (table) => [
+    check("plan_status_check", sql`${table.status} IN ('idea', 'tentative', 'confirmed')`),
+  ],
+);
+
+export const placeDetail = pgTable("place_detail", {
   nodeId: uuid("node_id")
     .primaryKey()
     .references(() => node.id, { onDelete: "cascade" }),
-  endAt: timestamptz("end_at"),
-  status: text("status").notNull(),
-  recurrence: text("recurrence"),
-}, (table) => [
-  check("plan_status_check", sql`${table.status} IN ('idea', 'tentative', 'confirmed')`),
-]);
+  address: text("address"),
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
+});
 
 export const nodeHistory = pgTable(
   "node_history",
@@ -117,4 +135,5 @@ export type NodeRow = typeof node.$inferSelect;
 export type EdgeRow = typeof edge.$inferSelect;
 export type PersonDetailRow = typeof personDetail.$inferSelect;
 export type PlanDetailRow = typeof planDetail.$inferSelect;
+export type PlaceDetailRow = typeof placeDetail.$inferSelect;
 export type NodeHistoryRow = typeof nodeHistory.$inferSelect;

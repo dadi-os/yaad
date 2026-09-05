@@ -1,7 +1,9 @@
 # Yaad
-Memory for Dadi. People, memories, plans, and the edges between them. A portal at `yaad.dadi` comes later.
+Memory for Dadi. People, memories, plans, places, and the edges between them. A portal at `yaad.dadi` comes later.
 
 Yaad is a data API, not a tool API. There is no auth. Yaad stays on the private mesh and is never published to a host interface.
+
+Yaad's API exists for one consumer. Every route is one an agent calls through Dimaag. Anything that would only serve a UI, an operator, or a future service inside Yaad is not a route.
 
 ## Node kinds
 
@@ -9,41 +11,78 @@ Yaad is a data API, not a tool API. There is no auth. Yaad stays on the private 
 | --- | --- | --- |
 | `person` | someone Dadi knows | `person_detail` (birthday, aliases) |
 | `memory` | a thing that happened | none |
-| `plan` | an idea, reminder, or dated event | `plan_detail` (end_at, status, recurrence) |
+| `plan` | an idea, reminder, or dated event | `plan_detail` (end_at, status, recurrence, series_id) |
+| `place` | somewhere you go | `place_detail` (address, latitude, longitude) |
 
-`occurred_at` is the single "when" for every kind. A plan's start is `node.occurred_at`, not a second column. An undated idea has `status = 'idea'` and a null `occurred_at`.
+`occurred_at` is the single "when" for every kind. A plan's start is `node.occurred_at`, not a second column. An undated idea has `status = 'idea'` and a null `occurred_at`. Unknown dates are `NULL`. `expires_at` is null for permanent nodes; observations get a timestamp computed from `ttl_days`.
+
+## Places
+
+A place is a real entity that recurs across events. Create one when an event happens somewhere nameable; reuse it rather than duplicating. Coordinates are optional — a place known only as "the coffee shop on Grand River" is valid. Yaad does not geocode; it stores what it is told.
+
+Convention (not a schema constraint): a plan links to its place with an `AT_LOCATION` edge, plan as `src`, place as `dst`. Edge types stay free-text.
+
+## Recurrence
+
+`plan_detail.recurrence` holds an RRULE string on a **template** row (`series_id` null). Yaad materializes one ordinary plan row per occurrence out to `plan.recurrence_horizon_days` (default 365), each with `series_id` pointing at the template and `recurrence` null.
+
+Templates are excluded from date-bounded `POST /query` — a pattern is not an event on a day. They remain fully visible to `recall`, which is how "what classes am I taking this semester" works without returning dozens of near-identical instance rows.
+
+A hard cap `plan.max_instances_per_series` (default 500) fails the write loudly if a rule would expand past it.
+
+**Editing a series is not implemented.** Changing a template's rule does not regenerate instances. Updating a single instance (`update_node`) changes that one occurrence — the common case ("class is in a different room Thursday").
+
+## Query vs recall
+
+`recall` is semantic. It answers "what do I know about X" via embeddings, graph walk, and scoring.
+
+`query` is exact. It answers "what is on Tuesday" or "who is named Marcus" with filters on kind, name, date overlap, and plan status — no embeddings, no model call, no scoring.
+
+They do not overlap and neither is a fallback for the other.
 
 ## Corrections
 
-`node` is a plain current-state table — `PATCH` updates it in place. Every changed field (`title`, `body`, `occurred_at`) writes a row to `node_history` recording the old and new value, embedded the same way nodes are, so a correction can be found later by meaning ("why did the color change") rather than by knowing which node or when. `DELETE` removes the node and writes a `field: "deleted"` history row rather than leaving a dangling current-less row behind.
+`node` is a plain current-state table. Corrections go through `POST /ingest` as `update_node` / `close_node` operations — the same path that validates extraction. Every changed field (`title`, `body`, `occurred_at`) writes a row to `node_history` recording the old and new value, embedded the same way nodes are, so a correction can be found later by meaning ("why did the color change") rather than by knowing which node or when. `close_node` removes the node and writes a `field: "deleted"` history row rather than leaving a dangling current-less row behind.
 
 `GET /nodes/:id/history` returns a node's own correction log. `POST /history/search` does semantic search across every correction in the graph.
 
-**Edges are different.** A relationship ending (a job, a plan) is a real state change worth keeping queryable as history, not a correction. Edges keep `valid_from`/`valid_to`; `DELETE /edges/:id` still closes rather than deletes. There is no `as_of` anywhere in the API — point-in-time graph reconstruction was removed as unused complexity.
+**Edges are different.** A relationship ending (a job, a plan) is a real state change worth keeping queryable as history, not a correction. Edges keep `valid_from`/`valid_to`; `close_edge` closes rather than deletes. There is no `as_of` anywhere in the API — point-in-time graph reconstruction was removed as unused complexity.
+
+## Expiry
+
+Most memories are permanent. Observations are not — what someone wore, how
+they seemed, what traffic was like. Extraction sets `ttl_days` on those, and
+Yaad computes `expires_at` from the memory's own timestamp.
+
+Expired nodes are filtered out of recall, query, and ingest candidate
+assembly. They are not deleted — the row stays, `GET /nodes/:id` still
+returns it, and nothing sweeps the table. Deletion is irreversible and the
+model's TTL judgment is unproven; filtering is reversible and enough.
+
+Only `memory` and `plan` nodes may expire. A `person` or `place` with
+`ttl_days` is a 422. Entities persist; observations about them expire.
+
+Corrections and expiry are different mechanisms and do not overlap. "My
+favorite color is not green" is a correction — `update_node` rewrites the
+text and `node_history` records it. Nothing expires; the fact changed.
 
 ## Routes
 
 | method | path | notes |
 | --- | --- | --- |
 | `GET` | `/health` | unversioned, `{ "status": "ok" }` |
-| `POST` | `/nodes` | create, with detail payload by kind |
-| `GET` | `/nodes/:id` | node, detail, current edges |
-| `GET` | `/nodes/:id/history` | correction log for a node (survives delete) |
-| `PATCH` | `/nodes/:id` | update in place; writes `node_history` |
-| `DELETE` | `/nodes/:id` | hard-delete; logs `deleted` history; closes open edges |
-| `POST` | `/edges` | create |
-| `DELETE` | `/edges/:id` | close |
-| `GET` | `/timeline` | `?from&to&status&limit&offset` |
-| `GET` | `/people/:id` | person, detail, current edges grouped by type |
-| `POST` | `/search` | embed the query, top-k cosine distance |
-| `POST` | `/history/search` | semantic search over `node_history` |
 | `POST` | `/ingest` | extract and reconcile unstructured text |
 | `POST` | `/recall` | ranked multi-hop retrieval |
-| `POST` | `/admin/backfill-embeddings` | fill nodes with a null embedding |
+| `POST` | `/query` | deterministic structured lookup |
+| `GET` | `/nodes/:id` | node, detail, current edges |
+| `GET` | `/nodes/:id/history` | correction log for a node (survives delete) |
+| `POST` | `/history/search` | semantic search over `node_history` |
 
-Unknown request fields are a 422. `/search` is a dumb ANN lookup so embeddings can be checked. It is not recall.
+Unknown request fields are a 422.
 
-Timeline queries `plan` nodes joined to `plan_detail`, ordered by `occurred_at`. Range filters (`from` / `to`) drop undated ideas. A `status`-only query includes them.
+### `POST /query`
+
+Body: `{ kind?, name?, occurred_from?, occurred_to?, status?, limit?, offset? }`. At least one filter is required. `name` is case-insensitive exact match on `title`, or membership in `person_detail.aliases` when kind is `person` or unset. Date bounds use interval overlap (a trip spanning the 3rd–8th appears when asking about the 5th); undated rows are excluded when either bound is present. `status` implies `kind = plan`; a conflicting `kind` is 422. Limit defaults to `page.default_size`, capped at `page.max_size`.
 
 ## Ingest
 
@@ -55,14 +94,14 @@ The pipeline is:
 2. Assemble candidates in code: ANN hits above `ingest.candidate_similarity_floor`, people whose title or alias appears in the text, `participant_ids`, and current edges attached to those nodes. The model does not query.
 3. Call Dwar `POST /chat/reasoning` with `prompts/extraction.md` as the system prompt and a single tool, `emit_operations`. `stop_reason` must be `tool_use`. Prose is a hard failure.
 4. Validate the whole batch. Any bad id, duplicate `temp_id`, kind/detail mismatch, illegal plan status, or self-edge rejects the batch. No writes.
-5. Apply in one transaction through update/delete. Embed creates, title/body updates, and per-field history texts before the transaction. Concurrent modification of a referenced row aborts with 409.
+5. Apply in one transaction through update/delete. Embed creates, title/body updates, and per-field history texts before the transaction. Concurrent modification of a referenced row aborts with 409. Recurring plans expand into instance rows in the same transaction.
 
 ### Operations
 
 | op | fields |
 | --- | --- |
-| `create_node` | `temp_id`, `kind`, `title`, `body?`, `occurred_at?`, `detail?` |
-| `update_node` | `node_id`, `title?`, `body?`, `occurred_at?`, `detail?` |
+| `create_node` | `temp_id`, `kind`, `title`, `body?`, `occurred_at?`, `ttl_days?`, `detail?` |
+| `update_node` | `node_id`, `title?`, `body?`, `occurred_at?`, `ttl_days?`, `detail?` |
 | `close_node` | `node_id`, `reason` (hard-deletes; logs history) |
 | `create_edge` | `src`, `dst` (node id or `temp_id`), `type`, `properties?`, `confidence` |
 | `close_edge` | `edge_id`, `reason` |
@@ -86,7 +125,7 @@ The response repeats the operations with resolved ids and a count by type.
 
 `debug: true` adds a `scores` object on every returned node. Use that to tune weights.
 
-Returned nodes get `access_count + 1` and `last_accessed_at` in a follow-up update that does not delay the response. There is no salience job in this pass.
+Returned nodes get `access_count + 1` and `last_accessed_at` in a follow-up update that does not delay the response.
 
 ### Scoring components
 
@@ -103,7 +142,7 @@ Weights live in `[recall.weights]`. They do not need to sum to 1. Raise semantic
 
 ## Config vs env
 
-`config.toml` is checked in. It holds embedding dimension, embed batch size, HNSW `ef_search`, page sizes, search limit, Dwar timeout/retry, ingest candidate caps, and recall hop/score/coverage knobs. Change those in review.
+`config.toml` is checked in. It holds embedding dimension, embed batch size, HNSW `ef_search`, page sizes, search limit, Dwar timeout/retry, ingest candidate caps, plan recurrence knobs, and recall hop/score/coverage knobs. Change those in review.
 
 Runtime addresses and ports are Compose environment, not a file:
 

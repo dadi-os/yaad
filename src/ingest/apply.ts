@@ -2,9 +2,10 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import type { DwarClient } from "../dwar/client.js";
 import { embeddingText } from "../dwar/client.js";
+import type { Config } from "../config.js";
 import type { Db } from "../db/client.js";
 import { getEdge, getNode } from "../db/read.js";
-import { edge, node, personDetail, planDetail } from "../db/schema.js";
+import { edge, node, personDetail, placeDetail, planDetail } from "../db/schema.js";
 import {
   closeEdge,
   deleteNode,
@@ -14,13 +15,17 @@ import {
   type Tx,
 } from "../db/temporal.js";
 import { YaadError } from "../errors.js";
+import { expandRecurrence } from "../plans/recurrence.js";
 import { parse } from "../routers/v1/schemas.js";
 import { historyEmbeddingText, sameInstant } from "../serialize.js";
 import type { NodeSource } from "../types/domain.js";
+import { computeExpiresAt } from "./expiry.js";
 import {
   patchPersonDetailBody,
   patchPlanDetailBody,
+  patchPlaceDetailBody,
   personDetailBody,
+  placeDetailBody,
   planDetailBody,
   type Operation,
 } from "./operations.js";
@@ -38,6 +43,7 @@ export async function applyOperations(opts: {
   dwar: DwarClient;
   operations: Operation[];
   source: NodeSource;
+  config: Config;
 }): Promise<ApplyResult> {
   const embeddings = await embedForOps(opts.dwar, opts.db, opts.operations);
   const referenced = referencedIds(opts.operations);
@@ -57,13 +63,19 @@ export async function applyOperations(opts: {
         if (!embedding) {
           throw new YaadError(500, "internal", `missing embedding for temp_id ${op.temp_id}`);
         }
+        const occurredAt = op.occurred_at ? new Date(op.occurred_at) : null;
+        const expiresAt =
+          op.ttl_days !== undefined && op.ttl_days !== null
+            ? computeExpiresAt(occurredAt ?? at, op.ttl_days)
+            : null;
         await tx.insert(node).values({
           id,
           kind: op.kind,
           title: op.title,
           body: op.body ?? null,
           embedding,
-          occurredAt: op.occurred_at ? new Date(op.occurred_at) : null,
+          occurredAt,
+          expiresAt,
           source: opts.source,
           createdAt: at,
           updatedAt: at,
@@ -77,11 +89,38 @@ export async function applyOperations(opts: {
           });
         } else if (op.kind === "plan") {
           const detail = parse(planDetailBody, op.detail ?? {});
+          const endAt = detail.end_at ? new Date(detail.end_at) : null;
+          const recurrence = detail.recurrence ?? null;
           await tx.insert(planDetail).values({
             nodeId: id,
-            endAt: detail.end_at ? new Date(detail.end_at) : null,
+            endAt,
             status: detail.status,
-            recurrence: detail.recurrence ?? null,
+            recurrence,
+            seriesId: null,
+          });
+          if (recurrence) {
+            await materializeSeries({
+              tx,
+              templateId: id,
+              title: op.title,
+              body: op.body ?? null,
+              embedding,
+              source: opts.source,
+              status: detail.status,
+              recurrence,
+              start: occurredAt,
+              endAt,
+              createdAt: at,
+              config: opts.config,
+            });
+          }
+        } else if (op.kind === "place") {
+          const detail = parse(placeDetailBody, op.detail ?? {});
+          await tx.insert(placeDetail).values({
+            nodeId: id,
+            address: detail.address ?? null,
+            latitude: detail.latitude ?? null,
+            longitude: detail.longitude ?? null,
           });
         }
         tempIds.set(op.temp_id, id);
@@ -114,6 +153,16 @@ export async function applyOperations(opts: {
                 ...(detail.recurrence !== undefined ? { recurrence: detail.recurrence } : {}),
               })
               .where(eq(planDetail.nodeId, op.node_id));
+          } else if (current.kind === "place") {
+            const detail = parse(patchPlaceDetailBody, op.detail);
+            await tx
+              .update(placeDetail)
+              .set({
+                ...(detail.address !== undefined ? { address: detail.address } : {}),
+                ...(detail.latitude !== undefined ? { latitude: detail.latitude } : {}),
+                ...(detail.longitude !== undefined ? { longitude: detail.longitude } : {}),
+              })
+              .where(eq(placeDetail.nodeId, op.node_id));
           }
         }
         const nextTitle = op.title ?? current.title;
@@ -151,6 +200,14 @@ export async function applyOperations(opts: {
             historyEmbeddings,
             at,
           );
+        }
+        if (op.ttl_days !== undefined) {
+          const expiresAt =
+            op.ttl_days === null ? null : computeExpiresAt(at, op.ttl_days);
+          await tx
+            .update(node)
+            .set({ expiresAt, updatedAt: at })
+            .where(eq(node.id, op.node_id));
         }
         applied.push(op);
       }
@@ -221,6 +278,60 @@ export async function applyOperations(opts: {
       temp_ids: Object.fromEntries(tempIds),
     };
   });
+}
+
+async function materializeSeries(opts: {
+  tx: Tx;
+  templateId: string;
+  title: string;
+  body: string | null;
+  embedding: number[];
+  source: NodeSource;
+  status: string;
+  recurrence: string;
+  start: Date | null;
+  endAt: Date | null;
+  createdAt: Date;
+  config: Config;
+}): Promise<void> {
+  if (!opts.start) {
+    throw new YaadError(
+      422,
+      "invalid_request",
+      "recurring plan requires occurred_at as the series start",
+    );
+  }
+  const horizonEnd = new Date(
+    opts.createdAt.getTime() + opts.config.plan.recurrence_horizon_days * 86_400_000,
+  );
+  const instances = expandRecurrence({
+    rule: opts.recurrence,
+    start: opts.start,
+    end: opts.endAt,
+    horizonEnd,
+    maxInstances: opts.config.plan.max_instances_per_series,
+  });
+  for (const instance of instances) {
+    const id = randomUUID();
+    await opts.tx.insert(node).values({
+      id,
+      kind: "plan",
+      title: opts.title,
+      body: opts.body,
+      embedding: opts.embedding,
+      occurredAt: instance.occurredAt,
+      source: opts.source,
+      createdAt: opts.createdAt,
+      updatedAt: opts.createdAt,
+    });
+    await opts.tx.insert(planDetail).values({
+      nodeId: id,
+      endAt: instance.endAt,
+      status: opts.status,
+      recurrence: null,
+      seriesId: opts.templateId,
+    });
+  }
 }
 
 async function embedForOps(dwar: DwarClient, db: Db, operations: Operation[]): Promise<Map<string, number[]>> {

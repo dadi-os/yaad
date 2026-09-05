@@ -18,8 +18,6 @@ export function formatZod(error: ZodError): string {
     .join("; ");
 }
 
-const source = z.enum(["manual", "agent", "ingest"]);
-const kind = z.enum(["person", "memory", "plan"]);
 const planStatus = z.enum(["idea", "tentative", "confirmed"]);
 
 export const personDetailBody = z
@@ -37,6 +35,14 @@ export const planDetailBody = z
   })
   .strict();
 
+export const placeDetailBody = z
+  .object({
+    address: z.string().nullable().optional(),
+    latitude: z.number().nullable().optional(),
+    longitude: z.number().nullable().optional(),
+  })
+  .strict();
+
 export const patchPersonDetailBody = personDetailBody.partial();
 
 export const patchPlanDetailBody = z
@@ -47,68 +53,7 @@ export const patchPlanDetailBody = z
   })
   .strict();
 
-export const createNodeBody = z.discriminatedUnion("kind", [
-  z
-    .object({
-      kind: z.literal("person"),
-      title: z.string().min(1),
-      body: z.string().nullable().optional(),
-      occurred_at: z.string().datetime({ offset: true }).nullable().optional(),
-      source,
-      detail: personDetailBody,
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("memory"),
-      title: z.string().min(1),
-      body: z.string().nullable().optional(),
-      occurred_at: z.string().datetime({ offset: true }).nullable().optional(),
-      source,
-    })
-    .strict(),
-  z
-    .object({
-      kind: z.literal("plan"),
-      title: z.string().min(1),
-      body: z.string().nullable().optional(),
-      occurred_at: z.string().datetime({ offset: true }).nullable().optional(),
-      source,
-      detail: planDetailBody,
-    })
-    .strict(),
-]);
-
-export const patchNodeBody = z
-  .object({
-    title: z.string().min(1).optional(),
-    body: z.string().nullable().optional(),
-    occurred_at: z.string().datetime({ offset: true }).nullable().optional(),
-    source: source.optional(),
-    detail: z.record(z.unknown()).optional(),
-  })
-  .strict()
-  .refine((value) => Object.keys(value).length > 0, {
-    message: "at least one field is required",
-  });
-
-export const createEdgeBody = z
-  .object({
-    src_id: z.string().uuid(),
-    dst_id: z.string().uuid(),
-    type: z.string().min(1),
-    properties: z.record(z.unknown()).optional(),
-    confidence: z.number().min(0).max(1).optional(),
-  })
-  .strict();
-
-export const searchBody = z
-  .object({
-    query: z.string().min(1),
-    kind: kind.optional(),
-    limit: z.number().int().positive().optional(),
-  })
-  .strict();
+export const patchPlaceDetailBody = placeDetailBody.partial();
 
 export const idParam = z.object({ id: z.string().uuid() }).strict();
 
@@ -136,12 +81,14 @@ export const historySearchBody = z
   })
   .strict();
 
-export const timelineQuery = z
+export const queryBody = z
   .object({
-    from: z.string().datetime({ offset: true }).optional(),
-    to: z.string().datetime({ offset: true }).optional(),
-    status: planStatus.optional(),
-    limit: z.coerce.number().int().positive().optional(),
-    offset: z.coerce.number().int().min(0).optional(),
+    kind: z.enum(["person", "memory", "plan", "place"]).optional(),
+    name: z.string().min(1).optional(),
+    occurred_from: z.string().datetime({ offset: true }).optional(),
+    occurred_to: z.string().datetime({ offset: true }).optional(),
+    status: z.enum(["idea", "tentative", "confirmed"]).optional(),
+    limit: z.number().int().positive().optional(),
+    offset: z.number().int().min(0).optional(),
   })
   .strict();

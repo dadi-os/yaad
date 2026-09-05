@@ -1,4 +1,11 @@
-import type { EdgeRow, NodeHistoryRow, NodeRow, PersonDetailRow, PlanDetailRow } from "./db/schema.js";
+import type {
+  EdgeRow,
+  NodeHistoryRow,
+  NodeRow,
+  PersonDetailRow,
+  PlaceDetailRow,
+  PlanDetailRow,
+} from "./db/schema.js";
 import type {
   EdgeRecord,
   NodeHistoryRecord,
@@ -6,6 +13,7 @@ import type {
   NodeRecord,
   NodeSource,
   PersonDetail,
+  PlaceDetail,
   PlanDetail,
   PlanStatus,
 } from "./types/domain.js";
@@ -16,7 +24,7 @@ function iso(value: Date | null): string | null {
 }
 
 function parseKind(value: string): NodeKind {
-  if (value === "person" || value === "memory" || value === "plan") {
+  if (value === "person" || value === "memory" || value === "plan" || value === "place") {
     return value;
   }
   throw new YaadError(500, "internal", `invalid node kind in database: ${value}`);
@@ -50,7 +58,7 @@ export function toNodeRecord(row: NodeRow): NodeRecord {
     title: row.title,
     body: row.body,
     occurred_at: iso(row.occurredAt),
-    salience: row.salience,
+    expires_at: iso(row.expiresAt),
     access_count: row.accessCount,
     last_accessed_at: iso(row.lastAccessedAt),
     source: parseSource(row.source),
@@ -97,6 +105,15 @@ export function toPlanDetail(row: PlanDetailRow): PlanDetail {
     end_at: iso(row.endAt),
     status: parseStatus(row.status),
     recurrence: row.recurrence,
+    series_id: row.seriesId,
+  };
+}
+
+export function toPlaceDetail(row: PlaceDetailRow): PlaceDetail {
+  return {
+    address: row.address,
+    latitude: row.latitude,
+    longitude: row.longitude,
   };
 }
 

@@ -43,6 +43,10 @@ const fileSchema = z.object({
     candidate_limit: z.number().int().positive(),
     edge_context_limit: z.number().int().positive(),
   }),
+  plan: z.object({
+    recurrence_horizon_days: z.number().int().positive(),
+    max_instances_per_series: z.number().int().positive(),
+  }),
   recall: z.object({
     anchor_similarity_floor: z.number().min(0).max(2),
     anchor_limit: z.number().int().positive(),
@@ -65,6 +69,7 @@ const fileSchema = z.object({
       person: z.number().positive(),
       memory: z.number().positive(),
       plan: z.number().positive(),
+      place: z.number().positive(),
     }),
   }),
 });
@@ -86,6 +91,7 @@ export type Config = {
   search: FileConfig["search"];
   dwar: FileConfig["dwar"];
   ingest: FileConfig["ingest"];
+  plan: FileConfig["plan"];
   recall: FileConfig["recall"];
 };
 
@@ -152,6 +158,7 @@ export function loadConfig(): Config {
     search: file.search,
     dwar: file.dwar,
     ingest: file.ingest,
+    plan: file.plan,
     recall: file.recall,
   };
   return cached;

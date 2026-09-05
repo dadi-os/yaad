@@ -4,8 +4,10 @@ import { YaadError } from "../errors.js";
 import { parse } from "../routers/v1/schemas.js";
 import {
   patchPersonDetailBody,
+  patchPlaceDetailBody,
   patchPlanDetailBody,
   personDetailBody,
+  placeDetailBody,
   planDetailBody,
   type Operation,
 } from "./operations.js";
@@ -31,6 +33,10 @@ export async function validateOperations(opts: {
       if (op.kind === "plan") {
         parse(planDetailBody, op.detail ?? {});
       }
+      if (op.kind === "place") {
+        parse(placeDetailBody, op.detail ?? {});
+      }
+      rejectTtlOnEntity(op.kind, op.ttl_days, `create_node ${op.temp_id}`);
     }
   }
 
@@ -54,7 +60,11 @@ export async function validateOperations(opts: {
         if (current.kind === "plan") {
           parse(patchPlanDetailBody, op.detail);
         }
+        if (current.kind === "place") {
+          parse(patchPlaceDetailBody, op.detail);
+        }
       }
+      rejectTtlOnEntity(current.kind, op.ttl_days, `update_node ${op.node_id}`);
     }
     if (op.op === "close_node") {
       await requireCurrent(opts.db, op.node_id, "node");
@@ -69,6 +79,23 @@ export async function validateOperations(opts: {
         throw err;
       }
     }
+  }
+}
+
+function rejectTtlOnEntity(
+  kind: string,
+  ttlDays: number | null | undefined,
+  label: string,
+): void {
+  if (ttlDays === undefined || ttlDays === null) {
+    return;
+  }
+  if (kind === "person" || kind === "place") {
+    throw new YaadError(
+      422,
+      "invalid_request",
+      `${label}: ttl_days is only valid on memory and plan nodes`,
+    );
   }
 }
 

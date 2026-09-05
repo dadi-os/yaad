@@ -2,14 +2,23 @@ import { inArray } from "drizzle-orm";
 import type { Config } from "../config.js";
 import type { Db, Sql } from "../db/client.js";
 import { annSearch } from "../db/ann.js";
-import { getCurrentPersons, getIncidentEdgesForIds, getNodesByIds } from "../db/read.js";
-import { personDetail, planDetail, type NodeRow, type PersonDetailRow, type PlanDetailRow } from "../db/schema.js";
+import { getCurrentPersons, getIncidentEdgesForIds, getNode } from "../db/read.js";
+import {
+  personDetail,
+  placeDetail,
+  planDetail,
+  type NodeRow,
+  type PersonDetailRow,
+  type PlaceDetailRow,
+  type PlanDetailRow,
+} from "../db/schema.js";
 import { YaadError } from "../errors.js";
-import { toEdgeRecord, toNodeRecord, toPersonDetail, toPlanDetail } from "../serialize.js";
-import type { EdgeRecord, NodeRecord, PersonDetail, PlanDetail } from "../types/domain.js";
+import { toEdgeRecord, toNodeRecord, toPersonDetail, toPlaceDetail, toPlanDetail } from "../serialize.js";
+import type { EdgeRecord, NodeRecord, PersonDetail, PlaceDetail, PlanDetail } from "../types/domain.js";
+import { isExpired } from "./expiry.js";
 
 export type CandidateNode = NodeRecord & {
-  detail: PersonDetail | PlanDetail | null;
+  detail: PersonDetail | PlanDetail | PlaceDetail | null;
 };
 
 export type CandidateState = {
@@ -49,14 +58,19 @@ export async function assembleCandidates(opts: {
   }
 
   if (opts.participantIds.length > 0) {
-    const named = await getNodesByIds(opts.db, opts.participantIds);
-    const found = new Set(named.map((row) => row.id));
     for (const id of opts.participantIds) {
-      if (!found.has(id)) {
-        throw new YaadError(422, "invalid_request", `participant ${id} is not a current node`);
+      let row;
+      try {
+        row = await getNode(opts.db, id);
+      } catch (err) {
+        if (err instanceof YaadError && err.statusCode === 404) {
+          throw new YaadError(422, "invalid_request", `participant ${id} is not a current node`);
+        }
+        throw err;
       }
-    }
-    for (const row of named) {
+      if (isExpired(row.expiresAt)) {
+        throw new YaadError(422, "invalid_request", `participant ${id} has expired`);
+      }
       byId.set(row.id, row);
     }
   }
@@ -85,10 +99,11 @@ export async function assembleCandidates(opts: {
 async function loadDetails(
   db: Db,
   nodes: NodeRow[],
-): Promise<Map<string, PersonDetail | PlanDetail>> {
-  const out = new Map<string, PersonDetail | PlanDetail>();
+): Promise<Map<string, PersonDetail | PlanDetail | PlaceDetail>> {
+  const out = new Map<string, PersonDetail | PlanDetail | PlaceDetail>();
   const personIds = nodes.filter((row) => row.kind === "person").map((row) => row.id);
   const planIds = nodes.filter((row) => row.kind === "plan").map((row) => row.id);
+  const placeIds = nodes.filter((row) => row.kind === "place").map((row) => row.id);
   if (personIds.length > 0) {
     const rows: PersonDetailRow[] = await db
       .select()
@@ -105,6 +120,15 @@ async function loadDetails(
       .where(inArray(planDetail.nodeId, planIds));
     for (const row of rows) {
       out.set(row.nodeId, toPlanDetail(row));
+    }
+  }
+  if (placeIds.length > 0) {
+    const rows: PlaceDetailRow[] = await db
+      .select()
+      .from(placeDetail)
+      .where(inArray(placeDetail.nodeId, placeIds));
+    for (const row of rows) {
+      out.set(row.nodeId, toPlaceDetail(row));
     }
   }
   return out;

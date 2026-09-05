@@ -2,9 +2,10 @@ import { randomUUID } from "node:crypto";
 import type { Config } from "../src/config.js";
 import { loadConfig } from "../src/config.js";
 import { createDb, type Db, type Sql } from "../src/db/client.js";
-import { edge, node } from "../src/db/schema.js";
+import { edge, node, personDetail, placeDetail, planDetail } from "../src/db/schema.js";
 import type { DwarChatResponse, DwarClient } from "../src/dwar/client.js";
 import type { Operation } from "../src/ingest/operations.js";
+import type { PlanStatus } from "../src/types/domain.js";
 
 export function axisVector(dimension: number, axis: number): number[] {
   const values = Array.from({ length: dimension }, () => 0);
@@ -66,12 +67,12 @@ export async function openTestDb(): Promise<{ db: Db; sql: Sql; close: () => Pro
 }
 
 export async function resetGraph(sql: Sql): Promise<void> {
-  await sql`TRUNCATE node, edge, node_history, person_detail, plan_detail CASCADE`;
+  await sql`TRUNCATE node, edge, node_history, person_detail, plan_detail, place_detail CASCADE`;
 }
 
 export async function insertMemory(
   db: Db,
-  args: { title: string; embedding: number[] },
+  args: { title: string; embedding: number[]; expiresAt?: Date | null; occurredAt?: Date | null },
 ): Promise<string> {
   const id = randomUUID();
   const now = new Date();
@@ -81,10 +82,107 @@ export async function insertMemory(
     title: args.title,
     body: null,
     embedding: args.embedding,
-    occurredAt: now,
+    occurredAt: args.occurredAt !== undefined ? args.occurredAt : now,
+    expiresAt: args.expiresAt ?? null,
     source: "manual",
     createdAt: now,
     updatedAt: now,
+  });
+  return id;
+}
+
+export async function insertPerson(
+  db: Db,
+  args: {
+    title: string;
+    embedding: number[];
+    aliases?: string[];
+  },
+): Promise<string> {
+  const id = randomUUID();
+  const now = new Date();
+  await db.insert(node).values({
+    id,
+    kind: "person",
+    title: args.title,
+    body: null,
+    embedding: args.embedding,
+    occurredAt: null,
+    source: "manual",
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.insert(personDetail).values({
+    nodeId: id,
+    birthday: null,
+    aliases: args.aliases ?? [],
+  });
+  return id;
+}
+
+export async function insertPlan(
+  db: Db,
+  args: {
+    title: string;
+    embedding: number[];
+    occurredAt: Date | null;
+    endAt?: Date | null;
+    status?: PlanStatus;
+    recurrence?: string | null;
+    seriesId?: string | null;
+  },
+): Promise<string> {
+  const id = randomUUID();
+  const now = new Date();
+  await db.insert(node).values({
+    id,
+    kind: "plan",
+    title: args.title,
+    body: null,
+    embedding: args.embedding,
+    occurredAt: args.occurredAt,
+    source: "manual",
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.insert(planDetail).values({
+    nodeId: id,
+    endAt: args.endAt ?? null,
+    status: args.status ?? "confirmed",
+    recurrence: args.recurrence ?? null,
+    seriesId: args.seriesId ?? null,
+  });
+  return id;
+}
+
+export async function insertPlace(
+  db: Db,
+  args: {
+    title: string;
+    embedding: number[];
+    address?: string | null;
+    latitude?: number | null;
+    longitude?: number | null;
+  },
+): Promise<string> {
+  const id = randomUUID();
+  const now = new Date();
+  await db.insert(node).values({
+    id,
+    kind: "place",
+    title: args.title,
+    body: null,
+    embedding: args.embedding,
+    occurredAt: null,
+    source: "manual",
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.insert(placeDetail).values({
+    nodeId: id,
+    address: args.address ?? null,
+    latitude: args.latitude ?? null,
+    longitude: args.longitude ?? null,
   });
   return id;
 }

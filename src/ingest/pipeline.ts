@@ -43,5 +43,6 @@ export async function ingest(opts: {
     dwar: opts.dwar,
     operations,
     source: opts.source,
+    config: opts.config,
   });
 }

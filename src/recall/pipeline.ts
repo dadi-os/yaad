@@ -1,19 +1,19 @@
 import { inArray, sql } from "drizzle-orm";
 import type { Config } from "../config.js";
 import type { Db, Sql } from "../db/client.js";
-import { getIncidentEdgesForIds, getNodesByIds, getPersonDetail, getPlanDetail } from "../db/read.js";
+import { getIncidentEdgesForIds, getNodesByIds, getPersonDetail, getPlaceDetail, getPlanDetail } from "../db/read.js";
 import { node, type EdgeRow, type NodeRow } from "../db/schema.js";
 import type { DwarClient } from "../dwar/client.js";
 import { YaadError } from "../errors.js";
-import { toEdgeRecord, toNodeRecord, toPersonDetail, toPlanDetail } from "../serialize.js";
-import type { EdgeRecord, NodeRecord, PersonDetail, PlanDetail } from "../types/domain.js";
+import { toEdgeRecord, toNodeRecord, toPersonDetail, toPlaceDetail, toPlanDetail } from "../serialize.js";
+import type { EdgeRecord, NodeRecord, PersonDetail, PlaceDetail, PlanDetail } from "../types/domain.js";
 import { findAnchors } from "./anchor.js";
 import { expandOneHop, initialWalk } from "./expand.js";
 import { estimateTokens, shouldStop } from "./gate.js";
 import { maxAccess, scoreNode, type ScoreParts } from "./score.js";
 
 export type RecallNode = NodeRecord & {
-  detail: PersonDetail | PlanDetail | null;
+  detail: PersonDetail | PlanDetail | PlaceDetail | null;
   hops: number;
   score: number;
   scores?: ScoreParts;
@@ -197,12 +197,15 @@ function coverageScore(scores: number[], topN: number): number {
 async function loadDetail(
   db: Db,
   row: NodeRow,
-): Promise<PersonDetail | PlanDetail | null> {
+): Promise<PersonDetail | PlanDetail | PlaceDetail | null> {
   if (row.kind === "person") {
     return toPersonDetail(await getPersonDetail(db, row.id));
   }
   if (row.kind === "plan") {
     return toPlanDetail(await getPlanDetail(db, row.id));
+  }
+  if (row.kind === "place") {
+    return toPlaceDetail(await getPlaceDetail(db, row.id));
   }
   return null;
 }

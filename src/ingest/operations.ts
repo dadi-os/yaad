@@ -1,14 +1,24 @@
 import { z } from "zod";
-import { personDetailBody, planDetailBody, patchPersonDetailBody, patchPlanDetailBody } from "../routers/v1/schemas.js";
+import {
+  personDetailBody,
+  planDetailBody,
+  placeDetailBody,
+  patchPersonDetailBody,
+  patchPlanDetailBody,
+  patchPlaceDetailBody,
+} from "../routers/v1/schemas.js";
+
+const ttlDays = z.number().int().positive().nullable().optional();
 
 const createNodeOp = z
   .object({
     op: z.literal("create_node"),
     temp_id: z.string().min(1),
-    kind: z.enum(["person", "memory", "plan"]),
+    kind: z.enum(["person", "memory", "plan", "place"]),
     title: z.string().min(1),
     body: z.string().nullable().optional(),
     occurred_at: z.string().datetime({ offset: true }).nullable().optional(),
+    ttl_days: ttlDays,
     detail: z.unknown().optional(),
   })
   .strict();
@@ -20,6 +30,7 @@ const updateNodeOp = z
     title: z.string().min(1).optional(),
     body: z.string().nullable().optional(),
     occurred_at: z.string().datetime({ offset: true }).nullable().optional(),
+    ttl_days: ttlDays,
     detail: z.unknown().optional(),
   })
   .strict();
@@ -95,10 +106,11 @@ export const emitOperationsToolSchema = {
             enum: ["create_node", "update_node", "close_node", "create_edge", "close_edge", "noop"],
           },
           temp_id: { type: "string" },
-          kind: { type: "string", enum: ["person", "memory", "plan"] },
+          kind: { type: "string", enum: ["person", "memory", "plan", "place"] },
           title: { type: "string" },
           body: { type: ["string", "null"] },
           occurred_at: { type: ["string", "null"] },
+          ttl_days: { type: ["integer", "null"], minimum: 1 },
           detail: { type: "object" },
           node_id: { type: "string" },
           reason: { type: "string" },
@@ -114,4 +126,11 @@ export const emitOperationsToolSchema = {
   },
 } as const;
 
-export { personDetailBody, planDetailBody, patchPersonDetailBody, patchPlanDetailBody };
+export {
+  personDetailBody,
+  planDetailBody,
+  placeDetailBody,
+  patchPersonDetailBody,
+  patchPlanDetailBody,
+  patchPlaceDetailBody,
+};
