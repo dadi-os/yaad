@@ -1,6 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { registerAdmin } from "./admin.js";
 import { registerEdges } from "./edges.js";
+import { registerHistory } from "./history.js";
 import { registerIngest } from "./ingest.js";
 import { registerNodes } from "./nodes.js";
 import { registerPeople } from "./people.js";
@@ -14,6 +15,7 @@ export async function registerV1(app: FastifyInstance): Promise<void> {
   await registerTimeline(app);
   await registerPeople(app);
   await registerSearch(app);
+  await registerHistory(app);
   await registerIngest(app);
   await registerRecall(app);
   await registerAdmin(app);

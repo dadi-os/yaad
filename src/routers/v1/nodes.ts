@@ -1,14 +1,21 @@
 import { randomUUID } from "node:crypto";
 import type { FastifyInstance } from "fastify";
 import { eq } from "drizzle-orm";
-import { node, nodeIdentity, personDetail, planDetail } from "../../db/schema.js";
-import { getIncidentEdges, getNode, getPersonDetail, getPlanDetail } from "../../db/read.js";
-import { closeNode, supersedeNode } from "../../db/temporal.js";
+import { node, personDetail, planDetail } from "../../db/schema.js";
+import { getIncidentEdges, getNode, getNodeHistory, getPersonDetail, getPlanDetail } from "../../db/read.js";
+import { deleteNode, updateNode } from "../../db/temporal.js";
 import { embeddingText } from "../../dwar/client.js";
 import { YaadError } from "../../errors.js";
-import { sameInstant, toEdgeRecord, toNodeRecord, toPersonDetail, toPlanDetail } from "../../serialize.js";
 import {
-  asOfQuery,
+  historyEmbeddingText,
+  sameInstant,
+  toEdgeRecord,
+  toNodeHistoryRecord,
+  toNodeRecord,
+  toPersonDetail,
+  toPlanDetail,
+} from "../../serialize.js";
+import {
   createNodeBody,
   idParam,
   parse,
@@ -29,7 +36,6 @@ export async function registerNodes(app: FastifyInstance): Promise<void> {
     const occurredAt = body.occurred_at ? new Date(body.occurred_at) : null;
 
     await app.db.transaction(async (tx) => {
-      await tx.insert(nodeIdentity).values({ id });
       const rows = await tx
         .insert(node)
         .values({
@@ -41,8 +47,7 @@ export async function registerNodes(app: FastifyInstance): Promise<void> {
           occurredAt,
           source: body.source,
           createdAt: now,
-          validFrom: now,
-          validTo: null,
+          updatedAt: now,
         })
         .returning();
       const row = rows[0];
@@ -65,20 +70,24 @@ export async function registerNodes(app: FastifyInstance): Promise<void> {
       }
     });
 
-    return reply.status(201).send(await nodeResponse(app, id, undefined));
+    return reply.status(201).send(await nodeResponse(app, id));
   });
 
   app.get("/nodes/:id", async (request) => {
     const { id } = parse(idParam, request.params);
-    const query = parse(asOfQuery, request.query);
-    const asOf = query.as_of ? new Date(query.as_of) : undefined;
-    return nodeResponse(app, id, asOf);
+    return nodeResponse(app, id);
+  });
+
+  app.get("/nodes/:id/history", async (request) => {
+    const { id } = parse(idParam, request.params);
+    const history = await getNodeHistory(app.db, id);
+    return { history: history.map(toNodeHistoryRecord) };
   });
 
   app.patch("/nodes/:id", async (request) => {
     const { id } = parse(idParam, request.params);
     const body = parse(patchNodeBody, request.body);
-    const current = await getNode(app.db, id, undefined);
+    const current = await getNode(app.db, id);
 
     const personPatch =
       body.detail && current.kind === "person" ? parse(patchPersonDetailBody, body.detail) : undefined;
@@ -104,12 +113,55 @@ export async function registerNodes(app: FastifyInstance): Promise<void> {
     const nodeChanged = titleChanged || bodyChanged || occurredChanged || sourceChanged;
 
     let embedding = current.embedding;
+    const historyJobs: Array<{ key: string; text: string }> = [];
+    if (titleChanged) {
+      historyJobs.push({
+        key: `title:${id}`,
+        text: historyEmbeddingText(current.title, nextTitle),
+      });
+    }
+    if (bodyChanged) {
+      historyJobs.push({
+        key: `body:${id}`,
+        text: historyEmbeddingText(current.body, nextBody),
+      });
+    }
+    if (occurredChanged) {
+      historyJobs.push({
+        key: `occurred_at:${id}`,
+        text: historyEmbeddingText(
+          current.occurredAt ? current.occurredAt.toISOString() : null,
+          nextOccurred ? nextOccurred.toISOString() : null,
+        ),
+      });
+    }
+
+    const embedTexts: string[] = [];
+    const embedKeys: Array<"node" | string> = [];
     if (titleChanged || bodyChanged) {
-      const [vector] = await app.dwar.embed([embeddingText(nextTitle, nextBody)]);
-      if (!vector) {
-        throw new YaadError(502, "dwar", "Dwar returned no embedding");
+      embedTexts.push(embeddingText(nextTitle, nextBody));
+      embedKeys.push("node");
+    }
+    for (const job of historyJobs) {
+      embedTexts.push(job.text);
+      embedKeys.push(job.key);
+    }
+
+    const historyEmbeddings = new Map<string, number[]>();
+    if (embedTexts.length > 0) {
+      const vectors = await app.dwar.embed(embedTexts);
+      for (let i = 0; i < embedKeys.length; i++) {
+        const key = embedKeys[i];
+        const vector = vectors[i];
+        if (!key || !vector) {
+          throw new YaadError(502, "dwar", "Dwar returned no embedding");
+        }
+        if (key === "node") {
+          embedding = vector;
+        } else {
+          historyEmbeddings.set(key, vector);
+        }
       }
-      embedding = vector;
     }
 
     await app.db.transaction(async (tx) => {
@@ -140,7 +192,7 @@ export async function registerNodes(app: FastifyInstance): Promise<void> {
           .where(eq(planDetail.nodeId, id));
       }
       if (nodeChanged) {
-        await supersedeNode(
+        await updateNode(
           tx,
           id,
           {
@@ -150,26 +202,27 @@ export async function registerNodes(app: FastifyInstance): Promise<void> {
             ...(body.source !== undefined ? { source: body.source } : {}),
             embedding,
           },
+          historyEmbeddings,
           new Date(),
         );
       }
     });
 
-    return nodeResponse(app, id, undefined);
+    return nodeResponse(app, id);
   });
 
   app.delete("/nodes/:id", async (request, reply) => {
     const { id } = parse(idParam, request.params);
     await app.db.transaction(async (tx) => {
-      await closeNode(tx, id, new Date());
+      await deleteNode(tx, id, new Date());
     });
     return reply.status(204).send();
   });
 }
 
-async function nodeResponse(app: FastifyInstance, id: string, asOf: Date | undefined) {
-  const row = await getNode(app.db, id, asOf);
-  const edges = await getIncidentEdges(app.db, id, asOf);
+async function nodeResponse(app: FastifyInstance, id: string) {
+  const row = await getNode(app.db, id);
+  const edges = await getIncidentEdges(app.db, id);
   const outgoing = edges.filter((item) => item.srcId === id).map(toEdgeRecord);
   const incoming = edges.filter((item) => item.dstId === id).map(toEdgeRecord);
   let detail: ReturnType<typeof toPersonDetail> | ReturnType<typeof toPlanDetail> | null = null;

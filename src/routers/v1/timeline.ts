@@ -1,7 +1,6 @@
 import type { FastifyInstance } from "fastify";
 import { and, eq, gte, isNotNull, lte, sql } from "drizzle-orm";
 import { node, planDetail } from "../../db/schema.js";
-import { asOfClause } from "../../db/temporal.js";
 import { YaadError } from "../../errors.js";
 import { toNodeRecord, toPlanDetail } from "../../serialize.js";
 import { parse, timelineQuery } from "./schemas.js";
@@ -19,7 +18,7 @@ export async function registerTimeline(app: FastifyInstance): Promise<void> {
     const limit = query.limit ?? app.config.page.default_size;
     const offset = query.offset ?? 0;
     const ranged = query.from !== undefined || query.to !== undefined;
-    const conditions = [eq(node.kind, "plan"), asOfClause(node.validFrom, node.validTo, undefined)];
+    const conditions = [eq(node.kind, "plan")];
     if (ranged) {
       conditions.push(isNotNull(node.occurredAt));
       if (query.from) {

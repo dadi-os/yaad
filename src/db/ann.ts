@@ -1,5 +1,5 @@
 import type { Sql } from "./client.js";
-import type { NodeRow } from "./schema.js";
+import type { NodeHistoryRow, NodeRow } from "./schema.js";
 import { YaadError } from "../errors.js";
 import type { NodeKind } from "../types/domain.js";
 import { cosineDistanceToSimilarity, toSqlVector } from "../vectors.js";
@@ -18,55 +18,20 @@ export async function annSearch(opts: {
   embedding: number[];
   limit: number;
   kind?: NodeKind;
-  asOf?: Date;
 }): Promise<AnnHit[]> {
   const vec = toSqlVector(opts.embedding);
   const rows = await opts.sql.begin(async (tx) => {
     await tx`SELECT set_config('hnsw.ef_search', ${String(opts.efSearch)}, true)`;
-    if (opts.asOf) {
-      if (opts.kind) {
-        return tx<AnnRow[]>`
-          SELECT
-            id, kind, title, body, embedding,
-            occurred_at AS "occurredAt", salience, access_count AS "accessCount",
-            last_accessed_at AS "lastAccessedAt", source,
-            created_at AS "createdAt", valid_from AS "validFrom", valid_to AS "validTo",
-            (embedding <=> ${vec}::vector) AS distance
-          FROM node
-          WHERE embedding IS NOT NULL
-            AND valid_from <= ${opts.asOf}
-            AND (valid_to IS NULL OR valid_to > ${opts.asOf})
-            AND kind = ${opts.kind}
-          ORDER BY embedding <=> ${vec}::vector
-          LIMIT ${opts.limit}
-        `;
-      }
-      return tx<AnnRow[]>`
-        SELECT
-          id, kind, title, body, embedding,
-          occurred_at AS "occurredAt", salience, access_count AS "accessCount",
-          last_accessed_at AS "lastAccessedAt", source,
-          created_at AS "createdAt", valid_from AS "validFrom", valid_to AS "validTo",
-          (embedding <=> ${vec}::vector) AS distance
-        FROM node
-        WHERE embedding IS NOT NULL
-          AND valid_from <= ${opts.asOf}
-          AND (valid_to IS NULL OR valid_to > ${opts.asOf})
-        ORDER BY embedding <=> ${vec}::vector
-        LIMIT ${opts.limit}
-      `;
-    }
     if (opts.kind) {
       return tx<AnnRow[]>`
         SELECT
           id, kind, title, body, embedding,
           occurred_at AS "occurredAt", salience, access_count AS "accessCount",
           last_accessed_at AS "lastAccessedAt", source,
-          created_at AS "createdAt", valid_from AS "validFrom", valid_to AS "validTo",
+          created_at AS "createdAt", updated_at AS "updatedAt",
           (embedding <=> ${vec}::vector) AS distance
         FROM node
-        WHERE valid_to IS NULL
-          AND embedding IS NOT NULL
+        WHERE embedding IS NOT NULL
           AND kind = ${opts.kind}
         ORDER BY embedding <=> ${vec}::vector
         LIMIT ${opts.limit}
@@ -77,11 +42,10 @@ export async function annSearch(opts: {
         id, kind, title, body, embedding,
         occurred_at AS "occurredAt", salience, access_count AS "accessCount",
         last_accessed_at AS "lastAccessedAt", source,
-        created_at AS "createdAt", valid_from AS "validFrom", valid_to AS "validTo",
+        created_at AS "createdAt", updated_at AS "updatedAt",
         (embedding <=> ${vec}::vector) AS distance
       FROM node
-      WHERE valid_to IS NULL
-        AND embedding IS NOT NULL
+      WHERE embedding IS NOT NULL
       ORDER BY embedding <=> ${vec}::vector
       LIMIT ${opts.limit}
     `;
@@ -98,6 +62,42 @@ export async function annSearch(opts: {
   });
 }
 
+type HistoryAnnRow = NodeHistoryRow & { distance: number };
+
+export async function searchNodeHistory(opts: {
+  sql: Sql;
+  efSearch: number;
+  embedding: number[];
+  limit: number;
+}): Promise<NodeHistoryRow[]> {
+  const vec = toSqlVector(opts.embedding);
+  const rows = await opts.sql.begin(async (tx) => {
+    await tx`SELECT set_config('hnsw.ef_search', ${String(opts.efSearch)}, true)`;
+    return tx<HistoryAnnRow[]>`
+      SELECT
+        id, node_id AS "nodeId", field,
+        old_value AS "oldValue", new_value AS "newValue",
+        embedding, changed_at AS "changedAt", source,
+        (embedding <=> ${vec}::vector) AS distance
+      FROM node_history
+      WHERE embedding IS NOT NULL
+      ORDER BY embedding <=> ${vec}::vector
+      LIMIT ${opts.limit}
+    `;
+  });
+
+  return rows.map((row) => ({
+    id: row.id,
+    nodeId: row.nodeId,
+    field: row.field,
+    oldValue: row.oldValue,
+    newValue: row.newValue,
+    embedding: row.embedding,
+    changedAt: toDateRequired(row.changedAt),
+    source: row.source,
+  }));
+}
+
 function toNodeRow(row: AnnRow): NodeRow {
   return {
     id: row.id,
@@ -111,8 +111,7 @@ function toNodeRow(row: AnnRow): NodeRow {
     lastAccessedAt: toDate(row.lastAccessedAt),
     source: row.source,
     createdAt: toDateRequired(row.createdAt),
-    validFrom: toDateRequired(row.validFrom),
-    validTo: toDate(row.validTo),
+    updatedAt: toDateRequired(row.updatedAt),
   };
 }
 

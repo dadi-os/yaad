@@ -1,6 +1,8 @@
-import { and, eq, gt, isNull, lte, or, type SQL } from "drizzle-orm";
-import { edge, node, type EdgeRow, type NodeRow } from "./schema.js";
+import { and, eq, isNull, or } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { edge, node, nodeHistory, type EdgeRow, type NodeRow } from "./schema.js";
 import { YaadError } from "../errors.js";
+import { sameInstant } from "../serialize.js";
 import type { NodeSource } from "../types/domain.js";
 import type { Db } from "./client.js";
 
@@ -14,32 +16,8 @@ export type NodePatch = {
   embedding?: number[] | null;
 };
 
-/**
- * Current-row predicate. Pass `asOf` to reconstruct state at that instant
- * (`valid_from <= asOf` and `valid_to` null or after `asOf`). Default is
- * currently true rows only.
- */
-export function asOfClause(
-  validFrom: typeof node.validFrom | typeof edge.validFrom,
-  validTo: typeof node.validTo | typeof edge.validTo,
-  asOf: Date | undefined,
-): SQL {
-  if (!asOf) {
-    return isNull(validTo);
-  }
-  const clause = and(lte(validFrom, asOf), or(isNull(validTo), gt(validTo, asOf)));
-  if (!clause) {
-    throw new YaadError(500, "internal", "as-of clause is empty");
-  }
-  return clause;
-}
-
-export async function lockCurrentNode(tx: Tx, id: string): Promise<NodeRow> {
-  const rows = await tx
-    .select()
-    .from(node)
-    .where(and(eq(node.id, id), isNull(node.validTo)))
-    .for("update");
+export async function lockNode(tx: Tx, id: string): Promise<NodeRow> {
+  const rows = await tx.select().from(node).where(eq(node.id, id)).for("update");
   const row = rows[0];
   if (!row) {
     throw new YaadError(404, "not_found", "node not found");
@@ -60,21 +38,6 @@ export async function lockCurrentEdge(tx: Tx, id: string): Promise<EdgeRow> {
   return row;
 }
 
-/** Close a current node. Never deletes. */
-export async function closeNode(tx: Tx, id: string, at: Date): Promise<NodeRow> {
-  const current = await lockCurrentNode(tx, id);
-  const rows = await tx
-    .update(node)
-    .set({ validTo: at })
-    .where(and(eq(node.id, current.id), eq(node.validFrom, current.validFrom)))
-    .returning();
-  const closed = rows[0];
-  if (!closed) {
-    throw new YaadError(409, "conflict", "node was modified concurrently");
-  }
-  return closed;
-}
-
 /** Close a current edge. Never deletes. */
 export async function closeEdge(tx: Tx, id: string, at: Date): Promise<EdgeRow> {
   const current = await lockCurrentEdge(tx, id);
@@ -91,32 +54,98 @@ export async function closeEdge(tx: Tx, id: string, at: Date): Promise<EdgeRow> 
 }
 
 /**
- * Supersede a current node: close it, then insert a successor with the same
- * id and a new valid_from. Callers must go through this for any node field change.
+ * Update a node in place and append one node_history row per changed field.
+ * Callers compute history embeddings before the transaction and pass them in.
  */
-export async function supersedeNode(tx: Tx, id: string, patch: NodePatch, at: Date): Promise<NodeRow> {
-  const current = await closeNode(tx, id, at);
+export async function updateNode(
+  tx: Tx,
+  id: string,
+  patch: NodePatch,
+  historyEmbeddings: Map<string, number[]>,
+  at: Date,
+): Promise<NodeRow> {
+  const current = await lockNode(tx, id);
+
+  const nextTitle = patch.title ?? current.title;
+  const nextBody = patch.body !== undefined ? patch.body : current.body;
+  const nextOccurredAt = patch.occurredAt !== undefined ? patch.occurredAt : current.occurredAt;
+  const nextSource = patch.source ?? current.source;
+
+  const historyRows: Array<{
+    field: "title" | "body" | "occurred_at";
+    oldValue: string | null;
+    newValue: string | null;
+  }> = [];
+  if (patch.title !== undefined && patch.title !== current.title) {
+    historyRows.push({ field: "title", oldValue: current.title, newValue: nextTitle });
+  }
+  if (patch.body !== undefined && patch.body !== current.body) {
+    historyRows.push({ field: "body", oldValue: current.body, newValue: nextBody });
+  }
+  if (patch.occurredAt !== undefined && !sameInstant(patch.occurredAt, current.occurredAt)) {
+    historyRows.push({
+      field: "occurred_at",
+      oldValue: current.occurredAt ? current.occurredAt.toISOString() : null,
+      newValue: nextOccurredAt ? nextOccurredAt.toISOString() : null,
+    });
+  }
+
   const rows = await tx
-    .insert(node)
-    .values({
-      id: current.id,
-      kind: current.kind,
-      title: patch.title ?? current.title,
-      body: patch.body !== undefined ? patch.body : current.body,
+    .update(node)
+    .set({
+      title: nextTitle,
+      body: nextBody,
+      occurredAt: nextOccurredAt,
+      source: nextSource,
       embedding: patch.embedding !== undefined ? patch.embedding : current.embedding,
-      occurredAt: patch.occurredAt !== undefined ? patch.occurredAt : current.occurredAt,
-      salience: current.salience,
-      accessCount: current.accessCount,
-      lastAccessedAt: current.lastAccessedAt,
-      source: patch.source ?? current.source,
-      createdAt: current.createdAt,
-      validFrom: at,
-      validTo: null,
+      updatedAt: at,
     })
+    .where(eq(node.id, id))
     .returning();
   const next = rows[0];
   if (!next) {
-    throw new YaadError(500, "internal", "supersede insert returned no row");
+    throw new YaadError(500, "internal", "node update returned no row");
   }
+
+  for (const row of historyRows) {
+    const key = `${row.field}:${id}`;
+    await tx.insert(nodeHistory).values({
+      id: randomUUID(),
+      nodeId: id,
+      field: row.field,
+      oldValue: row.oldValue,
+      newValue: row.newValue,
+      embedding: historyEmbeddings.get(key) ?? null,
+      changedAt: at,
+      source: nextSource,
+    });
+  }
+
   return next;
+}
+
+/**
+ * Hard-delete a node, log a deleted history row, and soft-close open edges
+ * touching it so edge history remains.
+ */
+export async function deleteNode(tx: Tx, id: string, at: Date): Promise<void> {
+  const current = await lockNode(tx, id);
+
+  await tx
+    .update(edge)
+    .set({ validTo: at })
+    .where(and(or(eq(edge.srcId, id), eq(edge.dstId, id)), isNull(edge.validTo)));
+
+  await tx.insert(nodeHistory).values({
+    id: randomUUID(),
+    nodeId: id,
+    field: "deleted",
+    oldValue: current.title,
+    newValue: null,
+    embedding: null,
+    changedAt: at,
+    source: current.source,
+  });
+
+  await tx.delete(node).where(eq(node.id, id));
 }

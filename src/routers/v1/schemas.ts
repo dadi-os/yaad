@@ -112,12 +112,6 @@ export const searchBody = z
 
 export const idParam = z.object({ id: z.string().uuid() }).strict();
 
-export const asOfQuery = z
-  .object({
-    as_of: z.string().datetime({ offset: true }).optional(),
-  })
-  .strict();
-
 export const ingestBody = z
   .object({
     text: z.string().min(1),
@@ -131,8 +125,14 @@ export const recallBody = z
   .object({
     query: z.string().min(1),
     limit: z.number().int().positive().optional(),
-    as_of: z.string().datetime({ offset: true }).optional(),
     debug: z.boolean().optional(),
+  })
+  .strict();
+
+export const historySearchBody = z
+  .object({
+    query: z.string().min(1),
+    limit: z.number().int().positive().optional(),
   })
   .strict();
 

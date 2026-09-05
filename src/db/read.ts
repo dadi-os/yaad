@@ -1,16 +1,23 @@
-import { and, eq, inArray, or } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, or } from "drizzle-orm";
 import type { Db } from "./client.js";
-import { edge, node, personDetail, planDetail, type EdgeRow, type NodeRow, type PersonDetailRow, type PlanDetailRow } from "./schema.js";
-import { asOfClause } from "./temporal.js";
+import {
+  edge,
+  node,
+  nodeHistory,
+  personDetail,
+  planDetail,
+  type EdgeRow,
+  type NodeHistoryRow,
+  type NodeRow,
+  type PersonDetailRow,
+  type PlanDetailRow,
+} from "./schema.js";
 import { YaadError } from "../errors.js";
 
 type SelectDb = { select: Db["select"] };
 
-export async function getNode(db: SelectDb, id: string, asOf: Date | undefined): Promise<NodeRow> {
-  const rows = await db
-    .select()
-    .from(node)
-    .where(and(eq(node.id, id), asOfClause(node.validFrom, node.validTo, asOf)));
+export async function getNode(db: SelectDb, id: string): Promise<NodeRow> {
+  const rows = await db.select().from(node).where(eq(node.id, id));
   const row = rows[0];
   if (!row) {
     throw new YaadError(404, "not_found", "node not found");
@@ -36,15 +43,12 @@ export async function getPlanDetail(db: Db, nodeId: string): Promise<PlanDetailR
   return row;
 }
 
-export async function getIncidentEdges(db: Db, nodeId: string, asOf: Date | undefined): Promise<EdgeRow[]> {
-  return getIncidentEdgesForIds(db, [nodeId], asOf);
+export async function getIncidentEdges(db: Db, nodeId: string): Promise<EdgeRow[]> {
+  return getIncidentEdgesForIds(db, [nodeId]);
 }
 
-export async function getIncidentEdgesForIds(
-  db: Db,
-  nodeIds: string[],
-  asOf: Date | undefined,
-): Promise<EdgeRow[]> {
+/** Current edges only (`valid_to IS NULL`). Historical edge lookup not wired yet. */
+export async function getIncidentEdgesForIds(db: Db, nodeIds: string[]): Promise<EdgeRow[]> {
   if (nodeIds.length === 0) {
     return [];
   }
@@ -52,32 +56,23 @@ export async function getIncidentEdgesForIds(
     .select()
     .from(edge)
     .where(
-      and(
-        or(inArray(edge.srcId, nodeIds), inArray(edge.dstId, nodeIds)),
-        asOfClause(edge.validFrom, edge.validTo, asOf),
-      ),
+      and(or(inArray(edge.srcId, nodeIds), inArray(edge.dstId, nodeIds)), isNull(edge.validTo)),
     );
 }
 
-export async function getNodesByIds(
-  db: Db,
-  ids: string[],
-  asOf: Date | undefined,
-): Promise<NodeRow[]> {
+export async function getNodesByIds(db: Db, ids: string[]): Promise<NodeRow[]> {
   if (ids.length === 0) {
     return [];
   }
-  return db
-    .select()
-    .from(node)
-    .where(and(inArray(node.id, ids), asOfClause(node.validFrom, node.validTo, asOf)));
+  return db.select().from(node).where(inArray(node.id, ids));
 }
 
-export async function getEdge(db: SelectDb, id: string, asOf: Date | undefined): Promise<EdgeRow> {
+/** Current edge only. Historical edge lookup not wired yet. */
+export async function getEdge(db: SelectDb, id: string): Promise<EdgeRow> {
   const rows = await db
     .select()
     .from(edge)
-    .where(and(eq(edge.id, id), asOfClause(edge.validFrom, edge.validTo, asOf)));
+    .where(and(eq(edge.id, id), isNull(edge.validTo)));
   const row = rows[0];
   if (!row) {
     throw new YaadError(404, "not_found", "edge not found");
@@ -92,6 +87,19 @@ export async function getCurrentPersons(
     .select({ node, detail: personDetail })
     .from(node)
     .innerJoin(personDetail, eq(personDetail.nodeId, node.id))
-    .where(and(eq(node.kind, "person"), asOfClause(node.validFrom, node.validTo, undefined)));
+    .where(eq(node.kind, "person"));
   return rows;
+}
+
+export async function getNodeHistory(
+  db: Db,
+  nodeId: string,
+  limit = 50,
+): Promise<NodeHistoryRow[]> {
+  return db
+    .select()
+    .from(nodeHistory)
+    .where(eq(nodeHistory.nodeId, nodeId))
+    .orderBy(desc(nodeHistory.changedAt))
+    .limit(limit);
 }

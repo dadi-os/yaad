@@ -1,5 +1,5 @@
 import type { FastifyInstance } from "fastify";
-import { and, eq, isNull } from "drizzle-orm";
+import { eq, isNull } from "drizzle-orm";
 import { node } from "../../db/schema.js";
 import { embeddingText } from "../../dwar/client.js";
 import { YaadError } from "../../errors.js";
@@ -9,12 +9,11 @@ export async function registerAdmin(app: FastifyInstance): Promise<void> {
     const rows = await app.db
       .select({
         id: node.id,
-        validFrom: node.validFrom,
         title: node.title,
         body: node.body,
       })
       .from(node)
-      .where(and(isNull(node.validTo), isNull(node.embedding)));
+      .where(isNull(node.embedding));
 
     let updated = 0;
     const size = app.config.embedding.batch_size;
@@ -28,10 +27,7 @@ export async function registerAdmin(app: FastifyInstance): Promise<void> {
           if (!row || !embedding) {
             throw new YaadError(500, "internal", "backfill batch length mismatch");
           }
-          await tx
-            .update(node)
-            .set({ embedding })
-            .where(and(eq(node.id, row.id), eq(node.validFrom, row.validFrom), isNull(node.validTo)));
+          await tx.update(node).set({ embedding }).where(eq(node.id, row.id));
           updated += 1;
         }
       });

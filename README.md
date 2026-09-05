@@ -13,13 +13,13 @@ Yaad is a data API, not a tool API. There is no auth. Yaad stays on the private 
 
 `occurred_at` is the single "when" for every kind. A plan's start is `node.occurred_at`, not a second column. An undated idea has `status = 'idea'` and a null `occurred_at`.
 
-## Temporal rule
+## Corrections
 
-Nothing is hard-deleted. Application code never issues `DELETE` against `node` or `edge`.
+`node` is a plain current-state table — `PATCH` updates it in place. Every changed field (`title`, `body`, `occurred_at`) writes a row to `node_history` recording the old and new value, embedded the same way nodes are, so a correction can be found later by meaning ("why did the color change") rather than by knowing which node or when. `DELETE` removes the node and writes a `field: "deleted"` history row rather than leaving a dangling current-less row behind.
 
-Updating a fact closes the current row (`valid_to = now()`) and inserts a successor with the same `id` and a new `valid_from`. Closing a node or edge sets `valid_to` and stops. Reads default to current rows (`valid_to IS NULL`). Pass `as_of` on read paths to reconstruct historical state.
+`GET /v1/nodes/:id/history` returns a node's own correction log. `POST /v1/history/search` does semantic search across every correction in the graph.
 
-`node.id` is a stable vertex id. Version rows share that id with primary key `(id, valid_from)`. `node_identity` exists so edges and detail tables can foreign-key that id.
+**Edges are different.** A relationship ending (a job, a plan) is a real state change worth keeping queryable as history, not a correction. Edges keep `valid_from`/`valid_to`; `DELETE /v1/edges/:id` still closes rather than deletes. There is no `as_of` anywhere in the API — point-in-time graph reconstruction was removed as unused complexity.
 
 ## Routes
 
@@ -27,17 +27,19 @@ Updating a fact closes the current row (`valid_to = now()`) and inserts a succes
 | --- | --- | --- |
 | `GET` | `/health` | unversioned, `{ "status": "ok" }` |
 | `POST` | `/v1/nodes` | create, with detail payload by kind |
-| `GET` | `/v1/nodes/:id` | node, detail, current edges. `?as_of=` |
-| `PATCH` | `/v1/nodes/:id` | supersede |
-| `DELETE` | `/v1/nodes/:id` | close |
+| `GET` | `/v1/nodes/:id` | node, detail, current edges |
+| `GET` | `/v1/nodes/:id/history` | correction log for a node (survives delete) |
+| `PATCH` | `/v1/nodes/:id` | update in place; writes `node_history` |
+| `DELETE` | `/v1/nodes/:id` | hard-delete; logs `deleted` history; closes open edges |
 | `POST` | `/v1/edges` | create |
 | `DELETE` | `/v1/edges/:id` | close |
 | `GET` | `/v1/timeline` | `?from&to&status&limit&offset` |
 | `GET` | `/v1/people/:id` | person, detail, current edges grouped by type |
 | `POST` | `/v1/search` | embed the query, top-k cosine distance |
+| `POST` | `/v1/history/search` | semantic search over `node_history` |
 | `POST` | `/v1/ingest` | extract and reconcile unstructured text |
 | `POST` | `/v1/recall` | ranked multi-hop retrieval |
-| `POST` | `/v1/admin/backfill-embeddings` | fill current nodes with a null embedding |
+| `POST` | `/v1/admin/backfill-embeddings` | fill nodes with a null embedding |
 
 Unknown request fields are a 422. `/v1/search` is a dumb ANN lookup so embeddings can be checked. It is not recall.
 
@@ -53,15 +55,15 @@ The pipeline is:
 2. Assemble candidates in code: ANN hits above `ingest.candidate_similarity_floor`, people whose title or alias appears in the text, `participant_ids`, and current edges attached to those nodes. The model does not query.
 3. Call Dwar `POST /v1/chat/reasoning` with `prompts/extraction.md` as the system prompt and a single tool, `emit_operations`. `stop_reason` must be `tool_use`. Prose is a hard failure.
 4. Validate the whole batch. Any bad id, duplicate `temp_id`, kind/detail mismatch, illegal plan status, or self-edge rejects the batch. No writes.
-5. Apply in one transaction through supersede/close. Embed creates and title/body updates before the transaction. Concurrent supersede of a referenced row aborts with 409.
+5. Apply in one transaction through update/delete. Embed creates, title/body updates, and per-field history texts before the transaction. Concurrent modification of a referenced row aborts with 409.
 
 ### Operations
 
 | op | fields |
 | --- | --- |
 | `create_node` | `temp_id`, `kind`, `title`, `body?`, `occurred_at?`, `detail?` |
-| `update_node` | `node_id`, `title?`, `body?`, `occurred_at?`, `detail?` (supersede) |
-| `close_node` | `node_id`, `reason` |
+| `update_node` | `node_id`, `title?`, `body?`, `occurred_at?`, `detail?` |
+| `close_node` | `node_id`, `reason` (hard-deletes; logs history) |
 | `create_edge` | `src`, `dst` (node id or `temp_id`), `type`, `properties?`, `confidence` |
 | `close_edge` | `edge_id`, `reason` |
 | `noop` | `reason` |
@@ -72,9 +74,9 @@ The response repeats the operations with resolved ids and a count by type.
 
 ## Recall
 
-`POST /v1/recall` takes `{ query, limit?, as_of?, debug? }`. Retrieval never calls a model except to embed the query. Every gate is a number in `config.toml`.
+`POST /v1/recall` takes `{ query, limit?, debug? }`. Retrieval never calls a model except to embed the query. Every gate is a number in `config.toml`.
 
-1. **Anchor.** ANN over current (or `as_of`) nodes. Keep hits above `recall.anchor_similarity_floor`, capped at `anchor_limit`. If none clear the floor, return an empty set with coverage 0. The floor is not widened.
+1. **Anchor.** ANN over nodes. Keep hits above `recall.anchor_similarity_floor`, capped at `anchor_limit`. If none clear the floor, return an empty set with coverage 0. The floor is not widened.
 2. **Expand.** BFS, one hop at a time, both directions, up to `hop_cap`. First visit is the hop distance. Same hop keeps the higher product of edge confidences.
 3. **Score.** Weighted sum of the components below, then multiplied by the kind prior.
 4. **Gate.** After each hop, stop when newly discovered nodes scoring at or above `relevance_threshold` fall below `marginal_yield_minimum`, or the hop cap is hit, or the estimated token budget is exhausted (title+body chars / 4 of nodes above the relevance threshold).

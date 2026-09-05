@@ -61,7 +61,7 @@ export async function validateOperations(opts: {
     }
     if (op.op === "close_edge") {
       try {
-        await getEdge(opts.db, op.edge_id, undefined);
+        await getEdge(opts.db, op.edge_id);
       } catch (err) {
         if (err instanceof YaadError && err.statusCode === 404) {
           throw new YaadError(422, "invalid_request", `edge ${op.edge_id} does not exist or is not current`);
@@ -74,7 +74,7 @@ export async function validateOperations(opts: {
 
 async function requireCurrent(db: Db, id: string, kind: "node"): Promise<Awaited<ReturnType<typeof getNode>>> {
   try {
-    return await getNode(db, id, undefined);
+    return await getNode(db, id);
   } catch (err) {
     if (err instanceof YaadError && err.statusCode === 404) {
       throw new YaadError(422, "invalid_request", `${kind} ${id} does not exist or is not current`);
@@ -88,7 +88,7 @@ async function resolveEndpoint(db: Db, value: string, tempIds: Set<string>, labe
     return;
   }
   try {
-    await getNode(db, value, undefined);
+    await getNode(db, value);
   } catch (err) {
     if (err instanceof YaadError && err.statusCode === 404) {
       throw new YaadError(

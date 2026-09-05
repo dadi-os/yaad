@@ -24,8 +24,7 @@ export type NodeRecord = {
   last_accessed_at: string | null;
   source: NodeSource;
   created_at: string;
-  valid_from: string;
-  valid_to: string | null;
+  updated_at: string;
 };
 
 export type EdgeRecord = {
@@ -38,4 +37,14 @@ export type EdgeRecord = {
   created_at: string;
   valid_from: string;
   valid_to: string | null;
+};
+
+export type NodeHistoryRecord = {
+  id: string;
+  node_id: string;
+  field: "title" | "body" | "occurred_at" | "deleted";
+  old_value: string | null;
+  new_value: string | null;
+  changed_at: string;
+  source: NodeSource;
 };

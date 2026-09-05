@@ -1,4 +1,4 @@
-import { and, inArray, isNull, sql } from "drizzle-orm";
+import { inArray, sql } from "drizzle-orm";
 import type { Config } from "../config.js";
 import type { Db, Sql } from "../db/client.js";
 import { getIncidentEdgesForIds, getNodesByIds, getPersonDetail, getPlanDetail } from "../db/read.js";
@@ -35,7 +35,6 @@ export async function recall(opts: {
   config: Config;
   query: string;
   limit: number;
-  asOf: Date | undefined;
   debug: boolean;
   now?: Date;
 }): Promise<RecallResult> {
@@ -48,7 +47,6 @@ export async function recall(opts: {
     sql: opts.sql,
     config: opts.config,
     embedding: queryEmbedding,
-    asOf: opts.asOf,
   });
   if (anchors.length === 0) {
     return {
@@ -68,11 +66,11 @@ export async function recall(opts: {
   const now = opts.now ?? new Date();
 
   while (true) {
-    const incident = await getIncidentEdgesForIds(opts.db, walk.frontier, opts.asOf);
+    const incident = await getIncidentEdgesForIds(opts.db, walk.frontier);
     const expanded = expandOneHop(walk, incident);
     hopsTaken += 1;
     if (expanded.newlyDiscovered.length > 0) {
-      const fetched = await getNodesByIds(opts.db, expanded.newlyDiscovered, opts.asOf);
+      const fetched = await getNodesByIds(opts.db, expanded.newlyDiscovered);
       for (const row of fetched) {
         rows.set(row.id, row);
       }
@@ -220,5 +218,5 @@ export async function recordAccess(db: Db, ids: string[]): Promise<void> {
       accessCount: sql`${node.accessCount} + 1`,
       lastAccessedAt: at,
     })
-    .where(and(inArray(node.id, ids), isNull(node.validTo)));
+    .where(inArray(node.id, ids));
 }

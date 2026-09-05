@@ -1,5 +1,14 @@
-import type { EdgeRow, NodeRow, PersonDetailRow, PlanDetailRow } from "./db/schema.js";
-import type { EdgeRecord, NodeKind, NodeRecord, NodeSource, PersonDetail, PlanDetail, PlanStatus } from "./types/domain.js";
+import type { EdgeRow, NodeHistoryRow, NodeRow, PersonDetailRow, PlanDetailRow } from "./db/schema.js";
+import type {
+  EdgeRecord,
+  NodeHistoryRecord,
+  NodeKind,
+  NodeRecord,
+  NodeSource,
+  PersonDetail,
+  PlanDetail,
+  PlanStatus,
+} from "./types/domain.js";
 import { YaadError } from "./errors.js";
 
 function iso(value: Date | null): string | null {
@@ -27,6 +36,13 @@ function parseStatus(value: string): PlanStatus {
   throw new YaadError(500, "internal", `invalid plan status in database: ${value}`);
 }
 
+function parseHistoryField(value: string): NodeHistoryRecord["field"] {
+  if (value === "title" || value === "body" || value === "occurred_at" || value === "deleted") {
+    return value;
+  }
+  throw new YaadError(500, "internal", `invalid node_history field in database: ${value}`);
+}
+
 export function toNodeRecord(row: NodeRow): NodeRecord {
   return {
     id: row.id,
@@ -39,8 +55,7 @@ export function toNodeRecord(row: NodeRow): NodeRecord {
     last_accessed_at: iso(row.lastAccessedAt),
     source: parseSource(row.source),
     created_at: row.createdAt.toISOString(),
-    valid_from: row.validFrom.toISOString(),
-    valid_to: iso(row.validTo),
+    updated_at: row.updatedAt.toISOString(),
   };
 }
 
@@ -55,6 +70,18 @@ export function toEdgeRecord(row: EdgeRow): EdgeRecord {
     created_at: row.createdAt.toISOString(),
     valid_from: row.validFrom.toISOString(),
     valid_to: iso(row.validTo),
+  };
+}
+
+export function toNodeHistoryRecord(row: NodeHistoryRow): NodeHistoryRecord {
+  return {
+    id: row.id,
+    node_id: row.nodeId,
+    field: parseHistoryField(row.field),
+    old_value: row.oldValue,
+    new_value: row.newValue,
+    changed_at: row.changedAt.toISOString(),
+    source: parseSource(row.source),
   };
 }
 
@@ -78,4 +105,9 @@ export function sameInstant(left: Date | null, right: Date | null): boolean {
     return left === right;
   }
   return left.getTime() === right.getTime();
+}
+
+/** Text embedded for a correction row: "{old} → {new}". */
+export function historyEmbeddingText(oldValue: string | null, newValue: string | null): string {
+  return `${oldValue ?? ""} → ${newValue ?? ""}`;
 }

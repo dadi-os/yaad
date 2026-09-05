@@ -4,11 +4,18 @@ import type { DwarClient } from "../dwar/client.js";
 import { embeddingText } from "../dwar/client.js";
 import type { Db } from "../db/client.js";
 import { getEdge, getNode } from "../db/read.js";
-import { edge, node, nodeIdentity, personDetail, planDetail } from "../db/schema.js";
-import { closeEdge, closeNode, lockCurrentEdge, lockCurrentNode, supersedeNode, type Tx } from "../db/temporal.js";
+import { edge, node, personDetail, planDetail } from "../db/schema.js";
+import {
+  closeEdge,
+  deleteNode,
+  lockCurrentEdge,
+  lockNode,
+  updateNode,
+  type Tx,
+} from "../db/temporal.js";
 import { YaadError } from "../errors.js";
 import { parse } from "../routers/v1/schemas.js";
-import { sameInstant } from "../serialize.js";
+import { historyEmbeddingText, sameInstant } from "../serialize.js";
 import type { NodeSource } from "../types/domain.js";
 import {
   patchPersonDetailBody,
@@ -50,7 +57,6 @@ export async function applyOperations(opts: {
         if (!embedding) {
           throw new YaadError(500, "internal", `missing embedding for temp_id ${op.temp_id}`);
         }
-        await tx.insert(nodeIdentity).values({ id });
         await tx.insert(node).values({
           id,
           kind: op.kind,
@@ -60,8 +66,7 @@ export async function applyOperations(opts: {
           occurredAt: op.occurred_at ? new Date(op.occurred_at) : null,
           source: opts.source,
           createdAt: at,
-          validFrom: at,
-          validTo: null,
+          updatedAt: at,
         });
         if (op.kind === "person") {
           const detail = parse(personDetailBody, op.detail ?? {});
@@ -86,7 +91,7 @@ export async function applyOperations(opts: {
 
     for (const op of opts.operations) {
       if (op.op === "update_node") {
-        const current = await getNode(tx, op.node_id, undefined);
+        const current = await getNode(tx, op.node_id);
         if (op.detail !== undefined) {
           if (current.kind === "person") {
             const detail = parse(patchPersonDetailBody, op.detail);
@@ -119,13 +124,22 @@ export async function applyOperations(opts: {
               ? new Date(op.occurred_at)
               : null
             : current.occurredAt;
-        const nodeChanged =
-          (op.title !== undefined && op.title !== current.title) ||
-          (op.body !== undefined && op.body !== current.body) ||
-          (op.occurred_at !== undefined && !sameInstant(nextOccurred, current.occurredAt));
+        const titleChanged = op.title !== undefined && op.title !== current.title;
+        const bodyChanged = op.body !== undefined && op.body !== current.body;
+        const occurredChanged =
+          op.occurred_at !== undefined && !sameInstant(nextOccurred, current.occurredAt);
+        const nodeChanged = titleChanged || bodyChanged || occurredChanged;
         if (nodeChanged) {
           const embedding = embeddings.get(`update:${op.node_id}`) ?? current.embedding;
-          await supersedeNode(
+          const historyEmbeddings = new Map<string, number[]>();
+          for (const field of ["title", "body", "occurred_at"] as const) {
+            const key = `${field}:${op.node_id}`;
+            const vector = embeddings.get(key);
+            if (vector) {
+              historyEmbeddings.set(key, vector);
+            }
+          }
+          await updateNode(
             tx,
             op.node_id,
             {
@@ -134,6 +148,7 @@ export async function applyOperations(opts: {
               occurredAt: nextOccurred,
               embedding,
             },
+            historyEmbeddings,
             at,
           );
         }
@@ -174,7 +189,7 @@ export async function applyOperations(opts: {
 
     for (const op of opts.operations) {
       if (op.op === "close_node") {
-        await closeNode(tx, op.node_id, at);
+        await deleteNode(tx, op.node_id, at);
         closedNodes.add(op.node_id);
         applied.push(op);
       }
@@ -214,12 +229,43 @@ async function embedForOps(dwar: DwarClient, db: Db, operations: Operation[]): P
     if (op.op === "create_node") {
       jobs.push({ key: `create:${op.temp_id}`, text: embeddingText(op.title, op.body ?? null) });
     }
-    if (op.op === "update_node" && (op.title !== undefined || op.body !== undefined)) {
-      const current = await getNode(db, op.node_id, undefined);
-      const title = op.title ?? current.title;
-      const body = op.body !== undefined ? op.body : current.body;
-      if (title !== current.title || body !== current.body) {
-        jobs.push({ key: `update:${op.node_id}`, text: embeddingText(title, body) });
+    if (op.op === "update_node") {
+      const current = await getNode(db, op.node_id);
+      const nextTitle = op.title ?? current.title;
+      const nextBody = op.body !== undefined ? op.body : current.body;
+      const nextOccurred =
+        op.occurred_at !== undefined
+          ? op.occurred_at
+            ? new Date(op.occurred_at)
+            : null
+          : current.occurredAt;
+      const titleChanged = op.title !== undefined && op.title !== current.title;
+      const bodyChanged = op.body !== undefined && op.body !== current.body;
+      const occurredChanged =
+        op.occurred_at !== undefined && !sameInstant(nextOccurred, current.occurredAt);
+      if (titleChanged || bodyChanged) {
+        jobs.push({ key: `update:${op.node_id}`, text: embeddingText(nextTitle, nextBody) });
+      }
+      if (titleChanged) {
+        jobs.push({
+          key: `title:${op.node_id}`,
+          text: historyEmbeddingText(current.title, nextTitle),
+        });
+      }
+      if (bodyChanged) {
+        jobs.push({
+          key: `body:${op.node_id}`,
+          text: historyEmbeddingText(current.body, nextBody),
+        });
+      }
+      if (occurredChanged) {
+        jobs.push({
+          key: `occurred_at:${op.node_id}`,
+          text: historyEmbeddingText(
+            current.occurredAt ? current.occurredAt.toISOString() : null,
+            nextOccurred ? nextOccurred.toISOString() : null,
+          ),
+        });
       }
     }
   }
@@ -270,7 +316,7 @@ function referencedIds(operations: Operation[]): { nodes: string[]; edges: strin
 async function lockReferenced(tx: Tx, referenced: { nodes: string[]; edges: string[] }): Promise<void> {
   for (const id of referenced.nodes) {
     try {
-      await lockCurrentNode(tx, id);
+      await lockNode(tx, id);
     } catch (err) {
       if (err instanceof YaadError && err.statusCode === 404) {
         throw new YaadError(409, "conflict", `node ${id} is no longer current`);
@@ -301,7 +347,7 @@ async function reverify(
       continue;
     }
     try {
-      await getNode(tx, id, undefined);
+      await getNode(tx, id);
     } catch (err) {
       if (err instanceof YaadError && err.statusCode === 404) {
         throw new YaadError(409, "conflict", `node ${id} is no longer current`);
@@ -314,7 +360,7 @@ async function reverify(
       continue;
     }
     try {
-      await getEdge(tx, id, undefined);
+      await getEdge(tx, id);
     } catch (err) {
       if (err instanceof YaadError && err.statusCode === 404) {
         throw new YaadError(409, "conflict", `edge ${id} is no longer current`);

@@ -13,7 +13,7 @@ CREATE TABLE "edge" (
 );
 --> statement-breakpoint
 CREATE TABLE "node" (
-	"id" uuid NOT NULL,
+	"id" uuid PRIMARY KEY NOT NULL,
 	"kind" text NOT NULL,
 	"title" text NOT NULL,
 	"body" text,
@@ -24,15 +24,22 @@ CREATE TABLE "node" (
 	"last_accessed_at" timestamp with time zone,
 	"source" text NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
-	"valid_from" timestamp with time zone DEFAULT now() NOT NULL,
-	"valid_to" timestamp with time zone,
-	CONSTRAINT "node_id_valid_from_pk" PRIMARY KEY("id","valid_from"),
+	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "node_kind_check" CHECK ("node"."kind" IN ('person', 'memory', 'plan')),
 	CONSTRAINT "node_source_check" CHECK ("node"."source" IN ('manual', 'agent', 'ingest'))
 );
 --> statement-breakpoint
-CREATE TABLE "node_identity" (
-	"id" uuid PRIMARY KEY NOT NULL
+CREATE TABLE "node_history" (
+	"id" uuid PRIMARY KEY NOT NULL,
+	"node_id" uuid NOT NULL,
+	"field" text NOT NULL,
+	"old_value" text,
+	"new_value" text,
+	"embedding" vector(1536),
+	"changed_at" timestamp with time zone DEFAULT now() NOT NULL,
+	"source" text NOT NULL,
+	CONSTRAINT "node_history_field_check" CHECK ("node_history"."field" IN ('title', 'body', 'occurred_at', 'deleted')),
+	CONSTRAINT "node_history_source_check" CHECK ("node_history"."source" IN ('manual', 'agent', 'ingest'))
 );
 --> statement-breakpoint
 CREATE TABLE "person_detail" (
@@ -49,18 +56,15 @@ CREATE TABLE "plan_detail" (
 	CONSTRAINT "plan_status_check" CHECK ("plan_detail"."status" IN ('idea', 'tentative', 'confirmed'))
 );
 --> statement-breakpoint
-ALTER TABLE "edge" ADD CONSTRAINT "edge_src_id_node_identity_id_fk" FOREIGN KEY ("src_id") REFERENCES "public"."node_identity"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "edge" ADD CONSTRAINT "edge_dst_id_node_identity_id_fk" FOREIGN KEY ("dst_id") REFERENCES "public"."node_identity"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "node" ADD CONSTRAINT "node_id_node_identity_id_fk" FOREIGN KEY ("id") REFERENCES "public"."node_identity"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "person_detail" ADD CONSTRAINT "person_detail_node_id_node_identity_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."node_identity"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "plan_detail" ADD CONSTRAINT "plan_detail_node_id_node_identity_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."node_identity"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "person_detail" ADD CONSTRAINT "person_detail_node_id_node_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."node"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "plan_detail" ADD CONSTRAINT "plan_detail_node_id_node_id_fk" FOREIGN KEY ("node_id") REFERENCES "public"."node"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 CREATE INDEX "edge_src_id_idx" ON "edge" USING btree ("src_id");--> statement-breakpoint
 CREATE INDEX "edge_dst_id_idx" ON "edge" USING btree ("dst_id");--> statement-breakpoint
 CREATE INDEX "edge_type_idx" ON "edge" USING btree ("type");--> statement-breakpoint
 CREATE INDEX "edge_src_id_current_idx" ON "edge" USING btree ("src_id") WHERE "edge"."valid_to" IS NULL;--> statement-breakpoint
 CREATE INDEX "node_kind_idx" ON "node" USING btree ("kind");--> statement-breakpoint
 CREATE INDEX "node_occurred_at_idx" ON "node" USING btree ("occurred_at");--> statement-breakpoint
-CREATE INDEX "node_kind_current_idx" ON "node" USING btree ("kind") WHERE "node"."valid_to" IS NULL;--> statement-breakpoint
-CREATE UNIQUE INDEX "node_id_current_idx" ON "node" USING btree ("id") WHERE "node"."valid_to" IS NULL;--> statement-breakpoint
 CREATE INDEX "node_embedding_hnsw" ON "node" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint
+CREATE INDEX "node_history_node_id_idx" ON "node_history" USING btree ("node_id");--> statement-breakpoint
+CREATE INDEX "node_history_embedding_hnsw" ON "node_history" USING hnsw ("embedding" vector_cosine_ops);--> statement-breakpoint
 CREATE INDEX "person_detail_aliases_gin" ON "person_detail" USING gin ("aliases");

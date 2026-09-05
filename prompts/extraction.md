@@ -14,7 +14,7 @@ Three node kinds:
 
 Edges have a free-form `type` (examples: `PARTICIPANT`, `PREFERS`, `ABOUT`, `RELATED_TO`), `properties` (object), and `confidence` (0–1).
 
-Nothing is hard-deleted. Closing a node or edge sets it as no longer current. Updating a node is a supersede: the same id, new content. Promoting a plan is `update_node` on `detail.status`. It is the same plan.
+Updating a node changes it in place and records the old/new values in history. Closing a node removes it (history keeps a deleted row). Closing an edge sets `valid_to` and keeps the row. Promoting a plan is `update_node` on `detail.status`. It is the same plan.
 
 ## What you emit
 

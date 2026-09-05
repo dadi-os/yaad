@@ -45,7 +45,6 @@ test("recall with no anchors returns empty results and zero coverage", async () 
     },
     query: "book tickets to Cancun",
     limit: 20,
-    asOf: undefined,
     debug: false,
   });
   assert.deepEqual(result.nodes, []);
@@ -82,7 +81,6 @@ test("recall gating stops before the hop cap when a hop yields nothing relevant"
     },
     query: "book the tickets",
     limit: 20,
-    asOf: undefined,
     debug: true,
   });
 

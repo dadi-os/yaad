@@ -20,7 +20,6 @@ export async function registerRecall(app: FastifyInstance): Promise<void> {
       config: app.config,
       query: body.query,
       limit: body.limit ?? app.config.recall.default_limit,
-      asOf: body.as_of ? new Date(body.as_of) : undefined,
       debug: body.debug === true,
     });
     void recordAccess(

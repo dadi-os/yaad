@@ -49,7 +49,7 @@ export async function assembleCandidates(opts: {
   }
 
   if (opts.participantIds.length > 0) {
-    const named = await getNodesByIds(opts.db, opts.participantIds, undefined);
+    const named = await getNodesByIds(opts.db, opts.participantIds);
     const found = new Set(named.map((row) => row.id));
     for (const id of opts.participantIds) {
       if (!found.has(id)) {
@@ -63,7 +63,7 @@ export async function assembleCandidates(opts: {
 
   const nodes = [...byId.values()];
   const ids = nodes.map((row) => row.id);
-  const incident = await getIncidentEdgesForIds(opts.db, ids, undefined);
+  const incident = await getIncidentEdgesForIds(opts.db, ids);
   const idSet = new Set(ids);
   const between = incident.filter((edge) => idSet.has(edge.srcId) && idSet.has(edge.dstId));
   const rest = incident.filter((edge) => !(idSet.has(edge.srcId) && idSet.has(edge.dstId)));
