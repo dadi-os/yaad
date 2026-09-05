@@ -1,3 +1,5 @@
+name: yaad
+
 services:
   postgres:
     image: pgvector/pgvector:pg18
@@ -5,8 +7,6 @@ services:
       POSTGRES_USER: yaad
       POSTGRES_PASSWORD: yaad
       POSTGRES_DB: yaad
-    ports:
-      - "5432:5432"
     volumes:
       - yaad_pg:/var/lib/postgresql
     healthcheck:
@@ -15,13 +15,18 @@ services:
       timeout: 5s
       retries: 20
 
-  yaad:
-    build: .
-    env_file: .env
+  api:
+    build:
+      context: .
+      target: production
     environment:
       DATABASE_URL: postgres://yaad:yaad@postgres:5432/yaad
+      DWAR_BASE_URL: http://host.docker.internal:8080
       HOST: 0.0.0.0
       PORT: "8080"
+      LOG_LEVEL: info
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     expose:
       - "8080"
     depends_on:
