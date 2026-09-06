@@ -15,7 +15,7 @@ FROM deps AS dev
 COPY tsconfig.json drizzle.config.ts config.toml ./
 COPY prompts ./prompts
 COPY drizzle ./drizzle
-# src/ and test/ arrive via the bind mount in docker-compose.override.yml, not COPY —
+# src/ and test/ arrive via Nas's bind mount, not COPY —
 # this stage exists to have devDependencies (tsx, drizzle-kit, typescript) installed,
 # not to hold a frozen copy of the source.
 EXPOSE 8080

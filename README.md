@@ -142,48 +142,26 @@ Weights live in `[recall.weights]`. They do not need to sum to 1. Raise semantic
 
 ## Config vs env
 
-`config.toml` is checked in. It holds embedding dimension, embed batch size, HNSW `ef_search`, page sizes, search limit, Dwar timeout/retry, ingest candidate caps, plan recurrence knobs, and recall hop/score/coverage knobs. Change those in review.
+`config.toml` is checked in — recall weights, ingest thresholds, HNSW parameters, Dwar timeout and retry.
 
-Runtime addresses and ports are Compose environment, not a file:
+Topology is hardcoded in `src/constants.ts` (including log level). Dwar is at `http://dwar.dadi`, resolved by Nas's reverse proxy in both dev and prod.
 
-```
-DATABASE_URL
-DWAR_BASE_URL
-HOST
-PORT
-LOG_LEVEL
-```
+`DATABASE_URL` (and `POSTGRES_PASSWORD` for the database container) live in `.env`. Copy `.env.example` to `.env`. Nas reads that file for both Yaad and `yaad-postgres`.
 
-The process will not start if any of those are missing or if `config.toml` is malformed. Dimension mismatches from Dwar fail the write. A Dwar outage fails the write. The normal write path never stores a null embedding.
+## Development
 
-## Run
-
-Everything runs through Compose. There is no host-run mode and no `.env` file.
+Yaad runs as part of the dadiOS stack. Bring it up through Nas:
 
 ```sh
-docker compose up --build
+cd ../nas
+docker compose up yaad yaad-postgres
+docker compose run --rm yaad npm run db:migrate
 ```
 
-This builds the `dev` target (devDependencies installed, source bind-mounted, `tsx watch` for live reload) and publishes it on `http://localhost:8090`. `GET http://localhost:8090/health` should return `{"status":"ok"}`.
+Source is bind-mounted, so edits here restart the service in place. Start the rest of the stack (`docker compose up`) when Yaad needs Dwar.
 
-Dwar needs to be reachable at `http://host.docker.internal:8080` — run it on your host per its own README, or point `DWAR_BASE_URL` in `docker-compose.yml` somewhere else if it's running elsewhere.
-
-Migrations:
+Tests run the same way:
 
 ```sh
-docker compose run --rm api npm run db:migrate
-```
-
-Tests:
-
-```sh
-docker compose run --rm api npm test
-```
-
-Both run inside the same container image the app itself runs in — no separate host toolchain, no drift between "how I ran it" and "how it actually runs."
-
-To run the production shape (no bind mount, no published port, closer to how a real deploy would look):
-
-```sh
-docker compose -f docker-compose.yml up --build
+docker compose run --rm yaad npm test
 ```
