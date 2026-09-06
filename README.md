@@ -144,9 +144,9 @@ Weights live in `[recall.weights]`. They do not need to sum to 1. Raise semantic
 
 `config.toml` is checked in — recall weights, ingest thresholds, HNSW parameters, Dwar timeout and retry.
 
-Topology is hardcoded in `src/constants.ts`. Dwar is at `http://dwar.dadi`, resolved by Nas's reverse proxy in both dev and prod. There is no `.env` file.
+Topology is hardcoded in `src/constants.ts` (including log level). Dwar is at `http://dwar.dadi`, resolved by Nas's reverse proxy in both dev and prod.
 
-`DATABASE_URL` and `LOG_LEVEL` come from the orchestrator — the compose file in dev, the quadlet in prod.
+`DATABASE_URL` (and `POSTGRES_PASSWORD` for the database container) live in `.env`. Copy `.env.example` to `.env`. Nas reads that file for both Yaad and `yaad-postgres`.
 
 ## Development
 

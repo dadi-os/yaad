@@ -5,14 +5,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse as parseToml } from "smol-toml";
 import { z } from "zod";
+import { DWAR_BASE_URL, HOST, LOG_LEVEL, PORT } from "./constants.js";
 
 const serviceRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const tomlPath = join(serviceRoot, "config.toml");
-
-const envSchema = z.object({
-  DATABASE_URL: z.string().min(1),
-  LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
-});
 
 const fileSchema = z.object({
   embedding: z.object({
@@ -77,7 +73,10 @@ export type Config = {
   serviceRoot: string;
   env: {
     databaseUrl: string;
-    logLevel: z.infer<typeof envSchema>["LOG_LEVEL"];
+    dwarBaseUrl: string;
+    host: string;
+    port: number;
+    logLevel: typeof LOG_LEVEL;
   };
   embedding: FileConfig["embedding"];
   hnsw: FileConfig["hnsw"];
@@ -116,20 +115,14 @@ export function loadConfig(): Config {
     return cached;
   }
   const file = loadFileConfig();
-  const envParsed = envSchema.safeParse(process.env);
-  if (!envParsed.success) {
-    const parts = envParsed.error.issues.map((issue) => {
-      const loc = issue.path.join(".");
-      return loc ? `${loc}: ${issue.message}` : issue.message;
-    });
-    throw new Error(`invalid environment: ${parts.join("; ")}`);
-  }
-  const env = envParsed.data;
   cached = {
     serviceRoot,
     env: {
-      databaseUrl: env.DATABASE_URL,
-      logLevel: env.LOG_LEVEL,
+      databaseUrl: process.env.DATABASE_URL ?? "",
+      dwarBaseUrl: DWAR_BASE_URL,
+      host: HOST,
+      port: PORT,
+      logLevel: LOG_LEVEL,
     },
     embedding: file.embedding,
     hnsw: file.hnsw,
