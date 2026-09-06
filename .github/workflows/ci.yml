@@ -15,22 +15,43 @@ jobs:
     name: CI
     runs-on: ubuntu-latest
 
+    services:
+      postgres:
+        image: pgvector/pgvector:pg18
+        env:
+          POSTGRES_USER: yaad
+          POSTGRES_PASSWORD: yaad
+          POSTGRES_DB: yaad
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U yaad -d yaad"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v6
 
       - name: Build dev image
-        run: docker compose -f docker-compose.yml -f docker-compose.override.yml build api
+        run: docker build --target dev -t yaad-dev .
 
       - name: Run migrations
-        run: docker compose -f docker-compose.yml -f docker-compose.override.yml run --rm api npm run db:migrate
+        run: |
+          docker run --rm --network host \
+            -e DATABASE_URL=postgres://yaad:yaad@localhost:5432/yaad \
+            -e LOG_LEVEL=silent \
+            -v "$PWD:/app" -v /app/node_modules \
+            yaad-dev npm run db:migrate
 
       - name: Run tests
-        run: docker compose -f docker-compose.yml -f docker-compose.override.yml run --rm api npm test
+        run: |
+          docker run --rm --network host \
+            -e DATABASE_URL=postgres://yaad:yaad@localhost:5432/yaad \
+            -e LOG_LEVEL=silent \
+            -v "$PWD:/app" -v /app/node_modules \
+            yaad-dev npm test
 
       - name: Build production image
-        run: docker compose -f docker-compose.yml build api
-
-      - name: Tear down
-        if: always()
-        run: docker compose -f docker-compose.yml down -v
+        run: docker build --target production -t yaad-prod .

@@ -1,6 +1,7 @@
 import axios, { type AxiosInstance } from "axios";
 import { z } from "zod";
 import type { Config } from "../config.js";
+import { DWAR_BASE_URL } from "../constants.js";
 import { YaadError } from "../errors.js";
 
 const embedResponseSchema = z.object({
@@ -46,7 +47,7 @@ export type DwarClient = {
 
 export function createDwarClient(config: Config): DwarClient {
   const http: AxiosInstance = axios.create({
-    baseURL: config.env.dwarBaseUrl,
+    baseURL: DWAR_BASE_URL,
     timeout: config.dwar.timeout_seconds * 1000,
     headers: { "content-type": "application/json" },
   });

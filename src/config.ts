@@ -10,11 +10,8 @@ const serviceRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 const tomlPath = join(serviceRoot, "config.toml");
 
 const envSchema = z.object({
-  DATABASE_URL: z.string().min(1, "must not be empty"),
-  DWAR_BASE_URL: z.string().url(),
-  HOST: z.string().min(1, "must not be empty"),
-  PORT: z.coerce.number().int().min(1).max(65535),
-  LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]),
+  DATABASE_URL: z.string().min(1),
+  LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace", "silent"]).default("info"),
 });
 
 const fileSchema = z.object({
@@ -80,9 +77,6 @@ export type Config = {
   serviceRoot: string;
   env: {
     databaseUrl: string;
-    dwarBaseUrl: string;
-    host: string;
-    port: number;
     logLevel: z.infer<typeof envSchema>["LOG_LEVEL"];
   };
   embedding: FileConfig["embedding"];
@@ -94,17 +88,6 @@ export type Config = {
   plan: FileConfig["plan"];
   recall: FileConfig["recall"];
 };
-
-function loadEnvFile(): void {
-  try {
-    process.loadEnvFile(join(serviceRoot, ".env"));
-  } catch (err) {
-    const code = (err as NodeJS.ErrnoException).code;
-    if (code !== "ENOENT") {
-      throw err;
-    }
-  }
-}
 
 export function loadFileConfig(): FileConfig {
   let raw: string;
@@ -132,7 +115,6 @@ export function loadConfig(): Config {
   if (cached) {
     return cached;
   }
-  loadEnvFile();
   const file = loadFileConfig();
   const envParsed = envSchema.safeParse(process.env);
   if (!envParsed.success) {
@@ -147,9 +129,6 @@ export function loadConfig(): Config {
     serviceRoot,
     env: {
       databaseUrl: env.DATABASE_URL,
-      dwarBaseUrl: env.DWAR_BASE_URL.replace(/\/$/, ""),
-      host: env.HOST,
-      port: env.PORT,
       logLevel: env.LOG_LEVEL,
     },
     embedding: file.embedding,
