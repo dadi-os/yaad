@@ -165,3 +165,7 @@ Tests run the same way:
 ```sh
 docker compose run --rm yaad npm test
 ```
+
+## CD
+
+Push to `main` publishes `ghcr.io/<owner>/yaad` tagged `latest` and the full commit SHA. Publish is gated on CI passing; pull requests never push an image.
