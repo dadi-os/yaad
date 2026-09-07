@@ -18,7 +18,18 @@ export async function buildApp(
   config: Config,
   deps: { db: Db; sql: Sql; dwar: DwarClient },
 ): Promise<FastifyInstance> {
-  const app = Fastify({ logger: { level: config.env.logLevel } });
+  const app = Fastify({
+    logger: {
+      level: config.env.logLevel,
+      base: { service: "yaad" },
+      timestamp: () => `,"time":"${new Date().toISOString()}"`,
+      formatters: {
+        level(label) {
+          return { level: label };
+        },
+      },
+    },
+  });
   app.decorate("config", config);
   app.decorate("db", deps.db);
   app.decorate("sql", deps.sql);
