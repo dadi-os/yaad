@@ -3,7 +3,9 @@ import postgres from "postgres";
 import * as schema from "./schema.js";
 
 export function createDb(databaseUrl: string) {
-  const client = postgres(databaseUrl);
+  // Drizzle CREATE IF NOT EXISTS emits Postgres NOTICE; default console.log
+  // dumps the notice object as multi-line stdout and shreds Loki into noise.
+  const client = postgres(databaseUrl, { onnotice: () => {} });
   const db = drizzle(client, { schema });
   return { client, db };
 }

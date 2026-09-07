@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance } from "fastify";
+import Fastify, { LogController, type FastifyInstance } from "fastify";
 import type { Config } from "./config.js";
 import type { Db, Sql } from "./db/client.js";
 import type { DwarClient } from "./dwar/client.js";
@@ -19,7 +19,7 @@ export async function buildApp(
   deps: { db: Db; sql: Sql; dwar: DwarClient },
 ): Promise<FastifyInstance> {
   const app = Fastify({
-    disableRequestLogging: true,
+    logController: new LogController({ disableRequestLogging: true }),
     logger: {
       level: config.env.logLevel,
       base: { service: "yaad" },
