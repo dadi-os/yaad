@@ -31,7 +31,7 @@ export async function getPersonDetail(db: Db, nodeId: string): Promise<PersonDet
   const rows = await db.select().from(personDetail).where(eq(personDetail.nodeId, nodeId));
   const row = rows[0];
   if (!row) {
-    throw new YaadError(500, "internal", `person_detail missing for node ${nodeId}`);
+    throw new YaadError(500, "internal_error", `person_detail missing for node ${nodeId}`);
   }
   return row;
 }
@@ -40,7 +40,7 @@ export async function getPlanDetail(db: Db, nodeId: string): Promise<PlanDetailR
   const rows = await db.select().from(planDetail).where(eq(planDetail.nodeId, nodeId));
   const row = rows[0];
   if (!row) {
-    throw new YaadError(500, "internal", `plan_detail missing for node ${nodeId}`);
+    throw new YaadError(500, "internal_error", `plan_detail missing for node ${nodeId}`);
   }
   return row;
 }
@@ -49,7 +49,7 @@ export async function getPlaceDetail(db: Db, nodeId: string): Promise<PlaceDetai
   const rows = await db.select().from(placeDetail).where(eq(placeDetail.nodeId, nodeId));
   const row = rows[0];
   if (!row) {
-    throw new YaadError(500, "internal", `place_detail missing for node ${nodeId}`);
+    throw new YaadError(500, "internal_error", `place_detail missing for node ${nodeId}`);
   }
   return row;
 }

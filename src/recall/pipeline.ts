@@ -162,7 +162,7 @@ function scoreAll(
   return present.map((row) => {
     const walkNode = walk.get(row.id);
     if (!walkNode) {
-      throw new YaadError(500, "internal", `walk missing node ${row.id}`);
+      throw new YaadError(500, "internal_error", `walk missing node ${row.id}`);
     }
     return { row, parts: scoreNode(row, walkNode, ctx) };
   });

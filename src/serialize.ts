@@ -27,28 +27,28 @@ function parseKind(value: string): NodeKind {
   if (value === "person" || value === "memory" || value === "plan" || value === "place") {
     return value;
   }
-  throw new YaadError(500, "internal", `invalid node kind in database: ${value}`);
+  throw new YaadError(500, "internal_error", `invalid node kind in database: ${value}`);
 }
 
 function parseSource(value: string): NodeSource {
   if (value === "manual" || value === "agent" || value === "ingest") {
     return value;
   }
-  throw new YaadError(500, "internal", `invalid node source in database: ${value}`);
+  throw new YaadError(500, "internal_error", `invalid node source in database: ${value}`);
 }
 
 function parseStatus(value: string): PlanStatus {
   if (value === "idea" || value === "tentative" || value === "confirmed") {
     return value;
   }
-  throw new YaadError(500, "internal", `invalid plan status in database: ${value}`);
+  throw new YaadError(500, "internal_error", `invalid plan status in database: ${value}`);
 }
 
 function parseHistoryField(value: string): NodeHistoryRecord["field"] {
   if (value === "title" || value === "body" || value === "occurred_at" || value === "deleted") {
     return value;
   }
-  throw new YaadError(500, "internal", `invalid node_history field in database: ${value}`);
+  throw new YaadError(500, "internal_error", `invalid node_history field in database: ${value}`);
 }
 
 export function toNodeRecord(row: NodeRow): NodeRecord {

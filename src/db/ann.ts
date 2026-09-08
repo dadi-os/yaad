@@ -110,7 +110,7 @@ function toDate(value: Date | string | null): Date | null {
 function toDateRequired(value: Date | string | null): Date {
   const parsed = toDate(value);
   if (!parsed) {
-    throw new YaadError(500, "internal", "ann row missing timestamp");
+    throw new YaadError(500, "internal_error", "ann row missing timestamp");
   }
   return parsed;
 }

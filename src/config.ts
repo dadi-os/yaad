@@ -110,15 +110,28 @@ export function loadFileConfig(): FileConfig {
 
 let cached: Config | undefined;
 
+/** Clear the memoized config (tests only). */
+export function resetConfigCache(): void {
+  cached = undefined;
+}
+
+/**
+ * Load process config from config.toml and required env.
+ * @throws When config.toml is invalid or DATABASE_URL is missing.
+ */
 export function loadConfig(): Config {
   if (cached) {
     return cached;
   }
   const file = loadFileConfig();
+  const databaseUrl = process.env.DATABASE_URL;
+  if (!databaseUrl) {
+    throw new Error("DATABASE_URL is required");
+  }
   cached = {
     serviceRoot,
     env: {
-      databaseUrl: process.env.DATABASE_URL ?? "",
+      databaseUrl,
       dwarBaseUrl: DWAR_BASE_URL,
       host: HOST,
       port: PORT,

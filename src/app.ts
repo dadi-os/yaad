@@ -3,6 +3,7 @@ import type { Config } from "./config.js";
 import type { Db, Sql } from "./db/client.js";
 import type { DwarClient } from "./dwar/client.js";
 import { YaadError } from "./errors.js";
+import { registerRequestLogging } from "./logging.js";
 import { registerV1 } from "./routers/v1/index.js";
 
 declare module "fastify" {
@@ -14,6 +15,7 @@ declare module "fastify" {
   }
 }
 
+/** Build the Yaad Fastify app with nas-aligned request logging. */
 export async function buildApp(
   config: Config,
   deps: { db: Db; sql: Sql; dwar: DwarClient },
@@ -31,6 +33,7 @@ export async function buildApp(
       },
     },
   });
+  await registerRequestLogging(app);
   app.decorate("config", config);
   app.decorate("db", deps.db);
   app.decorate("sql", deps.sql);
@@ -38,6 +41,10 @@ export async function buildApp(
 
   app.setErrorHandler((err, request, reply) => {
     if (err instanceof YaadError) {
+      request.log.warn(
+        { code: err.type, request_id: request.requestId, status: err.statusCode },
+        err.message,
+      );
       return reply.status(err.statusCode).send({
         error: { type: err.type, message: err.message },
       });
@@ -51,13 +58,20 @@ export async function buildApp(
         : 500;
     const message = err instanceof Error ? err.message : "internal error";
     if (statusCode >= 400 && statusCode < 500) {
+      request.log.warn(
+        { code: "invalid_request", request_id: request.requestId, status: statusCode },
+        message,
+      );
       return reply.status(statusCode).send({
         error: { type: "invalid_request", message },
       });
     }
-    request.log.error(err);
+    request.log.error(
+      { code: "internal_error", request_id: request.requestId, status: 500, err },
+      "internal error",
+    );
     return reply.status(500).send({
-      error: { type: "internal", message: "internal error" },
+      error: { type: "internal_error", message: "internal error" },
     });
   });
 

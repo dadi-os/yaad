@@ -85,7 +85,7 @@ export function createDwarClient(config: Config): DwarClient {
   return {
     async embed(texts: string[]): Promise<number[][]> {
       if (texts.length === 0) {
-        throw new YaadError(500, "internal", "embed called with no texts");
+        throw new YaadError(500, "internal_error", "embed called with no texts");
       }
       const out: number[][] = [];
       const size = config.embedding.batch_size;
@@ -152,7 +152,7 @@ function mapDwarError(err: unknown): YaadError {
   }
   if (axios.isAxiosError(err)) {
     if (!err.response) {
-      return new YaadError(502, "dwar_unreachable", "Dwar is unreachable");
+      return new YaadError(502, "upstream_unreachable", "Dwar is unreachable");
     }
     const message = dwarMessage(err.response.data);
     return new YaadError(502, "dwar", message);

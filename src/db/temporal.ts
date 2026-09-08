@@ -104,7 +104,7 @@ export async function updateNode(
     .returning();
   const next = rows[0];
   if (!next) {
-    throw new YaadError(500, "internal", "node update returned no row");
+    throw new YaadError(500, "internal_error", "node update returned no row");
   }
 
   for (const row of historyRows) {

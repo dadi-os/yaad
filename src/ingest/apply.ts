@@ -61,7 +61,7 @@ export async function applyOperations(opts: {
         const id = randomUUID();
         const embedding = embeddings.get(`create:${op.temp_id}`);
         if (!embedding) {
-          throw new YaadError(500, "internal", `missing embedding for temp_id ${op.temp_id}`);
+          throw new YaadError(500, "internal_error", `missing embedding for temp_id ${op.temp_id}`);
         }
         const occurredAt = op.occurred_at ? new Date(op.occurred_at) : null;
         const expiresAt =
@@ -389,7 +389,7 @@ async function embedForOps(dwar: DwarClient, db: Db, operations: Operation[]): P
     const job = jobs[i];
     const vector = vectors[i];
     if (!job || !vector) {
-      throw new YaadError(500, "internal", "embed batch length mismatch");
+      throw new YaadError(500, "internal_error", "embed batch length mismatch");
     }
     out.set(job.key, vector);
   }
