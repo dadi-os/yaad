@@ -1,5 +1,12 @@
+/** API-facing domain types for the memory graph (nodes, edges, history). */
+
+/** Graph node kind. */
 export type NodeKind = "person" | "memory" | "plan" | "place";
+
+/** Provenance of a node write. */
 export type NodeSource = "manual" | "agent" | "ingest";
+
+/** Lifecycle status for plan nodes. */
 export type PlanStatus = "idea" | "tentative" | "confirmed";
 
 export type PersonDetail = {
@@ -10,7 +17,9 @@ export type PersonDetail = {
 export type PlanDetail = {
   end_at: string | null;
   status: PlanStatus;
+  /** RRULE string when this plan is a recurrence template; null on instances. */
   recurrence: string | null;
+  /** Template node id for materialized instances; null on the template itself. */
   series_id: string | null;
 };
 
@@ -43,6 +52,7 @@ export type EdgeRecord = {
   confidence: number;
   created_at: string;
   valid_from: string;
+  /** Soft-close timestamp; null while the edge is current. */
   valid_to: string | null;
 };
 

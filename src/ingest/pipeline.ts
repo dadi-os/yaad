@@ -1,3 +1,5 @@
+/** End-to-end ingest: embed → candidates → Dwar extraction → validate → apply. */
+
 import type { Config } from "../config.js";
 import type { Db, Sql } from "../db/client.js";
 import type { DwarClient } from "../dwar/client.js";
@@ -8,6 +10,7 @@ import { assembleCandidates } from "./candidates.js";
 import { emitOperations } from "./emit.js";
 import { validateOperations } from "./validate.js";
 
+/** Extract memory ops from an utterance and apply them in one transaction. */
 export async function ingest(opts: {
   db: Db;
   sql: Sql;

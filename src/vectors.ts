@@ -1,7 +1,11 @@
+/** pgvector string helpers and cosine similarity utilities. */
+
+/** Format a float array as a Postgres `vector` literal (`[a,b,c]`). */
 export function toSqlVector(values: number[]): string {
   return `[${values.join(",")}]`;
 }
 
+/** Parse a pgvector value (array or `[…]` string) into numbers; null if malformed. */
 export function parseVector(value: unknown): number[] | null {
   if (value === null || value === undefined) {
     return null;
@@ -26,6 +30,7 @@ export function parseVector(value: unknown): number[] | null {
   return parsed;
 }
 
+/** Cosine similarity in [0, 1] (or 0 for empty/mismatched vectors). */
 export function cosineSimilarity(left: number[], right: number[]): number {
   if (left.length === 0 || left.length !== right.length) {
     return 0;
@@ -49,6 +54,7 @@ export function cosineSimilarity(left: number[], right: number[]): number {
   return dot / (Math.sqrt(leftNorm) * Math.sqrt(rightNorm));
 }
 
+/** Convert pgvector cosine distance (`<=>`) to similarity (`1 - distance`). */
 export function cosineDistanceToSimilarity(distance: number): number {
   return 1 - distance;
 }

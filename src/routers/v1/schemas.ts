@@ -1,6 +1,9 @@
+/** Request body / param zod schemas and parse helpers for `/v1` routes. */
+
 import { z, type ZodError, type ZodType } from "zod";
 import { YaadError } from "../../errors.js";
 
+/** Parse with zod; map failures to `422 invalid_request`. */
 export function parse<T>(schema: ZodType<T>, data: unknown): T {
   const parsed = schema.safeParse(data);
   if (!parsed.success) {
@@ -9,6 +12,7 @@ export function parse<T>(schema: ZodType<T>, data: unknown): T {
   return parsed.data;
 }
 
+/** Flatten zod issues into a single semicolon-joined message. */
 export function formatZod(error: ZodError): string {
   return error.issues
     .map((issue) => {

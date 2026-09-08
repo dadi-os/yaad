@@ -1,3 +1,5 @@
+/** Stopping criteria for recall hop expansion. */
+
 export type GateReason = "yield" | "hop_cap" | "token_budget" | "continue";
 
 export type GateDecision = {
@@ -5,6 +7,7 @@ export type GateDecision = {
   reason: GateReason;
 };
 
+/** Rough token estimate: ceil(total title+body chars / 4). */
 export function estimateTokens(nodes: Array<{ title: string; body: string | null }>): number {
   let chars = 0;
   for (const node of nodes) {
@@ -13,6 +16,10 @@ export function estimateTokens(nodes: Array<{ title: string; body: string | null
   return Math.ceil(chars / 4);
 }
 
+/**
+ * Decide whether to stop expanding: hop cap, marginal yield, or token budget.
+ * Checked in that order; first match wins.
+ */
 export function shouldStop(opts: {
   hopsTaken: number;
   hopCap: number;

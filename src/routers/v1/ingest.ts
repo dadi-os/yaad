@@ -1,3 +1,5 @@
+/** `POST /ingest` — extract and apply memory operations from an utterance. */
+
 import type { FastifyInstance } from "fastify";
 import { ingest } from "../../ingest/pipeline.js";
 import { ingestBody, parse } from "./schemas.js";

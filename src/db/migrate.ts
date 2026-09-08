@@ -1,3 +1,5 @@
+/** Apply Drizzle migrations from the service `drizzle/` folder. */
+
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { migrate as runMigrate } from "drizzle-orm/postgres-js/migrator";

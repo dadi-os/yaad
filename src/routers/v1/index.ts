@@ -1,3 +1,5 @@
+/** Mount all `/v1` HTTP routes (nodes, history, ingest, recall, query). */
+
 import type { FastifyInstance } from "fastify";
 import { registerHistory } from "./history.js";
 import { registerIngest } from "./ingest.js";

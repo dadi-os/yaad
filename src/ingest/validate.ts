@@ -1,3 +1,5 @@
+/** Pre-apply checks for emit_operations: temp_ids, details, TTL, endpoints. */
+
 import type { Db } from "../db/client.js";
 import { getEdge, getNode } from "../db/read.js";
 import { YaadError } from "../errors.js";
@@ -12,6 +14,10 @@ import {
   type Operation,
 } from "./operations.js";
 
+/**
+ * Validate op batch before apply: unique temp_ids, kind-appropriate details,
+ * TTL only on memory/plan, and edge endpoints that resolve to temp or live nodes.
+ */
 export async function validateOperations(opts: {
   db: Db;
   operations: Operation[];

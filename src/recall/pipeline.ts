@@ -1,3 +1,5 @@
+/** Graph recall: anchor ANN → hop expand → score → coverage gate. */
+
 import { inArray, sql } from "drizzle-orm";
 import type { Config } from "../config.js";
 import type { Db, Sql } from "../db/client.js";
@@ -16,6 +18,7 @@ export type RecallNode = NodeRecord & {
   detail: PersonDetail | PlanDetail | PlaceDetail | null;
   hops: number;
   score: number;
+  /** Present when the request asked for debug score breakdown. */
   scores?: ScoreParts;
 };
 
@@ -28,6 +31,10 @@ export type RecallResult = {
   anchors: string[];
 };
 
+/**
+ * Retrieve a scored subgraph for a natural-language query.
+ * Stops expansion when hop, yield, or token gates fire.
+ */
 export async function recall(opts: {
   db: Db;
   sql: Sql;
@@ -210,6 +217,7 @@ async function loadDetail(
   return null;
 }
 
+/** Bump access_count / last_accessed_at for returned recall nodes (fire-and-forget from the route). */
 export async function recordAccess(db: Db, ids: string[]): Promise<void> {
   if (ids.length === 0) {
     return;

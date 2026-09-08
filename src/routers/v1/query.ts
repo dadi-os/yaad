@@ -1,3 +1,9 @@
+/**
+ * `POST /query` — exact/filter lookup over live nodes (kind, name, date, plan status).
+ * Date-bounded plan queries exclude recurrence templates (patterns, not dated events)
+ * and treat null plan end_at as an instantaneous event at occurred_at.
+ */
+
 import { and, asc, eq, gt, isNotNull, isNull, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../../db/client.js";
@@ -91,12 +97,10 @@ async function runQuery(
 
   if (dateBounded) {
     conditions.push(isNotNull(node.occurredAt));
-    // Recurrence templates are patterns, not dated events.
     conditions.push(or(sql`${node.kind} <> 'plan'`, isNull(planDetail.recurrence))!);
 
     const from = body.occurred_from ?? null;
     const to = body.occurred_to ?? null;
-    // Instantaneous events (null end_at) use occurred_at as both ends.
     const effectiveEnd = sql`COALESCE(${planDetail.endAt}, ${node.occurredAt})`;
     if (to) {
       conditions.push(sql`${node.occurredAt} <= ${to}`);

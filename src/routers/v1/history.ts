@@ -1,3 +1,5 @@
+/** `POST /history/search` — semantic search over node_history corrections. */
+
 import type { FastifyInstance } from "fastify";
 import { searchNodeHistory } from "../../db/ann.js";
 import { YaadError } from "../../errors.js";

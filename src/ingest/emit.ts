@@ -1,3 +1,5 @@
+/** Ask Dwar to emit ingest operations via the `emit_operations` tool. */
+
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Config } from "../config.js";
@@ -7,10 +9,15 @@ import { parse } from "../routers/v1/schemas.js";
 import type { CandidateState } from "./candidates.js";
 import { emitOperationsInput, emitOperationsToolSchema, type Operation } from "./operations.js";
 
+/** Load `prompts/extraction.md` from the service root. */
 export function loadExtractionPrompt(serviceRoot: string): string {
   return readFileSync(join(serviceRoot, "prompts/extraction.md"), "utf8");
 }
 
+/**
+ * Run one reasoning turn that must call `emit_operations` exactly once.
+ * Rejects non-tool_use stops or wrong tool call counts.
+ */
 export async function emitOperations(opts: {
   dwar: DwarClient;
   config: Config;

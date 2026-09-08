@@ -1,3 +1,5 @@
+/** Zod shapes and JSON Schema for Dwar `emit_operations` tool calls. */
+
 import { z } from "zod";
 import {
   personDetailBody,
@@ -69,6 +71,7 @@ const noopOp = z
   })
   .strict();
 
+/** One memory mutation emitted by extraction (create/update/close node or edge, or noop). */
 export const operationSchema = z.discriminatedUnion("op", [
   createNodeOp,
   updateNodeOp,
@@ -78,6 +81,7 @@ export const operationSchema = z.discriminatedUnion("op", [
   noopOp,
 ]);
 
+/** Wrapper zod schema for the emit_operations tool input. */
 export const emitOperationsInput = z
   .object({
     operations: z.array(operationSchema).min(1),
@@ -88,6 +92,7 @@ export type Operation = z.infer<typeof operationSchema>;
 export type CreateNodeOp = z.infer<typeof createNodeOp>;
 export type UpdateNodeOp = z.infer<typeof updateNodeOp>;
 
+/** Hand-written JSON Schema shown to Dwar for `emit_operations`. */
 export const emitOperationsToolSchema = {
   type: "object",
   additionalProperties: false,

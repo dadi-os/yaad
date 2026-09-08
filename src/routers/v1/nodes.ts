@@ -1,3 +1,5 @@
+/** Node read routes: `GET /nodes/:id` and `GET /nodes/:id/history`. */
+
 import type { FastifyInstance } from "fastify";
 import { getIncidentEdges, getNode, getNodeHistory, getPersonDetail, getPlaceDetail, getPlanDetail } from "../../db/read.js";
 import {
@@ -23,6 +25,7 @@ export async function registerNodes(app: FastifyInstance): Promise<void> {
   });
 }
 
+/** Full node payload with kind detail and incident edges (outgoing / incoming). */
 export async function nodeResponse(app: FastifyInstance, id: string) {
   const row = await getNode(app.db, id);
   const edges = await getIncidentEdges(app.db, id);

@@ -1,8 +1,14 @@
+/** Expand RRULE plan templates into dated instances within a horizon. */
+
 import rrule from "rrule";
 import { YaadError } from "../errors.js";
 
 const { rrulestr } = rrule;
 
+/**
+ * Materialize recurrence dates between `start` and the nearer of rule `until` or `horizonEnd`.
+ * Preserves event duration when `end` is set. Rejects rules that exceed `maxInstances`.
+ */
 export function expandRecurrence(opts: {
   rule: string;
   start: Date;

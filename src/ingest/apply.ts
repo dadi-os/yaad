@@ -1,3 +1,5 @@
+/** Apply validated ingest operations in one transaction (embeds, locks, series). */
+
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import type { DwarClient } from "../dwar/client.js";
@@ -35,9 +37,14 @@ export type AppliedOperation = Operation & { id?: string };
 export type ApplyResult = {
   operations: AppliedOperation[];
   counts: Record<Operation["op"], number>;
+  /** Maps create_node temp_id → persisted uuid. */
   temp_ids: Record<string, string>;
 };
 
+/**
+ * Persist emit_operations results: create/update/close nodes and edges.
+ * Materializes recurring plan series when create_node includes an RRULE.
+ */
 export async function applyOperations(opts: {
   db: Db;
   dwar: DwarClient;

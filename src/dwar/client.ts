@@ -1,3 +1,5 @@
+/** HTTP client for Dwar embed and reasoning chat used by ingest and recall. */
+
 import axios, { type AxiosInstance } from "axios";
 import { z } from "zod";
 import type { Config } from "../config.js";
@@ -32,10 +34,12 @@ export type DwarTool = {
   input_schema: object;
 };
 
+/** Canonical text embedded for a node: title, or title plus body on a new line. */
 export function embeddingText(title: string, body: string | null): string {
   return body ? `${title}\n${body}` : title;
 }
 
+/** Dwar surface used by Yaad: batched embeddings and tool-using reasoning chat. */
 export type DwarClient = {
   embed: (texts: string[]) => Promise<number[][]>;
   reason: (args: {
@@ -45,6 +49,7 @@ export type DwarClient = {
   }) => Promise<DwarChatResponse>;
 };
 
+/** Build a retrying axios client pointed at `DWAR_BASE_URL`. */
 export function createDwarClient(config: Config): DwarClient {
   const http: AxiosInstance = axios.create({
     baseURL: DWAR_BASE_URL,

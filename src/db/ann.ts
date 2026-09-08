@@ -1,3 +1,5 @@
+/** HNSW approximate nearest-neighbor search over node and history embeddings. */
+
 import type { Sql } from "./client.js";
 import type { NodeHistoryRow, NodeRow } from "./schema.js";
 import { YaadError } from "../errors.js";
@@ -6,11 +8,13 @@ import { cosineDistanceToSimilarity, toSqlVector } from "../vectors.js";
 export type AnnHit = {
   row: NodeRow;
   distance: number;
+  /** Cosine similarity derived from pgvector distance. */
   similarity: number;
 };
 
 type AnnRow = NodeRow & { distance: number };
 
+/** Rank live (non-expired) nodes by embedding proximity; sets `hnsw.ef_search` for the txn. */
 export async function annSearch(opts: {
   sql: Sql;
   efSearch: number;
@@ -49,6 +53,7 @@ export async function annSearch(opts: {
 
 type HistoryAnnRow = NodeHistoryRow & { distance: number };
 
+/** Rank node_history rows by embedding proximity (corrections and prior values). */
 export async function searchNodeHistory(opts: {
   sql: Sql;
   efSearch: number;

@@ -1,3 +1,5 @@
+/** Process entry: migrate, wire deps, listen, and shut down on SIGINT/SIGTERM. */
+
 import { loadConfig } from "./config.js";
 import { HOST, PORT } from "./constants.js";
 import { buildApp } from "./app.js";

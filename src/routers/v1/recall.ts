@@ -1,3 +1,5 @@
+/** `POST /recall` — graph retrieval for a natural-language query. */
+
 import type { FastifyInstance } from "fastify";
 import { YaadError } from "../../errors.js";
 import { recall, recordAccess } from "../../recall/pipeline.js";

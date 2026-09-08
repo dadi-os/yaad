@@ -1,3 +1,5 @@
+/** Assemble ANN + name-match + participant context for Dwar extraction. */
+
 import { inArray } from "drizzle-orm";
 import type { Config } from "../config.js";
 import type { Db, Sql } from "../db/client.js";
@@ -26,6 +28,10 @@ export type CandidateState = {
   edges: EdgeRecord[];
 };
 
+/**
+ * Build the candidate graph shown to extraction: similar live nodes, person
+ * alias hits in the utterance text, and explicit participant ids.
+ */
 export async function assembleCandidates(opts: {
   db: Db;
   sql: Sql;
