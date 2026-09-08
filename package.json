@@ -1,6 +1,5 @@
 {
   "name": "yaad",
-  "version": "0.1.0",
   "description": "Memory system for Dadi",
   "type": "module",
   "engines": {

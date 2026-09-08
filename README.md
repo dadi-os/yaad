@@ -33,7 +33,7 @@ yaad/
 
 Topology is hardcoded in `src/constants.ts` (host, port, log level, `DWAR_BASE_URL`).
 
-`DATABASE_URL` is required at startup (no empty default). `POSTGRES_PASSWORD` is for the database container. Copy `.env.example` to `.env`; Nas reads that file for Yaad and `yaad-postgres`.
+`DATABASE_URL` is required at startup (no empty default). Nas injects it in compose and on the appliance (`postgres://yaad:yaad@yaad-postgres:5432/yaad`). There is no Yaad `.env` — Postgres is not Preferences-editable.
 
 ## Local run
 
