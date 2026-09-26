@@ -454,7 +454,10 @@ async function embedForOps(dwar: DwarClient, db: Db, operations: Operation[]): P
   if (jobs.length === 0) {
     return out;
   }
-  const vectors = await dwar.embed(jobs.map((job) => job.text));
+  const vectors = await dwar.embed(
+    jobs.map((job) => job.text),
+    "yaad/ingest",
+  );
   for (let i = 0; i < jobs.length; i++) {
     const job = jobs[i];
     const vector = vectors[i];

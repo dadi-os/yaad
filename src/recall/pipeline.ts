@@ -45,7 +45,7 @@ export async function recall(opts: {
   debug: boolean;
   now?: Date;
 }): Promise<RecallResult> {
-  const [queryEmbedding] = await opts.dwar.embed([opts.query]);
+  const [queryEmbedding] = await opts.dwar.embed([opts.query], "yaad/recall");
   if (!queryEmbedding) {
     throw new YaadError(502, "dwar", "Dwar returned no embedding");
   }

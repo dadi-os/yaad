@@ -42,6 +42,7 @@ export async function emitOperations(opts: {
         input_schema: emitOperationsToolSchema,
       },
     ],
+    caller: "yaad/ingest",
   });
   if (response.stop_reason !== "tool_use") {
     throw new YaadError(

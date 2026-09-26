@@ -21,7 +21,7 @@ export async function ingest(opts: {
   participantIds: string[];
   source: NodeSource;
 }): Promise<ApplyResult> {
-  const [embedding] = await opts.dwar.embed([opts.text]);
+  const [embedding] = await opts.dwar.embed([opts.text], "yaad/ingest");
   if (!embedding) {
     throw new YaadError(502, "dwar", "Dwar returned no embedding");
   }

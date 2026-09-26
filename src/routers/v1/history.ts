@@ -16,7 +16,7 @@ export async function registerHistory(app: FastifyInstance): Promise<void> {
         `limit exceeds maximum of ${app.config.search.max_limit}`,
       );
     }
-    const [queryEmbedding] = await app.dwar.embed([body.query]);
+    const [queryEmbedding] = await app.dwar.embed([body.query], "yaad/history");
     if (!queryEmbedding) {
       throw new YaadError(502, "dwar", "Dwar returned no embedding");
     }

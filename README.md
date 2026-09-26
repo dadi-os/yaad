@@ -5,7 +5,7 @@ Memory for dadi. People, memories, plans, places, and the edges between them. Ya
 ## Dependencies
 
 - Postgres + pgvector (`DATABASE_URL`)
-- Dwar at `http://dwar.dadi` for embeddings and ingest reasoning
+- Dwar at `http://dwar.dadi` for embeddings and ingest reasoning (every call sends `X-Dadi-Caller`: `yaad/ingest`, `yaad/recall`, `yaad/history`)
 - Nas for mesh DNS, compose/prod networking, and the shared logging contract
 
 ## Layout

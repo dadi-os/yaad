@@ -39,13 +39,18 @@ export function embeddingText(title: string, body: string | null): string {
   return body ? `${title}\n${body}` : title;
 }
 
-/** Dwar surface used by Yaad: batched embeddings and tool-using reasoning chat. */
+/**
+ * Dwar surface used by Yaad: batched embeddings and tool-using reasoning chat.
+ * `caller` is sent as X-Dadi-Caller (`yaad/ingest`, `yaad/recall`, …) so Dwar's
+ * inference log attributes each call's tokens to the pipeline that spent them.
+ */
 export type DwarClient = {
-  embed: (texts: string[]) => Promise<number[][]>;
+  embed: (texts: string[], caller: string) => Promise<number[][]>;
   reason: (args: {
     system: string;
     user: string;
     tools: DwarTool[];
+    caller: string;
   }) => Promise<DwarChatResponse>;
 };
 
@@ -57,9 +62,11 @@ export function createDwarClient(config: Config): DwarClient {
     headers: { "content-type": "application/json" },
   });
 
-  async function embedBatch(texts: string[]): Promise<number[][]> {
+  async function embedBatch(texts: string[], caller: string): Promise<number[][]> {
     const data = await withRetry(config, () =>
-      http.post("/embed", { texts }).then((res) => res.data),
+      http
+        .post("/embed", { texts }, { headers: { "x-dadi-caller": caller } })
+        .then((res) => res.data),
     );
     const parsed = embedResponseSchema.safeParse(data);
     if (!parsed.success) {
@@ -88,7 +95,7 @@ export function createDwarClient(config: Config): DwarClient {
   }
 
   return {
-    async embed(texts: string[]): Promise<number[][]> {
+    async embed(texts: string[], caller: string): Promise<number[][]> {
       if (texts.length === 0) {
         throw new YaadError(500, "internal_error", "embed called with no texts");
       }
@@ -96,7 +103,7 @@ export function createDwarClient(config: Config): DwarClient {
       const size = config.embedding.batch_size;
       for (let i = 0; i < texts.length; i += size) {
         const chunk = texts.slice(i, i + size);
-        const vectors = await embedBatch(chunk);
+        const vectors = await embedBatch(chunk, caller);
         out.push(...vectors);
       }
       return out;
@@ -104,11 +111,15 @@ export function createDwarClient(config: Config): DwarClient {
     async reason(args): Promise<DwarChatResponse> {
       const data = await withRetry(config, () =>
         http
-          .post("/chat/reasoning", {
-            system: args.system,
-            messages: [{ role: "user", content: args.user }],
-            tools: args.tools,
-          })
+          .post(
+            "/chat/reasoning",
+            {
+              system: args.system,
+              messages: [{ role: "user", content: args.user }],
+              tools: args.tools,
+            },
+            { headers: { "x-dadi-caller": args.caller } },
+          )
           .then((res) => res.data),
       );
       const parsed = chatResponseSchema.safeParse(data);
