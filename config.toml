@@ -9,6 +9,12 @@ ef_search = 40
 default_size = 50
 max_size = 200
 
+[graph]
+# Nodes returned by POST /graph when the caller omits limit. Most-accessed live nodes win.
+default_nodes = 300
+# Hard cap on nodes in one POST /graph response. Raise if the Memory page should draw more at once.
+max_nodes = 1000
+
 [search]
 default_limit = 10
 max_limit = 100

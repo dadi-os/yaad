@@ -29,7 +29,7 @@ yaad/
 
 ## Config vs env
 
-`config.toml` (checked in): recall weights, ingest thresholds, HNSW, Dwar timeout/retry, page sizes.
+`config.toml` (checked in): recall weights, ingest thresholds, HNSW, Dwar timeout/retry, page and graph sizes.
 
 Topology is hardcoded in `src/constants.ts` (host, port, log level, `DWAR_BASE_URL`).
 
@@ -101,8 +101,13 @@ Observations may set `ttl_days`; expired nodes are filtered from recall/query/in
 | `GET` | `/nodes/:id` | node, detail, current edges |
 | `GET` | `/nodes/:id/history` | correction log |
 | `POST` | `/history/search` | semantic search over `node_history` |
+| `POST` | `/graph` | bounded live subgraph for the Memory network view |
 
 Unknown request fields are a 422.
+
+### `POST /graph`
+
+Body: `{ seed_ids?, limit? }`. Without seeds: the `limit` most-accessed live nodes (default `graph.default_nodes`, cap `graph.max_nodes`). With seeds: the seeds plus their live one-hop neighbors, most-accessed first, up to `limit` total. `edges` are the current edges among the returned nodes. An unknown or expired seed is a 404.
 
 ### `POST /query`
 

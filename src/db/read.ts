@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, isNull, or } from "drizzle-orm";
 import type { Db } from "./client.js";
 import {
   edge,
@@ -81,6 +81,28 @@ export async function getNodesByIds(db: Db, ids: string[]): Promise<NodeRow[]> {
     .select()
     .from(node)
     .where(and(inArray(node.id, ids), or(isNull(node.expiresAt), gt(node.expiresAt, now))));
+}
+
+/** Most-used live nodes first: access_count, then most recently updated. */
+export async function getTopLiveNodes(db: Db, limit: number): Promise<NodeRow[]> {
+  const now = new Date();
+  return db
+    .select()
+    .from(node)
+    .where(or(isNull(node.expiresAt), gt(node.expiresAt, now)))
+    .orderBy(desc(node.accessCount), desc(node.updatedAt), asc(node.id))
+    .limit(limit);
+}
+
+/** Current edges whose endpoints are both in `nodeIds`. */
+export async function getEdgesAmong(db: Db, nodeIds: string[]): Promise<EdgeRow[]> {
+  if (nodeIds.length === 0) {
+    return [];
+  }
+  return db
+    .select()
+    .from(edge)
+    .where(and(inArray(edge.srcId, nodeIds), inArray(edge.dstId, nodeIds), isNull(edge.validTo)));
 }
 
 /** Current edge only. Historical edge lookup not wired yet. */

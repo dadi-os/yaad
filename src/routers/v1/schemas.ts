@@ -96,3 +96,10 @@ export const queryBody = z
     offset: z.number().int().min(0).optional(),
   })
   .strict();
+
+export const graphBody = z
+  .object({
+    seed_ids: z.array(z.string().uuid()).min(1).optional(),
+    limit: z.number().int().positive().optional(),
+  })
+  .strict();
