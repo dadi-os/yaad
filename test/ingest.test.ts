@@ -116,3 +116,34 @@ test("ingest rejects a batch with an invalid node reference and writes nothing",
   );
   assert.equal(await countCurrentNodes(handle.sql), 0);
 });
+
+test("ingest fails with extraction_failed when the model emits a key its op does not allow", async () => {
+  await resetGraph(handle.sql);
+  const dwar = mockDwar({
+    dimension: dim,
+    operations: [
+      { op: "create_node", temp_id: "m", kind: "memory", title: "Ankur Desai is 5 feet 10 inches tall", reason: "height" },
+    ] as unknown as Operation[],
+  });
+  await assert.rejects(
+    () =>
+      ingest({
+        db: handle.db,
+        sql: handle.sql,
+        dwar,
+        config,
+        text: "Ankur is 5 foot 10",
+        occurredAt: "2026-09-26T00:57:26.000Z",
+        participantIds: [],
+        source: "agent",
+      }),
+    (err: unknown) => {
+      assert.ok(err instanceof YaadError);
+      assert.equal(err.statusCode, 502);
+      assert.equal(err.type, "extraction_failed");
+      assert.match(err.message, /reason/);
+      return true;
+    },
+  );
+  assert.equal(await countCurrentNodes(handle.sql), 0);
+});

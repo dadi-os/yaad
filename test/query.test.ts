@@ -299,3 +299,106 @@ test("place ingest with AT_LOCATION edge; GET /nodes/:id shows the edge", async 
   assert.equal(body.edges.outgoing[0].dst_id, result.temp_ids.cafe);
   await app.close();
 });
+
+test("recurrence keeps local wall-clock time across a daylight-saving change", async () => {
+  await resetGraph(handle.sql);
+  const dwar = mockDwar({ dimension: dim });
+  const result = await applyOperations({
+    db: handle.db,
+    dwar,
+    source: "ingest",
+    config,
+    operations: [
+      {
+        op: "create_node",
+        temp_id: "class",
+        kind: "plan",
+        title: "CSE 380",
+        occurred_at: "2026-10-27T10:20:00-04:00",
+        detail: {
+          status: "confirmed",
+          recurrence: "FREQ=WEEKLY;BYDAY=TU;COUNT=2",
+          end_at: "2026-10-27T11:40:00-04:00",
+        },
+      },
+    ],
+  });
+  const templateId = result.temp_ids.class;
+  assert.ok(templateId);
+
+  const instances = await handle.sql<{ occurred_at: string; end_at: string }[]>`
+    SELECT n.occurred_at, d.end_at FROM plan_detail d JOIN node n ON n.id = d.node_id
+    WHERE d.series_id = ${templateId} ORDER BY n.occurred_at`;
+  assert.deepEqual(
+    instances.map((row) => new Date(row.occurred_at).toISOString()),
+    ["2026-10-27T14:20:00.000Z", "2026-11-03T15:20:00.000Z"],
+  );
+  assert.deepEqual(
+    instances.map((row) => new Date(row.end_at).toISOString()),
+    ["2026-10-27T15:40:00.000Z", "2026-11-03T16:40:00.000Z"],
+  );
+});
+
+test("update_node that changes a plan schedule rematerializes its series", async () => {
+  await resetGraph(handle.sql);
+  const dwar = mockDwar({ dimension: dim });
+  const created = await applyOperations({
+    db: handle.db,
+    dwar,
+    source: "ingest",
+    config,
+    operations: [
+      {
+        op: "create_node",
+        temp_id: "class",
+        kind: "plan",
+        title: "CSE 380",
+        detail: { status: "confirmed" },
+      },
+    ],
+  });
+  const templateId = created.temp_ids.class;
+  assert.ok(templateId);
+
+  async function currentInstanceCount(): Promise<number> {
+    const rows = await handle.db
+      .select()
+      .from(planDetail)
+      .where(eq(planDetail.seriesId, templateId as string));
+    return rows.length;
+  }
+  assert.equal(await currentInstanceCount(), 0);
+
+  async function update(detail: Record<string, unknown>, occurredAt?: string) {
+    await applyOperations({
+      db: handle.db,
+      dwar,
+      source: "ingest",
+      config,
+      operations: [
+        {
+          op: "update_node",
+          node_id: templateId as string,
+          ...(occurredAt !== undefined ? { occurred_at: occurredAt } : {}),
+          detail,
+        },
+      ],
+    });
+  }
+
+  await update(
+    { recurrence: "FREQ=WEEKLY;BYDAY=MO,WE;COUNT=4", end_at: "2026-08-31T16:20:00-04:00" },
+    "2026-08-31T15:00:00-04:00",
+  );
+  assert.equal(await currentInstanceCount(), 4);
+
+  await update({ recurrence: "FREQ=WEEKLY;BYDAY=MO,WE;COUNT=2" });
+  assert.equal(await currentInstanceCount(), 2);
+
+  await update({ recurrence: null });
+  assert.equal(await currentInstanceCount(), 0);
+
+  const deleted = await handle.sql<{ count: string }[]>`
+    SELECT count(*)::text AS count FROM node_history WHERE field = 'deleted'`;
+  assert.equal(deleted[0]?.count, "6");
+});

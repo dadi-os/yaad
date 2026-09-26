@@ -42,6 +42,9 @@ recurrence_horizon_days = 365
 # Hard cap on instances generated from one rule. A malformed rule that would
 # generate thousands of rows fails loudly instead of filling the table.
 max_instances_per_series = 500
+# IANA zone recurring plans are scheduled in. A weekly 10:20 class stays at 10:20
+# local time across daylight-saving changes. Set to where Dadi's owner lives.
+timezone = "America/Detroit"
 
 [recall]
 # Minimum cosine similarity for a node to become an anchor. Raise to require a closer match.

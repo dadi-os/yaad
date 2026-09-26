@@ -5,7 +5,7 @@ import { join } from "node:path";
 import type { Config } from "../config.js";
 import type { DwarClient } from "../dwar/client.js";
 import { YaadError } from "../errors.js";
-import { parse } from "../routers/v1/schemas.js";
+import { formatZod } from "../routers/v1/schemas.js";
 import type { CandidateState } from "./candidates.js";
 import { emitOperationsInput, emitOperationsToolSchema, type Operation } from "./operations.js";
 
@@ -63,5 +63,13 @@ export async function emitOperations(opts: {
   if (!block || block.type !== "tool_use") {
     throw new YaadError(502, "extraction_failed", "emit_operations tool call missing");
   }
-  return parse(emitOperationsInput, block.input).operations;
+  const parsed = emitOperationsInput.safeParse(block.input);
+  if (!parsed.success) {
+    throw new YaadError(
+      502,
+      "extraction_failed",
+      `emit_operations input failed validation: ${formatZod(parsed.error)}`,
+    );
+  }
+  return parsed.data.operations;
 }
