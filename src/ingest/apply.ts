@@ -6,7 +6,7 @@ import type { DwarClient } from "../dwar/client.js";
 import { embeddingText } from "../dwar/client.js";
 import type { Config } from "../config.js";
 import type { Db } from "../db/client.js";
-import { getEdge, getNode } from "../db/read.js";
+import { getEdge, getNode, getPlanDetail } from "../db/read.js";
 import { edge, node, personDetail, placeDetail, planDetail } from "../db/schema.js";
 import {
   closeEdge,
@@ -216,6 +216,15 @@ export async function applyOperations(opts: {
             .set({ expiresAt, updatedAt: at })
             .where(eq(node.id, op.node_id));
         }
+        if (current.kind === "plan" && changesSchedule(op)) {
+          await rematerializeSeries({
+            tx,
+            templateId: op.node_id,
+            source: opts.source,
+            at,
+            config: opts.config,
+          });
+        }
         applied.push(op);
       }
     }
@@ -317,6 +326,7 @@ async function materializeSeries(opts: {
     end: opts.endAt,
     horizonEnd,
     maxInstances: opts.config.plan.max_instances_per_series,
+    timeZone: opts.config.plan.timezone,
   });
   for (const instance of instances) {
     const id = randomUUID();
@@ -339,6 +349,59 @@ async function materializeSeries(opts: {
       seriesId: opts.templateId,
     });
   }
+}
+
+function changesSchedule(op: Extract<Operation, { op: "update_node" }>): boolean {
+  if (op.occurred_at !== undefined) {
+    return true;
+  }
+  if (op.detail === null || typeof op.detail !== "object") {
+    return false;
+  }
+  return "recurrence" in op.detail || "end_at" in op.detail;
+}
+
+/**
+ * Rebuild a series after its schedule changed: delete the template's existing instances
+ * (history kept, edges closed) and materialize again from the template's current rule.
+ * A template whose rule was cleared ends with no instances.
+ */
+async function rematerializeSeries(opts: {
+  tx: Tx;
+  templateId: string;
+  source: NodeSource;
+  at: Date;
+  config: Config;
+}): Promise<void> {
+  const instances = await opts.tx
+    .select({ id: planDetail.nodeId })
+    .from(planDetail)
+    .where(eq(planDetail.seriesId, opts.templateId));
+  for (const instance of instances) {
+    await deleteNode(opts.tx, instance.id, opts.at);
+  }
+  const detail = await getPlanDetail(opts.tx, opts.templateId);
+  if (!detail.recurrence) {
+    return;
+  }
+  const template = await getNode(opts.tx, opts.templateId);
+  if (!template.embedding) {
+    throw new YaadError(500, "internal_error", `plan ${opts.templateId} has no embedding`);
+  }
+  await materializeSeries({
+    tx: opts.tx,
+    templateId: opts.templateId,
+    title: template.title,
+    body: template.body,
+    embedding: template.embedding,
+    source: opts.source,
+    status: detail.status,
+    recurrence: detail.recurrence,
+    start: template.occurredAt,
+    endAt: detail.endAt,
+    createdAt: opts.at,
+    config: opts.config,
+  });
 }
 
 async function embedForOps(dwar: DwarClient, db: Db, operations: Operation[]): Promise<Map<string, number[]>> {

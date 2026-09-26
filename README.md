@@ -29,7 +29,7 @@ yaad/
 
 ## Config vs env
 
-`config.toml` (checked in): recall weights, ingest thresholds, HNSW, Dwar timeout/retry, page and graph sizes.
+`config.toml` (checked in): recall weights, ingest thresholds, HNSW, Dwar timeout/retry, page and graph sizes, plan recurrence horizon and time zone.
 
 Topology is hardcoded in `src/constants.ts` (host, port, log level, `DWAR_BASE_URL`).
 
@@ -76,7 +76,7 @@ A place is a real entity that recurs across events. Coordinates are optional. Ya
 
 ## Recurrence
 
-`plan_detail.recurrence` holds an RRULE on a **template** row. Yaad materializes instance rows out to `plan.recurrence_horizon_days`. Templates are excluded from date-bounded `POST /query` but remain visible to `recall`. Cap: `plan.max_instances_per_series`. Editing a series rule does not regenerate instances.
+`plan_detail.recurrence` holds an RRULE on a **template** row. Yaad materializes instance rows out to `plan.recurrence_horizon_days`. Templates are excluded from date-bounded `POST /query` but remain visible to `recall`. Cap: `plan.max_instances_per_series`. Rules expand in `plan.timezone` wall-clock time, so a weekly 10:20 class stays at 10:20 across daylight-saving changes. An `update_node` that changes a template's `occurred_at`, `end_at`, or `recurrence` deletes its instances (history kept) and materializes them again from the new rule.
 
 ## Query vs recall
 

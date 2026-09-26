@@ -36,7 +36,7 @@ export async function getPersonDetail(db: Db, nodeId: string): Promise<PersonDet
   return row;
 }
 
-export async function getPlanDetail(db: Db, nodeId: string): Promise<PlanDetailRow> {
+export async function getPlanDetail(db: SelectDb, nodeId: string): Promise<PlanDetailRow> {
   const rows = await db.select().from(planDetail).where(eq(planDetail.nodeId, nodeId));
   const row = rows[0];
   if (!row) {

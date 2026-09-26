@@ -43,6 +43,7 @@ const fileSchema = z.object({
   plan: z.object({
     recurrence_horizon_days: z.number().int().positive(),
     max_instances_per_series: z.number().int().positive(),
+    timezone: z.string().min(1),
   }),
   recall: z.object({
     anchor_similarity_floor: z.number().min(0).max(2),
@@ -112,6 +113,9 @@ export function loadFileConfig(): FileConfig {
   }
   if (parsed.data.search.default_limit > parsed.data.search.max_limit) {
     throw new Error("config.toml search.default_limit must be <= search.max_limit");
+  }
+  if (!Intl.supportedValuesOf("timeZone").includes(parsed.data.plan.timezone)) {
+    throw new Error(`config.toml plan.timezone is not an IANA time zone: ${parsed.data.plan.timezone}`);
   }
   return parsed.data;
 }
