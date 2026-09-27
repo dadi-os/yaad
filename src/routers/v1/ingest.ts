@@ -15,7 +15,10 @@ export async function registerIngest(app: FastifyInstance): Promise<void> {
       text: body.text,
       occurredAt: body.occurred_at,
       participantIds: body.participant_ids ?? [],
-      source: body.source,
+      author:
+        body.source === "agent"
+          ? { source: "agent", agentId: body.agent_id }
+          : { source: "ingest", agentId: null },
     });
   });
 }

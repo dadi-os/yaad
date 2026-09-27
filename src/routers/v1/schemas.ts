@@ -61,22 +61,23 @@ export const patchPlaceDetailBody = placeDetailBody.partial();
 
 export const idParam = z.object({ id: z.string().uuid() }).strict();
 
-export const ingestBody = z
-  .object({
-    text: z.string().min(1),
-    occurred_at: z.string().datetime({ offset: true }),
-    participant_ids: z.array(z.string().uuid()).optional(),
-    source: z.enum(["agent", "ingest"]),
-  })
-  .strict();
+const ingestFields = {
+  text: z.string().min(1),
+  occurred_at: z.string().datetime({ offset: true }),
+  participant_ids: z.array(z.string().uuid()).optional(),
+};
 
-export const recallBody = z
-  .object({
-    query: z.string().min(1),
-    limit: z.number().int().positive().optional(),
-    debug: z.boolean().optional(),
-  })
-  .strict();
+/** `source: "agent"` names the writing Dimaag agent; `source: "ingest"` carries no agent. */
+export const ingestBody = z.discriminatedUnion("source", [
+  z
+    .object({
+      ...ingestFields,
+      source: z.literal("agent"),
+      agent_id: z.string().regex(/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/, "agent_id must be kebab-case"),
+    })
+    .strict(),
+  z.object({ ...ingestFields, source: z.literal("ingest") }).strict(),
+]);
 
 export const historySearchBody = z
   .object({
@@ -85,15 +86,34 @@ export const historySearchBody = z
   })
   .strict();
 
+const nodeFilterFields = {
+  kind: z.enum(["person", "memory", "plan", "place"]).optional(),
+  name: z.string().min(1).optional(),
+  occurred_from: z.string().datetime({ offset: true }).optional(),
+  occurred_to: z.string().datetime({ offset: true }).optional(),
+  status: planStatus.optional(),
+};
+
 export const queryBody = z
   .object({
-    kind: z.enum(["person", "memory", "plan", "place"]).optional(),
-    name: z.string().min(1).optional(),
-    occurred_from: z.string().datetime({ offset: true }).optional(),
-    occurred_to: z.string().datetime({ offset: true }).optional(),
-    status: z.enum(["idea", "tentative", "confirmed"]).optional(),
+    ...nodeFilterFields,
     limit: z.number().int().positive().optional(),
     offset: z.number().int().min(0).optional(),
+  })
+  .strict();
+
+/**
+ * Anchors come from `from`, else the filters, else ANN on `query`. `hops` fixes the
+ * expansion depth; omitted, expansion is gated when `query` is set and 0 otherwise.
+ */
+export const recallBody = z
+  .object({
+    query: z.string().min(1).optional(),
+    from: z.array(z.string().uuid()).min(1).optional(),
+    hops: z.number().int().min(0).optional(),
+    ...nodeFilterFields,
+    limit: z.number().int().positive().optional(),
+    debug: z.boolean().optional(),
   })
   .strict();
 

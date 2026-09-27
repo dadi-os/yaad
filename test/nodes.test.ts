@@ -37,7 +37,7 @@ test("update_node title writes one node_history row; unchanged fields write none
   await applyOperations({
     db: handle.db,
     dwar,
-    source: "agent",
+    author: { source: "agent", agentId: "test-agent" },
     config,
     operations: [{ op: "update_node", node_id: id, title: "green dresser" }],
   });
@@ -51,7 +51,7 @@ test("update_node title writes one node_history row; unchanged fields write none
   await applyOperations({
     db: handle.db,
     dwar,
-    source: "agent",
+    author: { source: "agent", agentId: "test-agent" },
     config,
     operations: [{ op: "update_node", node_id: id, title: "green dresser" }],
   });
@@ -69,7 +69,7 @@ test("close_node writes a deleted history row and closes incident edges", async 
   await applyOperations({
     db: handle.db,
     dwar,
-    source: "agent",
+    author: { source: "agent", agentId: "test-agent" },
     config,
     operations: [{ op: "close_node", node_id: b, reason: "retracted" }],
   });
@@ -116,7 +116,7 @@ test("POST /history/search finds a correction by meaning", async () => {
   await applyOperations({
     db: handle.db,
     dwar,
-    source: "agent",
+    author: { source: "agent", agentId: "test-agent" },
     config,
     operations: [{ op: "update_node", node_id: id, title: "favorite color is green" }],
   });

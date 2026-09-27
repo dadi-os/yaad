@@ -62,6 +62,7 @@ export function toNodeRecord(row: NodeRow): NodeRecord {
     access_count: row.accessCount,
     last_accessed_at: iso(row.lastAccessedAt),
     source: parseSource(row.source),
+    agent_id: row.agentId,
     created_at: row.createdAt.toISOString(),
     updated_at: row.updatedAt.toISOString(),
   };

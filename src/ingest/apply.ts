@@ -20,7 +20,7 @@ import { YaadError } from "../errors.js";
 import { expandRecurrence } from "../plans/recurrence.js";
 import { parse } from "../routers/v1/schemas.js";
 import { historyEmbeddingText, sameInstant } from "../serialize.js";
-import type { NodeSource } from "../types/domain.js";
+import type { NodeAuthor } from "../types/domain.js";
 import { computeExpiresAt } from "./expiry.js";
 import {
   patchPersonDetailBody,
@@ -49,7 +49,7 @@ export async function applyOperations(opts: {
   db: Db;
   dwar: DwarClient;
   operations: Operation[];
-  source: NodeSource;
+  author: NodeAuthor;
   config: Config;
 }): Promise<ApplyResult> {
   const embeddings = await embedForOps(opts.dwar, opts.db, opts.operations);
@@ -83,7 +83,8 @@ export async function applyOperations(opts: {
           embedding,
           occurredAt,
           expiresAt,
-          source: opts.source,
+          source: opts.author.source,
+          agentId: opts.author.agentId,
           createdAt: at,
           updatedAt: at,
         });
@@ -112,7 +113,7 @@ export async function applyOperations(opts: {
               title: op.title,
               body: op.body ?? null,
               embedding,
-              source: opts.source,
+              author: opts.author,
               status: detail.status,
               recurrence,
               start: occurredAt,
@@ -220,7 +221,7 @@ export async function applyOperations(opts: {
           await rematerializeSeries({
             tx,
             templateId: op.node_id,
-            source: opts.source,
+            author: opts.author,
             at,
             config: opts.config,
           });
@@ -302,7 +303,7 @@ async function materializeSeries(opts: {
   title: string;
   body: string | null;
   embedding: number[];
-  source: NodeSource;
+  author: NodeAuthor;
   status: string;
   recurrence: string;
   start: Date | null;
@@ -337,7 +338,8 @@ async function materializeSeries(opts: {
       body: opts.body,
       embedding: opts.embedding,
       occurredAt: instance.occurredAt,
-      source: opts.source,
+      source: opts.author.source,
+      agentId: opts.author.agentId,
       createdAt: opts.createdAt,
       updatedAt: opts.createdAt,
     });
@@ -369,7 +371,7 @@ function changesSchedule(op: Extract<Operation, { op: "update_node" }>): boolean
 async function rematerializeSeries(opts: {
   tx: Tx;
   templateId: string;
-  source: NodeSource;
+  author: NodeAuthor;
   at: Date;
   config: Config;
 }): Promise<void> {
@@ -394,7 +396,7 @@ async function rematerializeSeries(opts: {
     title: template.title,
     body: template.body,
     embedding: template.embedding,
-    source: opts.source,
+    author: opts.author,
     status: detail.status,
     recurrence: detail.recurrence,
     start: template.occurredAt,

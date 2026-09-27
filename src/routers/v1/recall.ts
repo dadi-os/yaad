@@ -1,14 +1,30 @@
-/** `POST /recall` — graph retrieval for a natural-language query. */
+/** `POST /recall` — graph retrieval anchored on a query, explicit node ids, or exact filters. */
 
 import type { FastifyInstance } from "fastify";
+import { assertFilterCoherent, hasFilter } from "../../db/filter.js";
 import { YaadError } from "../../errors.js";
 import { recall, recordAccess } from "../../recall/pipeline.js";
 import { parse, recallBody } from "./schemas.js";
 
 export async function registerRecall(app: FastifyInstance): Promise<void> {
   app.post("/recall", async (request) => {
-    const body = parse(recallBody, request.body);
-    if (body.limit !== undefined && body.limit > app.config.page.max_size) {
+    const { query, from, hops, limit, debug, ...filter } = parse(recallBody, request.body);
+    const filtered = hasFilter(filter);
+    if (query === undefined && from === undefined && !filtered) {
+      throw new YaadError(422, "invalid_request", "query, from, or a filter is required");
+    }
+    if (from !== undefined && filtered) {
+      throw new YaadError(422, "invalid_request", "from cannot be combined with filters");
+    }
+    assertFilterCoherent(filter);
+    if (hops !== undefined && hops > app.config.recall.hop_cap) {
+      throw new YaadError(
+        422,
+        "invalid_request",
+        `hops exceeds maximum of ${app.config.recall.hop_cap}`,
+      );
+    }
+    if (limit !== undefined && limit > app.config.page.max_size) {
       throw new YaadError(
         422,
         "invalid_request",
@@ -20,9 +36,12 @@ export async function registerRecall(app: FastifyInstance): Promise<void> {
       sql: app.sql,
       dwar: app.dwar,
       config: app.config,
-      query: body.query,
-      limit: body.limit ?? app.config.recall.default_limit,
-      debug: body.debug === true,
+      query,
+      from,
+      filter,
+      hops,
+      limit: limit ?? app.config.recall.default_limit,
+      debug: debug === true,
     });
     void recordAccess(
       app.db,

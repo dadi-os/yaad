@@ -4,7 +4,7 @@ import type { Config } from "../config.js";
 import type { Db, Sql } from "../db/client.js";
 import type { DwarClient } from "../dwar/client.js";
 import { YaadError } from "../errors.js";
-import type { NodeSource } from "../types/domain.js";
+import type { NodeAuthor } from "../types/domain.js";
 import { applyOperations, type ApplyResult } from "./apply.js";
 import { assembleCandidates } from "./candidates.js";
 import { emitOperations } from "./emit.js";
@@ -19,7 +19,7 @@ export async function ingest(opts: {
   text: string;
   occurredAt: string;
   participantIds: string[];
-  source: NodeSource;
+  author: NodeAuthor;
 }): Promise<ApplyResult> {
   const [embedding] = await opts.dwar.embed([opts.text], "yaad/ingest");
   if (!embedding) {
@@ -45,7 +45,7 @@ export async function ingest(opts: {
     db: opts.db,
     dwar: opts.dwar,
     operations,
-    source: opts.source,
+    author: opts.author,
     config: opts.config,
   });
 }

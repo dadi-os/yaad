@@ -48,7 +48,7 @@ test("create_node with ttl_days sets expires_at; without it stays null", async (
   const result = await applyOperations({
     db: handle.db,
     dwar,
-    source: "ingest",
+    author: { source: "ingest", agentId: null },
     config,
     operations: [
       {
@@ -224,7 +224,7 @@ test("expired node is excluded from ingest candidate payload", async () => {
     text: "stale observation fresh fact",
     occurredAt: "2026-09-05T12:00:00.000Z",
     participantIds: [],
-    source: "agent",
+    author: { source: "agent", agentId: "test-agent" },
   });
 
   const candidateIds = (capturedCandidates as { nodes: Array<{ id: string }> }).nodes.map(
@@ -288,7 +288,7 @@ test("update_node ttl_days refreshes, null clears, omit leaves untouched", async
   const created = await applyOperations({
     db: handle.db,
     dwar,
-    source: "ingest",
+    author: { source: "ingest", agentId: null },
     config,
     operations: [
       {
@@ -309,7 +309,7 @@ test("update_node ttl_days refreshes, null clears, omit leaves untouched", async
   await applyOperations({
     db: handle.db,
     dwar,
-    source: "ingest",
+    author: { source: "ingest", agentId: null },
     config,
     operations: [{ op: "update_node", node_id: id, ttl_days: 7 }],
   });
@@ -321,7 +321,7 @@ test("update_node ttl_days refreshes, null clears, omit leaves untouched", async
   await applyOperations({
     db: handle.db,
     dwar,
-    source: "ingest",
+    author: { source: "ingest", agentId: null },
     config,
     operations: [{ op: "update_node", node_id: id, title: "hoodie again" }],
   });
@@ -331,7 +331,7 @@ test("update_node ttl_days refreshes, null clears, omit leaves untouched", async
   await applyOperations({
     db: handle.db,
     dwar,
-    source: "ingest",
+    author: { source: "ingest", agentId: null },
     config,
     operations: [{ op: "update_node", node_id: id, ttl_days: null }],
   });
@@ -355,7 +355,7 @@ test("history/search still finds corrections for a node that later expired", asy
   await applyOperations({
     db: handle.db,
     dwar,
-    source: "agent",
+    author: { source: "agent", agentId: "test-agent" },
     config,
     operations: [{ op: "update_node", node_id: id, title: "favorite color is green" }],
   });

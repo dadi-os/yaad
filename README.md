@@ -80,7 +80,7 @@ A place is a real entity that recurs across events. Coordinates are optional. Ya
 
 ## Query vs recall
 
-`recall` is semantic (embeddings, graph walk, scoring). `query` is exact filters — no embeddings. They do not overlap and neither is a fallback for the other.
+`recall` is the one read an agent needs: it anchors on a semantic `query`, explicit node ids, or the same exact filters `query` takes, then walks the graph. `query` is exact filters with offset paging and no graph walk — what the desktop widgets use for calendar windows.
 
 ## Corrections
 
@@ -96,7 +96,7 @@ Observations may set `ttl_days`; expired nodes are filtered from recall/query/in
 | --- | --- | --- |
 | `GET` | `/health` | `{ "status": "ok" }` |
 | `POST` | `/ingest` | extract and reconcile unstructured text |
-| `POST` | `/recall` | ranked multi-hop retrieval |
+| `POST` | `/recall` | graph retrieval anchored on a query, node ids, or filters |
 | `POST` | `/query` | deterministic structured lookup |
 | `GET` | `/nodes/:id` | node, detail, current edges |
 | `GET` | `/nodes/:id/history` | correction log |
@@ -115,7 +115,7 @@ Body: `{ kind?, name?, occurred_from?, occurred_to?, status?, limit?, offset? }`
 
 ## Ingest
 
-`POST /ingest` takes `{ text, occurred_at, participant_ids?, source }`. Pipeline: embed → assemble candidates in code → Dwar reasoning with `emit_operations` → validate batch → apply in one transaction. Concurrent modification is 409.
+`POST /ingest` takes `{ text, occurred_at, participant_ids?, source }`, plus `agent_id` (kebab-case, required) when `source` is `agent`; `source: "ingest"` takes no `agent_id`. Every node the batch creates records that `agent_id`, so an agent's writes can be traced and corrected. Pipeline: embed → assemble candidates in code → Dwar reasoning with `emit_operations` → validate batch → apply in one transaction. Concurrent modification is 409.
 
 ### Operations
 
@@ -132,4 +132,13 @@ The `emit_operations` tool schema has one `create_node` variant per kind: `memor
 
 ## Recall
 
-`POST /recall` takes `{ query, limit?, debug? }`. Anchor ANN → BFS expand → score → gate. Coverage and `sufficient` are explicit. `debug: true` adds per-node score breakdown. Weights live in `[recall.weights]` in config.toml.
+`POST /recall` takes `{ query?, from?, hops?, kind?, name?, occurred_from?, occurred_to?, status?, limit?, debug? }` and needs a `query`, `from`, or a filter.
+
+| anchors | when |
+| --- | --- |
+| the `from` node ids (404 if one is unknown or expired) | `from` is set; it cannot be combined with filters |
+| filter matches, ranked by similarity to `query` and capped at `recall.anchor_limit` | filters and `query` |
+| filter matches in `/query` order, capped at `limit` | filters without `query` |
+| ANN hits above `recall.anchor_similarity_floor` | `query` only |
+
+`hops` (0 to `recall.hop_cap`) walks exactly that deep. Omitted, the walk is gated (hop cap, marginal yield, token budget) when there is a `query` and skipped otherwise, so `{ from: [id], hops: 1 }` is a node with its neighbors. With a `query`, nodes rank by score and `coverage` / `sufficient` are set; without one, nodes order by hop then `occurred_at` and `score`, `coverage`, `sufficient` are null. `edges` are the current edges among the returned nodes. `debug: true` adds per-node score breakdown. Weights live in `[recall.weights]` in config.toml.

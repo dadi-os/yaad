@@ -161,7 +161,7 @@ test("recurrence materializes instances; template excluded from date query", asy
   const result = await applyOperations({
     db: handle.db,
     dwar,
-    source: "ingest",
+    author: { source: "ingest", agentId: null },
     config,
     operations: [
       {
@@ -214,7 +214,7 @@ test("recurrence exceeding max_instances_per_series throws 422 and writes nothin
       applyOperations({
         db: handle.db,
         dwar,
-        source: "ingest",
+        author: { source: "ingest", agentId: null },
         config: {
           ...config,
           plan: {
@@ -255,7 +255,7 @@ test("place ingest with AT_LOCATION edge; GET /nodes/:id shows the edge", async 
   const result = await applyOperations({
     db: handle.db,
     dwar,
-    source: "ingest",
+    author: { source: "ingest", agentId: null },
     config,
     operations: [
       {
@@ -306,7 +306,7 @@ test("recurrence keeps local wall-clock time across a daylight-saving change", a
   const result = await applyOperations({
     db: handle.db,
     dwar,
-    source: "ingest",
+    author: { source: "ingest", agentId: null },
     config,
     operations: [
       {
@@ -345,7 +345,7 @@ test("update_node that changes a plan schedule rematerializes its series", async
   const created = await applyOperations({
     db: handle.db,
     dwar,
-    source: "ingest",
+    author: { source: "ingest", agentId: null },
     config,
     operations: [
       {
@@ -373,7 +373,7 @@ test("update_node that changes a plan schedule rematerializes its series", async
     await applyOperations({
       db: handle.db,
       dwar,
-      source: "ingest",
+      author: { source: "ingest", agentId: null },
       config,
       operations: [
         {

@@ -32,12 +32,15 @@ export const node = pgTable(
     accessCount: integer("access_count").notNull().default(0),
     lastAccessedAt: timestamptz("last_accessed_at"),
     source: text("source").notNull(),
+    /** Dimaag agent that created the node; only set when source is agent. */
+    agentId: text("agent_id"),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
     updatedAt: timestamptz("updated_at").notNull().defaultNow(),
   },
   (table) => [
     check("node_kind_check", sql`${table.kind} IN ('person', 'memory', 'plan', 'place')`),
     check("node_source_check", sql`${table.source} IN ('manual', 'agent', 'ingest')`),
+    check("node_agent_id_check", sql`${table.agentId} IS NULL OR ${table.source} = 'agent'`),
     index("node_kind_idx").on(table.kind),
     index("node_occurred_at_idx").on(table.occurredAt),
     index("node_live_idx")

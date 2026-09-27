@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { randomUUID } from "node:crypto";
+import { eq } from "drizzle-orm";
+import { node } from "../src/db/schema.js";
 import { YaadError } from "../src/errors.js";
 import { applyOperations } from "../src/ingest/apply.js";
 import { ingest } from "../src/ingest/pipeline.js";
@@ -56,7 +58,7 @@ test("ingest apply creates a node and an edge via temp_id", async () => {
     db: handle.db,
     dwar,
     operations,
-    source: "ingest",
+    author: { source: "ingest", agentId: null },
     config,
   });
   assert.equal(result.counts.create_node, 2);
@@ -74,6 +76,22 @@ test("ingest apply creates a node and an edge via temp_id", async () => {
   assert.equal(await countCurrentNodes(handle.sql), 2);
 });
 
+test("an agent ingest records the writing agent on every node it creates", async () => {
+  await resetGraph(handle.sql);
+  const result = await applyOperations({
+    db: handle.db,
+    dwar: mockDwar({ dimension: dim }),
+    operations: [{ op: "create_node", temp_id: "m1", kind: "memory", title: "Ankur likes chai" }],
+    author: { source: "agent", agentId: "browser-worker-gmail" },
+    config,
+  });
+  const id = result.temp_ids.m1;
+  assert.ok(id);
+  const rows = await handle.db.select().from(node).where(eq(node.id, id));
+  assert.equal(rows[0]?.source, "agent");
+  assert.equal(rows[0]?.agentId, "browser-worker-gmail");
+});
+
 test("ingest pipeline emits noop and writes nothing", async () => {
   await resetGraph(handle.sql);
   const dwar = mockDwar({
@@ -88,7 +106,7 @@ test("ingest pipeline emits noop and writes nothing", async () => {
     text: "hello",
     occurredAt: "2026-08-25T13:00:00.000Z",
     participantIds: [],
-    source: "agent",
+    author: { source: "agent", agentId: "test-agent" },
   });
   assert.equal(result.counts.noop, 1);
   assert.equal(result.counts.create_node, 0);
@@ -135,7 +153,7 @@ test("ingest fails with extraction_failed when the model emits a key its op does
         text: "Ankur is 5 foot 10",
         occurredAt: "2026-09-26T00:57:26.000Z",
         participantIds: [],
-        source: "agent",
+        author: { source: "agent", agentId: "test-agent" },
       }),
     (err: unknown) => {
       assert.ok(err instanceof YaadError);

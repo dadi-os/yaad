@@ -29,7 +29,7 @@ export async function annSearch(opts: {
         id, kind, title, body, embedding,
         occurred_at AS "occurredAt", expires_at AS "expiresAt",
         access_count AS "accessCount",
-        last_accessed_at AS "lastAccessedAt", source,
+        last_accessed_at AS "lastAccessedAt", source, agent_id AS "agentId",
         created_at AS "createdAt", updated_at AS "updatedAt",
         (embedding <=> ${vec}::vector) AS distance
       FROM node
@@ -100,6 +100,7 @@ function toNodeRow(row: AnnRow): NodeRow {
     accessCount: Number(row.accessCount),
     lastAccessedAt: toDate(row.lastAccessedAt),
     source: row.source,
+    agentId: row.agentId,
     createdAt: toDateRequired(row.createdAt),
     updatedAt: toDateRequired(row.updatedAt),
   };
