@@ -128,6 +128,8 @@ Body: `{ kind?, name?, occurred_from?, occurred_to?, status?, limit?, offset? }`
 | `close_edge` | `edge_id`, `reason` |
 | `noop` | `reason` |
 
+The `emit_operations` tool schema has one `create_node` variant per kind: `memory` offers no `detail`, `plan` requires `detail.status`, and `person`/`place` offer only their own detail keys.
+
 ## Recall
 
 `POST /recall` takes `{ query, limit?, debug? }`. Anchor ANN → BFS expand → score → gate. Coverage and `sufficient` are explicit. `debug: true` adds per-node score breakdown. Weights live in `[recall.weights]` in config.toml.

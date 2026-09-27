@@ -40,8 +40,8 @@ The user message is JSON:
 | --- | --- | --- |
 | `person` | a human being Dadi knows | `birthday` (`YYYY-MM-DD` or null), `aliases` (array of strings) |
 | `place` | a real, nameable location that people live at, go to, or where things happen | `address`, `latitude`, `longitude` (all optional) |
-| `plan` | anything that lives on a calendar: an idea, a reminder, a dated event, or a recurring commitment such as a class, a weekly meeting, a shift, a practice | `status` (`idea` \| `tentative` \| `confirmed`, required on create), `end_at`, `recurrence` (RRULE) |
-| `memory` | an atomic fact, trait, preference, or thing that happened — or the hub of a compound thing that is not on a calendar (see "Hubs and facets" in §2.2) | none — never send `detail` on a memory |
+| `plan` | anything that lives on a calendar: an idea, a reminder, a dated event, or a recurring commitment such as a class, a weekly meeting, a shift, a practice. Something that was scheduled — an interview, meeting, appointment, call, reservation, flight — is a `plan` whether it is upcoming or already over | `status` (`idea` \| `tentative` \| `confirmed`, required on create), `end_at`, `recurrence` (RRULE) |
+| `memory` | an atomic fact, trait, preference, or unscheduled thing that happened — or the hub of a compound thing that is not on a calendar (see "Hubs and facets" in §2.2) | none — never send `detail` on a memory |
 
 Organizations that are also places (a university, an office, a gym, a restaurant) are `place` nodes. There is no separate organization kind.
 
@@ -291,7 +291,8 @@ Bundled nodes are wrong because a later update to any one part forces rewriting 
 ### 3.7 Dates: `occurred_at` is for things that happen, not facts that are true
 
 - **Lasting facts have `occurred_at` null.** Traits, preferences, allergies, heights, where someone lives, what they study, favorite colors — omit `occurred_at` or send null. Never stamp a lasting fact with the utterance time; doing so makes it look like a dated event and it fades out of recall.
-- **Events** (a memory of something that happened) get `occurred_at` = when it happened, resolved against the utterance's `occurred_at`. "Yesterday we went to the lake" → the date of yesterday. "Just now" / "today" → the utterance's own timestamp or date. If the event's time is unknown, leave it null rather than guessing.
+- **Scheduled events are plans, even after they happen.** If the thing had a set time before it happened — an interview, a meeting, an appointment, a call, a reservation — it is a `plan` with `status: "confirmed"`, `occurred_at` = its start, and `detail.end_at` = its end if known, never a dated memory. What was discussed or decided at it are facets or memories linked to that plan (§6.14). Only a plan shows on the user's timeline.
+- **Events** (a memory of something unscheduled that happened) get `occurred_at` = when it happened, resolved against the utterance's `occurred_at`. "Yesterday we went to the lake" → the date of yesterday. "Just now" / "today" → the utterance's own timestamp or date. If the event's time is unknown, leave it null rather than guessing.
 - **Plans** get `occurred_at` = the start time, `detail.end_at` = the end time if given. Undated ideas: `status: "idea"`, `occurred_at` null. A calendar hub whose schedule is not known yet (a course with no meeting times) is `status: "confirmed"` with `occurred_at` null.
 - **Never invent a day.** If the source gives only a year, a season, a term, or a month ("Summer 2024", "Spring 2025", "last March"), `occurred_at` is null and the stated period goes in a `term` / `when` facet or edge property exactly as written. `"Spring 2025"` never becomes `2025-01-01`.
 - **Recurring plans** (a class, a weekly meeting): `occurred_at` = the start of the **first** occurrence, `detail.end_at` = the end of that **same first** occurrence (it sets how long each occurrence lasts — it is not the end of the term), and `detail.recurrence` = an RRULE whose `UNTIL` is the last day of the series, e.g. `"FREQ=WEEKLY;BYDAY=TU,TH;UNTIL=20261210T235959Z"`. The first occurrence must fall on one of the `BYDAY` days. `BYDAY` is evaluated in UTC, so if a local meeting time falls on a different UTC day (late-evening classes), shift the days to UTC. **Never send `recurrence` without `occurred_at`** — Yaad rejects the whole batch. If the meeting days are known but not the first date, leave `recurrence` null and store the pattern only as a `schedule` facet.
@@ -673,3 +674,32 @@ Text: "CSE 380 meets Tuesdays and Thursdays 10:20 to 11:40 AM in Wells Hall B115
 ```
 
 The existing hub becomes a real recurring calendar event: `occurred_at` and `end_at` bound the first class (Tuesday August 25), and `UNTIL` ends the series on December 10. The room is a place and the professor is a person, both linked to the same hub — neither is a facet.
+
+### 6.14 A scheduled meeting that already happened
+
+Candidates: person Ankur Desai (`fa32da87-278a-4f65-a106-b947c0b7724d`). Utterance `occurred_at`: `2026-09-27T16:30:00-04:00`.
+
+Text: "From Ankur's email: Oliver Chen from Wedge Health held an initial screening with Ankur on Friday, September 25, 3:00–3:30 PM EDT over Zoom. They covered his robotics experience and he demoed Dadi. Wedge Health has about 20 employees."
+
+```json
+{ "operations": [
+  { "op": "create_node", "temp_id": "screening", "kind": "plan", "title": "Wedge Health initial screening with Oliver Chen", "occurred_at": "2026-09-25T15:00:00-04:00", "detail": { "status": "confirmed", "end_at": "2026-09-25T15:30:00-04:00" } },
+  { "op": "create_node", "temp_id": "oliver", "kind": "person", "title": "Oliver Chen", "detail": { "aliases": [] } },
+  { "op": "create_node", "temp_id": "wedge", "kind": "place", "title": "Wedge Health", "detail": {} },
+  { "op": "create_edge", "src": "fa32da87-278a-4f65-a106-b947c0b7724d", "dst": "screening", "type": "PARTICIPANT", "properties": { "role": "candidate" }, "confidence": 1.0 },
+  { "op": "create_edge", "src": "oliver", "dst": "screening", "type": "PARTICIPANT", "properties": { "role": "interviewer" }, "confidence": 1.0 },
+  { "op": "create_edge", "src": "oliver", "dst": "wedge", "type": "WORKS_AT", "confidence": 1.0 },
+  { "op": "create_edge", "src": "screening", "dst": "wedge", "type": "RELATED_TO", "confidence": 1.0 },
+  { "op": "create_node", "temp_id": "medium", "kind": "memory", "title": "Wedge Health screening — medium: Zoom" },
+  { "op": "create_edge", "src": "screening", "dst": "medium", "type": "HAS_FACET", "properties": { "facet": "medium" }, "confidence": 1.0 },
+  { "op": "create_node", "temp_id": "topic_robotics", "kind": "memory", "title": "Wedge Health screening — topic: Ankur Desai's robotics experience" },
+  { "op": "create_edge", "src": "screening", "dst": "topic_robotics", "type": "HAS_FACET", "properties": { "facet": "topic" }, "confidence": 1.0 },
+  { "op": "create_node", "temp_id": "demo", "kind": "memory", "title": "Ankur Desai demoed Dadi in the Wedge Health screening", "occurred_at": "2026-09-25T15:00:00-04:00" },
+  { "op": "create_edge", "src": "fa32da87-278a-4f65-a106-b947c0b7724d", "dst": "demo", "type": "PARTICIPANT", "confidence": 1.0 },
+  { "op": "create_edge", "src": "screening", "dst": "demo", "type": "RELATED_TO", "confidence": 1.0 },
+  { "op": "create_node", "temp_id": "size", "kind": "memory", "title": "Wedge Health has about 20 employees" },
+  { "op": "create_edge", "src": "wedge", "dst": "size", "type": "ABOUT", "confidence": 0.9 }
+] }
+```
+
+The screening had a set time before it happened, so it is a confirmed `plan` with its real start and end, even though it is over — that is what puts it on the timeline. Compare §6.9: an unscheduled dinner mentioned afterwards stays a dated memory. The Zoom medium and the topic are facets of the plan; the company size is a fact about Wedge Health, not about the meeting.

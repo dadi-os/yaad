@@ -94,9 +94,19 @@ export type UpdateNodeOp = z.infer<typeof updateNodeOp>;
 
 const nullableString = { type: ["string", "null"] } as const;
 
+const createNodeCommon = {
+  op: { const: "create_node" },
+  temp_id: { type: "string" },
+  title: { type: "string" },
+  body: nullableString,
+  occurred_at: nullableString,
+  ttl_days: { type: ["integer", "null"], minimum: 1 },
+} as const;
+
 /**
  * Hand-written JSON Schema shown to Dwar for `emit_operations`. One strict variant per op,
- * mirroring the zod shapes above, so the model is only offered keys Yaad accepts for that op.
+ * and per kind for `create_node`, mirroring the zod shapes above, so the model is only offered
+ * keys Yaad accepts for that op (a memory is never offered `detail`).
  */
 export const emitOperationsToolSchema = {
   type: "object",
@@ -112,15 +122,60 @@ export const emitOperationsToolSchema = {
             type: "object",
             additionalProperties: false,
             required: ["op", "temp_id", "kind", "title"],
+            properties: { ...createNodeCommon, kind: { const: "memory" } },
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["op", "temp_id", "kind", "title"],
             properties: {
-              op: { const: "create_node" },
-              temp_id: { type: "string" },
-              kind: { type: "string", enum: ["person", "memory", "plan", "place"] },
-              title: { type: "string" },
-              body: nullableString,
-              occurred_at: nullableString,
-              ttl_days: { type: ["integer", "null"], minimum: 1 },
-              detail: { type: "object" },
+              ...createNodeCommon,
+              kind: { const: "person" },
+              detail: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  birthday: nullableString,
+                  aliases: { type: "array", items: { type: "string" } },
+                },
+              },
+            },
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["op", "temp_id", "kind", "title", "detail"],
+            properties: {
+              ...createNodeCommon,
+              kind: { const: "plan" },
+              detail: {
+                type: "object",
+                additionalProperties: false,
+                required: ["status"],
+                properties: {
+                  end_at: nullableString,
+                  status: { type: "string", enum: ["idea", "tentative", "confirmed"] },
+                  recurrence: nullableString,
+                },
+              },
+            },
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["op", "temp_id", "kind", "title"],
+            properties: {
+              ...createNodeCommon,
+              kind: { const: "place" },
+              detail: {
+                type: "object",
+                additionalProperties: false,
+                properties: {
+                  address: nullableString,
+                  latitude: { type: ["number", "null"] },
+                  longitude: { type: ["number", "null"] },
+                },
+              },
             },
           },
           {
