@@ -13,6 +13,8 @@ const embedResponseSchema = z.object({
 
 const chatBlockSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("text"), text: z.string() }),
+  z.object({ type: z.literal("thinking"), thinking: z.string() }),
+  z.object({ type: z.literal("redacted_thinking"), data: z.string() }),
   z.object({
     type: z.literal("tool_use"),
     id: z.string(),
@@ -46,6 +48,7 @@ export function embeddingText(title: string, body: string | null): string {
  */
 export type DwarClient = {
   embed: (texts: string[], caller: string) => Promise<number[][]>;
+  /** One `/chat/reasoning` call with `tool_choice: "any"`: a single forced tool call, never a prose reply. */
   reason: (args: {
     system: string;
     user: string;
@@ -117,6 +120,7 @@ export function createDwarClient(config: Config): DwarClient {
               system: args.system,
               messages: [{ role: "user", content: args.user }],
               tools: args.tools,
+              tool_choice: "any",
             },
             { headers: { "x-dadi-caller": args.caller } },
           )
