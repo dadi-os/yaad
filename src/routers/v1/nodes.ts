@@ -1,4 +1,10 @@
-/** Node routes: read (`GET /nodes/:id`, `/history`) and hand edits (`PATCH`, `DELETE`). */
+/**
+ * Node routes: `GET /nodes/:id` and `GET /nodes/:id/history` read; `PATCH /nodes/:id`
+ * and `DELETE /nodes/:id` are hand edits from a client. `PATCH` runs as one validated
+ * `update_node`, so it writes history, re-embeds, and rematerializes a series exactly
+ * like an ingest correction. `DELETE` deletes the node and sweeps the neighbors it
+ * leaves with no current edge, logging what it swept. An unknown id is a 404 on both.
+ */
 
 import type { FastifyInstance } from "fastify";
 import { getIncidentEdges, getNode, getNodeHistory, getPersonDetail, getPlaceDetail, getPlanDetail } from "../../db/read.js";
@@ -32,10 +38,6 @@ export async function registerNodes(app: FastifyInstance): Promise<void> {
     return { history: history.map(toNodeHistoryRecord) };
   });
 
-  /**
-   * Apply a hand edit as one `update_node`, so it writes history, re-embeds, and
-   * rematerializes a series exactly like an ingest correction.
-   */
   app.patch("/nodes/:id", async (request) => {
     const { id } = parse(idParam, request.params);
     const body = parse(patchNodeBody, request.body);
@@ -46,15 +48,16 @@ export async function registerNodes(app: FastifyInstance): Promise<void> {
     return nodeResponse(app, id);
   });
 
-  /** Delete a node and every node that leaves stranded; returns both. */
   app.delete("/nodes/:id", async (request) => {
     const { id } = parse(idParam, request.params);
-    return app.db.transaction(async (tx) => {
+    const orphans = await app.db.transaction(async (tx) => {
       const at = new Date();
-      const stranded = await deleteNode(tx, id, at);
-      const orphans = await sweepOrphans(tx, stranded, at);
-      return { id, orphans };
+      return sweepOrphans(tx, await deleteNode(tx, id, at), at);
     });
+    if (orphans.length > 0) {
+      request.log.info({ request_id: request.requestId, node_ids: orphans }, "orphans swept");
+    }
+    return { id, orphans };
   });
 }
 

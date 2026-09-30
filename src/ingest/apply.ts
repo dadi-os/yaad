@@ -223,13 +223,14 @@ export async function applyOperations(opts: {
             .where(eq(node.id, op.node_id));
         }
         if (current.kind === "plan" && changesSchedule(op)) {
-          stranded.push(...(await rematerializeSeries({
+          const rebuilt = await rematerializeSeries({
             tx,
             templateId: op.node_id,
             author: opts.author,
             at,
             config: opts.config,
-          })));
+          });
+          stranded.push(...rebuilt);
         }
         applied.push(op);
       }
@@ -269,7 +270,8 @@ export async function applyOperations(opts: {
 
     for (const op of opts.operations) {
       if (op.op === "close_node") {
-        stranded.push(...(await deleteNode(tx, op.node_id, at)));
+        const neighbors = await deleteNode(tx, op.node_id, at);
+        stranded.push(...neighbors);
         closedNodes.add(op.node_id);
         applied.push(op);
       }
@@ -390,7 +392,8 @@ async function rematerializeSeries(opts: {
     .where(eq(planDetail.seriesId, opts.templateId));
   const stranded: string[] = [];
   for (const instance of instances) {
-    stranded.push(...(await deleteNode(opts.tx, instance.id, opts.at)));
+    const neighbors = await deleteNode(opts.tx, instance.id, opts.at);
+    stranded.push(...neighbors);
   }
   const detail = await getPlanDetail(opts.tx, opts.templateId);
   if (!detail.recurrence) {
