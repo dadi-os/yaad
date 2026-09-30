@@ -11,6 +11,7 @@ export type WalkState = {
   frontier: string[];
 };
 
+/** Starts a recall walk at the anchors: hop 0, empty path, confidence 1. */
 export function initialWalk(anchorIds: string[]): WalkState {
   const nodes = new Map<string, WalkNode>();
   for (const id of anchorIds) {

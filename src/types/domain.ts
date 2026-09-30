@@ -6,7 +6,7 @@ export type NodeKind = "person" | "memory" | "plan" | "place";
 /** Provenance of a node write. */
 export type NodeSource = "manual" | "agent" | "ingest";
 
-/** Who wrote a node: an agent write names the Dimaag agent; other sources carry none. */
+/** Who wrote a node: an agent write names the Hath agent; other sources carry none. */
 export type NodeAuthor =
   | { source: "agent"; agentId: string }
   | { source: "manual" | "ingest"; agentId: null };
@@ -44,7 +44,7 @@ export type NodeRecord = {
   access_count: number;
   last_accessed_at: string | null;
   source: NodeSource;
-  /** Dimaag agent that created the node; null unless source is agent. */
+  /** Hath agent that created the node; null unless source is agent. */
   agent_id: string | null;
   created_at: string;
   updated_at: string;

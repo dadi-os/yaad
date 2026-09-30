@@ -54,6 +54,7 @@ export async function getPlaceDetail(db: Db, nodeId: string): Promise<PlaceDetai
   return row;
 }
 
+/** Current edges touching one node. */
 export async function getIncidentEdges(db: Db, nodeId: string): Promise<EdgeRow[]> {
   return getIncidentEdgesForIds(db, [nodeId]);
 }
@@ -118,6 +119,7 @@ export async function getEdge(db: SelectDb, id: string): Promise<EdgeRow> {
   return row;
 }
 
+/** Every person node joined with its detail row. */
 export async function getCurrentPersons(
   db: Db,
 ): Promise<Array<{ node: NodeRow; detail: PersonDetailRow }>> {

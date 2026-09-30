@@ -16,6 +16,7 @@ export type NodePatch = {
   embedding?: number[] | null;
 };
 
+/** Loads a node with FOR UPDATE inside `tx`; 404 not_found when it does not exist. */
 export async function lockNode(tx: Tx, id: string): Promise<NodeRow> {
   const rows = await tx.select().from(node).where(eq(node.id, id)).for("update");
   const row = rows[0];
@@ -25,6 +26,7 @@ export async function lockNode(tx: Tx, id: string): Promise<NodeRow> {
   return row;
 }
 
+/** Loads a current edge (`valid_to IS NULL`) with FOR UPDATE inside `tx`; 404 not_found when there is none. */
 export async function lockCurrentEdge(tx: Tx, id: string): Promise<EdgeRow> {
   const rows = await tx
     .select()

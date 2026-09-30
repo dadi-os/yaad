@@ -32,7 +32,7 @@ export const node = pgTable(
     accessCount: integer("access_count").notNull().default(0),
     lastAccessedAt: timestamptz("last_accessed_at"),
     source: text("source").notNull(),
-    /** Dimaag agent that created the node; only set when source is agent. */
+    /** Hath agent that created the node; only set when source is agent. */
     agentId: text("agent_id"),
     createdAt: timestamptz("created_at").notNull().defaultNow(),
     updatedAt: timestamptz("updated_at").notNull().defaultNow(),

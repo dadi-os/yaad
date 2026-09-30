@@ -3,6 +3,7 @@ export function computeExpiresAt(anchor: Date, ttlDays: number): Date {
   return new Date(anchor.getTime() + ttlDays * 86_400_000);
 }
 
+/** True when `expiresAt` is set and at or before `now`. */
 export function isExpired(expiresAt: Date | null, now = new Date()): boolean {
   return expiresAt !== null && expiresAt.getTime() <= now.getTime();
 }

@@ -118,6 +118,7 @@ export function toPlaceDetail(row: PlaceDetailRow): PlaceDetail {
   };
 }
 
+/** True when both dates are null or both mark the same instant. */
 export function sameInstant(left: Date | null, right: Date | null): boolean {
   if (left === null || right === null) {
     return left === right;

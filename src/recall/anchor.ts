@@ -7,6 +7,7 @@ export function selectAnchors(hits: AnnHit[], floor: number, limit: number): Ann
   return hits.filter((hit) => hit.similarity >= floor).slice(0, limit);
 }
 
+/** Nearest nodes to the query embedding by HNSW search, filtered to the configured anchor limit and similarity floor. */
 export async function findAnchors(opts: {
   sql: Sql;
   config: Config;

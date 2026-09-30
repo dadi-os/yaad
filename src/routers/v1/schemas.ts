@@ -78,7 +78,7 @@ const ingestFields = {
   participant_ids: z.array(z.string().uuid()).optional(),
 };
 
-/** `source: "agent"` names the writing Dimaag agent; `source: "ingest"` carries no agent. */
+/** `source: "agent"` names the writing Hath agent; `source: "ingest"` carries no agent. */
 export const ingestBody = z.discriminatedUnion("source", [
   z
     .object({
