@@ -1,7 +1,11 @@
-/** Node read routes: `GET /nodes/:id` and `GET /nodes/:id/history`. */
+/** Node routes: read (`GET /nodes/:id`, `/history`) and hand edits (`PATCH`, `DELETE`). */
 
 import type { FastifyInstance } from "fastify";
 import { getIncidentEdges, getNode, getNodeHistory, getPersonDetail, getPlaceDetail, getPlanDetail } from "../../db/read.js";
+import { deleteNode, sweepOrphans } from "../../db/temporal.js";
+import { applyOperations } from "../../ingest/apply.js";
+import type { Operation } from "../../ingest/operations.js";
+import { validateOperations } from "../../ingest/validate.js";
 import {
   toEdgeRecord,
   toNodeHistoryRecord,
@@ -10,7 +14,11 @@ import {
   toPlaceDetail,
   toPlanDetail,
 } from "../../serialize.js";
-import { idParam, parse } from "./schemas.js";
+import type { NodeAuthor } from "../../types/domain.js";
+import { idParam, parse, patchNodeBody } from "./schemas.js";
+
+/** Author of edits made by hand in a client rather than learned by ingest. */
+const MANUAL: NodeAuthor = { source: "manual", agentId: null };
 
 export async function registerNodes(app: FastifyInstance): Promise<void> {
   app.get("/nodes/:id", async (request) => {
@@ -22,6 +30,31 @@ export async function registerNodes(app: FastifyInstance): Promise<void> {
     const { id } = parse(idParam, request.params);
     const history = await getNodeHistory(app.db, id);
     return { history: history.map(toNodeHistoryRecord) };
+  });
+
+  /**
+   * Apply a hand edit as one `update_node`, so it writes history, re-embeds, and
+   * rematerializes a series exactly like an ingest correction.
+   */
+  app.patch("/nodes/:id", async (request) => {
+    const { id } = parse(idParam, request.params);
+    const body = parse(patchNodeBody, request.body);
+    await getNode(app.db, id);
+    const operations: Operation[] = [{ op: "update_node", node_id: id, ...body }];
+    await validateOperations({ db: app.db, operations });
+    await applyOperations({ db: app.db, dwar: app.dwar, operations, author: MANUAL, config: app.config });
+    return nodeResponse(app, id);
+  });
+
+  /** Delete a node and every node that leaves stranded; returns both. */
+  app.delete("/nodes/:id", async (request) => {
+    const { id } = parse(idParam, request.params);
+    return app.db.transaction(async (tx) => {
+      const at = new Date();
+      const stranded = await deleteNode(tx, id, at);
+      const orphans = await sweepOrphans(tx, stranded, at);
+      return { id, orphans };
+    });
   });
 }
 

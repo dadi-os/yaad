@@ -126,15 +126,17 @@ export async function updateNode(
 
 /**
  * Hard-delete a node, log a deleted history row, and soft-close open edges
- * touching it so edge history remains.
+ * touching it so edge history remains. Returns the neighbors those closed edges
+ * led to, for {@link sweepOrphans}.
  */
-export async function deleteNode(tx: Tx, id: string, at: Date): Promise<void> {
+export async function deleteNode(tx: Tx, id: string, at: Date): Promise<string[]> {
   const current = await lockNode(tx, id);
 
-  await tx
+  const closed = await tx
     .update(edge)
     .set({ validTo: at })
-    .where(and(or(eq(edge.srcId, id), eq(edge.dstId, id)), isNull(edge.validTo)));
+    .where(and(or(eq(edge.srcId, id), eq(edge.dstId, id)), isNull(edge.validTo)))
+    .returning({ srcId: edge.srcId, dstId: edge.dstId });
 
   await tx.insert(nodeHistory).values({
     id: randomUUID(),
@@ -148,4 +150,37 @@ export async function deleteNode(tx: Tx, id: string, at: Date): Promise<void> {
   });
 
   await tx.delete(node).where(eq(node.id, id));
+  return closed.map((row) => (row.srcId === id ? row.dstId : row.srcId));
+}
+
+/**
+ * Delete each candidate a deletion or closed edge left with no current edge, so
+ * disconnected nodes never linger in the graph. Dated plans are kept: they stand on
+ * the timeline by themselves. Candidates already gone are skipped. An orphan has no
+ * edges to close, so one pass settles the graph. Returns the ids deleted.
+ */
+export async function sweepOrphans(tx: Tx, candidates: Iterable<string>, at: Date): Promise<string[]> {
+  const deleted: string[] = [];
+  for (const id of new Set(candidates)) {
+    const rows = await tx
+      .select({ kind: node.kind, occurredAt: node.occurredAt })
+      .from(node)
+      .where(eq(node.id, id))
+      .for("update");
+    const row = rows[0];
+    if (!row || (row.kind === "plan" && row.occurredAt !== null)) {
+      continue;
+    }
+    const current = await tx
+      .select({ id: edge.id })
+      .from(edge)
+      .where(and(or(eq(edge.srcId, id), eq(edge.dstId, id)), isNull(edge.validTo)))
+      .limit(1);
+    if (current.length > 0) {
+      continue;
+    }
+    await deleteNode(tx, id, at);
+    deleted.push(id);
+  }
+  return deleted;
 }

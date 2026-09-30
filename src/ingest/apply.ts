@@ -13,6 +13,7 @@ import {
   deleteNode,
   lockCurrentEdge,
   lockNode,
+  sweepOrphans,
   updateNode,
   type Tx,
 } from "../db/temporal.js";
@@ -39,11 +40,14 @@ export type ApplyResult = {
   counts: Record<Operation["op"], number>;
   /** Maps create_node temp_id → persisted uuid. */
   temp_ids: Record<string, string>;
+  /** Nodes deleted because the batch left them with no current edge. */
+  orphans: string[];
 };
 
 /**
  * Persist emit_operations results: create/update/close nodes and edges.
- * Materializes recurring plan series when create_node includes an RRULE.
+ * Materializes recurring plan series when create_node includes an RRULE, and
+ * sweeps nodes the batch's closes left with no current edge.
  */
 export async function applyOperations(opts: {
   db: Db;
@@ -61,6 +65,7 @@ export async function applyOperations(opts: {
     const applied: AppliedOperation[] = [];
     const closedNodes = new Set<string>();
     const closedEdges = new Set<string>();
+    const stranded: string[] = [];
     const at = new Date();
 
     for (const op of opts.operations) {
@@ -218,13 +223,13 @@ export async function applyOperations(opts: {
             .where(eq(node.id, op.node_id));
         }
         if (current.kind === "plan" && changesSchedule(op)) {
-          await rematerializeSeries({
+          stranded.push(...(await rematerializeSeries({
             tx,
             templateId: op.node_id,
             author: opts.author,
             at,
             config: opts.config,
-          });
+          })));
         }
         applied.push(op);
       }
@@ -255,7 +260,8 @@ export async function applyOperations(opts: {
 
     for (const op of opts.operations) {
       if (op.op === "close_edge") {
-        await closeEdge(tx, op.edge_id, at);
+        const closed = await closeEdge(tx, op.edge_id, at);
+        stranded.push(closed.srcId, closed.dstId);
         closedEdges.add(op.edge_id);
         applied.push(op);
       }
@@ -263,7 +269,7 @@ export async function applyOperations(opts: {
 
     for (const op of opts.operations) {
       if (op.op === "close_node") {
-        await deleteNode(tx, op.node_id, at);
+        stranded.push(...(await deleteNode(tx, op.node_id, at)));
         closedNodes.add(op.node_id);
         applied.push(op);
       }
@@ -276,6 +282,7 @@ export async function applyOperations(opts: {
     }
 
     await reverify(tx, referenced, closedNodes, closedEdges);
+    const orphans = await sweepOrphans(tx, stranded, at);
 
     const counts: Record<Operation["op"], number> = {
       create_node: 0,
@@ -293,6 +300,7 @@ export async function applyOperations(opts: {
       operations: applied,
       counts,
       temp_ids: Object.fromEntries(tempIds),
+      orphans,
     };
   });
 }
@@ -366,7 +374,8 @@ function changesSchedule(op: Extract<Operation, { op: "update_node" }>): boolean
 /**
  * Rebuild a series after its schedule changed: delete the template's existing instances
  * (history kept, edges closed) and materialize again from the template's current rule.
- * A template whose rule was cleared ends with no instances.
+ * A template whose rule was cleared ends with no instances. Returns the neighbors the
+ * deleted instances were linked to.
  */
 async function rematerializeSeries(opts: {
   tx: Tx;
@@ -374,17 +383,18 @@ async function rematerializeSeries(opts: {
   author: NodeAuthor;
   at: Date;
   config: Config;
-}): Promise<void> {
+}): Promise<string[]> {
   const instances = await opts.tx
     .select({ id: planDetail.nodeId })
     .from(planDetail)
     .where(eq(planDetail.seriesId, opts.templateId));
+  const stranded: string[] = [];
   for (const instance of instances) {
-    await deleteNode(opts.tx, instance.id, opts.at);
+    stranded.push(...(await deleteNode(opts.tx, instance.id, opts.at)));
   }
   const detail = await getPlanDetail(opts.tx, opts.templateId);
   if (!detail.recurrence) {
-    return;
+    return stranded;
   }
   const template = await getNode(opts.tx, opts.templateId);
   if (!template.embedding) {
@@ -404,6 +414,7 @@ async function rematerializeSeries(opts: {
     createdAt: opts.at,
     config: opts.config,
   });
+  return stranded;
 }
 
 async function embedForOps(dwar: DwarClient, db: Db, operations: Operation[]): Promise<Map<string, number[]>> {

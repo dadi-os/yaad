@@ -61,6 +61,17 @@ export const patchPlaceDetailBody = placeDetailBody.partial();
 
 export const idParam = z.object({ id: z.string().uuid() }).strict();
 
+/** `PATCH /nodes/:id` — a hand edit. `detail` is checked against the node's kind. */
+export const patchNodeBody = z
+  .object({
+    title: z.string().min(1).optional(),
+    body: z.string().nullable().optional(),
+    occurred_at: z.string().datetime({ offset: true }).nullable().optional(),
+    detail: z.record(z.unknown()).optional(),
+  })
+  .strict()
+  .refine((body) => Object.keys(body).length > 0, "at least one field is required");
+
 const ingestFields = {
   text: z.string().min(1),
   occurred_at: z.string().datetime({ offset: true }),

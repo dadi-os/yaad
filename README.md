@@ -84,7 +84,11 @@ A place is a real entity that recurs across events. Coordinates are optional. Ya
 
 ## Corrections
 
-Corrections go through `POST /ingest` as `update_node` / `close_node`. Changed fields write `node_history`. Edges use `valid_from`/`valid_to` and `close_edge`.
+Corrections go through `POST /ingest` as `update_node` / `close_node`, or by hand through `PATCH` / `DELETE /nodes/:id` (source `manual`). `PATCH` runs as one `update_node`, so it writes history, re-embeds, and rematerializes a series the same way. Changed fields write `node_history`. Edges use `valid_from`/`valid_to` and `close_edge`.
+
+## Orphans
+
+A node left with no current edge by a delete, a `close_edge`, or a series rematerialization is deleted in the same transaction (with a `deleted` history row). Dated plans are kept: they stand on the timeline alone. `POST /ingest` and `DELETE /nodes/:id` return the swept ids as `orphans`. Nodes that were edgeless before the batch are not touched.
 
 ## Expiry
 
@@ -99,6 +103,8 @@ Observations may set `ttl_days`; expired nodes are filtered from recall/query/in
 | `POST` | `/recall` | graph retrieval anchored on a query, node ids, or filters |
 | `POST` | `/query` | deterministic structured lookup |
 | `GET` | `/nodes/:id` | node, detail, current edges |
+| `PATCH` | `/nodes/:id` | hand edit: `{ title?, body?, occurred_at?, detail? }`, at least one; returns the node |
+| `DELETE` | `/nodes/:id` | delete plus orphan sweep; returns `{ id, orphans }` |
 | `GET` | `/nodes/:id/history` | correction log |
 | `POST` | `/history/search` | semantic search over `node_history` |
 | `POST` | `/graph` | bounded live subgraph for the Memory network view |
