@@ -21,6 +21,8 @@ export type PersonDetail = {
 
 export type PlanDetail = {
   end_at: string | null;
+  /** Date without a time of day: occurred_at and end_at sit at local midnight of their dates. */
+  all_day: boolean;
   status: PlanStatus;
   /** RRULE string when this plan is a recurrence template; null on instances. */
   recurrence: string | null;
@@ -70,5 +72,26 @@ export type NodeHistoryRecord = {
   old_value: string | null;
   new_value: string | null;
   changed_at: string;
+  /** Who made this change, which may differ from who created the node. */
   source: NodeSource;
+  /** Hath agent that made this change; null unless source is agent. */
+  agent_id: string | null;
+};
+
+/** Why `GET /lint` flagged nodes; each rule is a pattern past audits found wrong. */
+export type LintRule =
+  | "status_snapshot"
+  | "working_note"
+  | "noon_placeholder"
+  | "dated_hub"
+  | "duplicate"
+  | "unaliased_person";
+
+/** One `GET /lint` finding: the nodes it concerns and what to check. Lint never changes the graph. */
+export type LintFinding = {
+  rule: LintRule;
+  node_ids: string[];
+  /** Title of the (first) node, for reading the report without a lookup. */
+  title: string;
+  note: string;
 };

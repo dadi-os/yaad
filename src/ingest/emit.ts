@@ -15,21 +15,41 @@ export function loadExtractionPrompt(serviceRoot: string): string {
 }
 
 /**
+ * `iso` rewritten in the box's local zone with its offset (`2026-09-30T20:06:19-04:00`).
+ * Callers send UTC; extraction reads local times in the utterance against this offset.
+ * The process runs in the box's zone (`TZ`), so local is the box's.
+ */
+function localIso(iso: string): string {
+  const at = new Date(iso);
+  const pad = (value: number) => String(Math.abs(value)).padStart(2, "0");
+  const offset = -at.getTimezoneOffset();
+  const sign = offset >= 0 ? "+" : "-";
+  return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}T${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}${sign}${pad(Math.trunc(offset / 60))}:${pad(offset % 60)}`;
+}
+
+/** Told to extraction on its second pass, after its first pass created lookalikes of nodes it had not been shown. */
+const RECHECK_NOTE =
+  "A first pass on this utterance created nodes that look like existing ones it had not been shown. Those nodes are now in candidates: reuse or update them instead of creating a second copy.";
+
+/**
  * Run one reasoning turn that must call `emit_operations` exactly once.
  * Rejects non-tool_use stops or wrong tool call counts.
  */
 export async function emitOperations(opts: {
   dwar: DwarClient;
-  config: Config;
+  config: Pick<Config, "serviceRoot">;
   occurredAt: string;
   text: string;
   candidates: CandidateState;
+  /** This is the second pass, with lookalikes the first pass missed added to candidates. */
+  recheck: boolean;
 }): Promise<Operation[]> {
   const system = loadExtractionPrompt(opts.config.serviceRoot);
   const user = JSON.stringify({
-    occurred_at: opts.occurredAt,
+    occurred_at: localIso(opts.occurredAt),
     text: opts.text,
     candidates: opts.candidates,
+    ...(opts.recheck ? { recheck: RECHECK_NOTE } : {}),
   });
   const response = await opts.dwar.reason({
     system,

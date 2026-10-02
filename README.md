@@ -22,6 +22,7 @@ yaad/
     routers/v1/   HTTP routes + schemas
     types/        domain types
   test/           Node test runner suites
+  evals/          extraction eval cases from past mistakes + runner
   drizzle/        migrations
   prompts/        extraction prompt
   config.toml
@@ -29,7 +30,7 @@ yaad/
 
 ## Config vs env
 
-`config.toml` (checked in): recall weights, ingest thresholds, HNSW, Dwar timeout/retry, page and graph sizes, plan recurrence horizon and time zone.
+`config.toml` (checked in, baked into the image): recall weights, ingest thresholds (including `segment_limit` and `segment_candidate_limit`, the per-line candidate search), HNSW, Dwar timeout/retry, page and graph sizes, plan recurrence horizon. Every key is required; a missing one fails startup.
 
 Topology is hardcoded in `src/constants.ts` (host, port, log level, `DWAR_BASE_URL`).
 
@@ -46,6 +47,8 @@ docker compose run --rm yaad npm test
 
 Source is bind-mounted; edits restart in place. Start the full stack when Yaad needs Dwar.
 
+Extraction evals run the current `prompts/extraction.md` through Dwar on cases taken from real ingests that went wrong, and write nothing. They need Dwar reachable at its mesh address and the box's `TZ`: `TZ=America/New_York npm run eval:extraction -- --runs=3`. Run them before shipping a prompt change, and add a case to `evals/extraction-cases.json` for every new kind of mistake an audit finds.
+
 ## CI / CD
 
 | Workflow | When | What |
@@ -57,7 +60,7 @@ Source is bind-mounted; edits restart in place. Start the full stack when Yaad n
 
 Logs follow the nas JSON contract (`service=yaad`, request summary with `request_id` / `duration_ms`, errors with `code`). Default Fastify access logging is off.
 
-HTTP errors: `{ "error": { "type": "<code>", "message": "..." } }`. Shared infra codes include `invalid_request`, `not_found`, `upstream_unreachable`, `internal_error`. Domain codes include `conflict`, `dwar`, `dimension_mismatch`, `extraction_failed`. See nas README for the full shared catalog.
+HTTP errors: `{ "error": { "type": "<code>", "message": "..." } }`. Shared infra codes include `invalid_request`, `not_found`, `upstream_unreachable`, `internal_error`. Domain codes include `conflict`, `dwar`, `dimension_mismatch`, `extraction_failed`, `duplicate_node` (a create repeats a live node's normalized title and, for a plan, its time within an hour). See nas README for the full shared catalog.
 
 ## Node kinds
 
@@ -84,7 +87,7 @@ A place is a real entity that recurs across events. Coordinates are optional. Ya
 
 ## Corrections
 
-Corrections go through `POST /ingest` as `update_node` / `close_node`, or by hand through `PATCH` / `DELETE /nodes/:id` (source `manual`). `PATCH` runs as one `update_node`, so it writes history, re-embeds, and rematerializes a series the same way. Changed fields write `node_history`. Edges use `valid_from`/`valid_to` and `close_edge`.
+Corrections go through `POST /ingest` as `update_node` / `close_node`, or by hand (source `manual`) through `POST /nodes`, `PATCH` / `DELETE /nodes/:id`, `POST /edges`, and `POST /edges/:id/close`. Each hand edit runs as one validated operation through ingest's apply path, so it writes history, re-embeds, anchors all-day plans, and rematerializes a series the same way; `POST /nodes` is rejected as `duplicate_node` like an ingest create. `PATCH` also takes `ttl_days` (memory and plan only) to set expiry from now, or null to clear it. Changed fields write `node_history`, attributed to whoever made the change (`source`, and `agent_id` for an agent), while the node keeps its creator's. Edges use `valid_from`/`valid_to`; to change one, close it and create its replacement.
 
 ## Orphans
 
@@ -103,11 +106,15 @@ Observations may set `ttl_days`; expired nodes are filtered from recall/query/in
 | `POST` | `/recall` | graph retrieval anchored on a query, node ids, or filters |
 | `POST` | `/query` | deterministic structured lookup |
 | `GET` | `/nodes/:id` | node, detail, current edges |
-| `PATCH` | `/nodes/:id` | hand edit: `{ title?, body?, occurred_at?, detail? }`, at least one; returns the node |
+| `POST` | `/nodes` | hand-made node: `{ kind, title, body?, occurred_at?, ttl_days?, detail? }`; 201 with the node |
+| `PATCH` | `/nodes/:id` | hand edit: `{ title?, body?, occurred_at?, ttl_days?, detail? }`, at least one; returns the node |
 | `DELETE` | `/nodes/:id` | delete plus orphan sweep; returns `{ id, orphans }` |
 | `GET` | `/nodes/:id/history` | correction log |
 | `POST` | `/history/search` | semantic search over `node_history` |
 | `POST` | `/graph` | bounded live subgraph for the Memory network view |
+| `POST` | `/edges` | hand-drawn edge: `{ src_id, dst_id, type (UPPER_SNAKE_CASE), properties?, confidence }`; 201 with the edge |
+| `POST` | `/edges/:id/close` | close a current edge plus orphan sweep; returns `{ id, orphans }` |
+| `GET` | `/lint` | read-only report of suspicious live nodes; see Lint |
 
 Unknown request fields are a 422.
 
@@ -121,7 +128,9 @@ Body: `{ kind?, name?, occurred_from?, occurred_to?, status?, limit?, offset? }`
 
 ## Ingest
 
-`POST /ingest` takes `{ text, occurred_at, participant_ids?, source }`, plus `agent_id` (kebab-case, required) when `source` is `agent`; `source: "ingest"` takes no `agent_id`. Every node the batch creates records that `agent_id`, so an agent's writes can be traced and corrected. Pipeline: embed → assemble candidates in code → Dwar reasoning with `emit_operations` → validate batch → apply in one transaction. Concurrent modification is 409.
+`POST /ingest` takes `{ text, occurred_at, participant_ids?, source }`, plus `agent_id` (kebab-case, required) when `source` is `agent`; `source: "ingest"` takes no `agent_id`. Every node the batch creates records that `agent_id`, so an agent's writes can be traced and corrected. Pipeline: embed the text and each of its lines or sentences (up to `ingest.segment_limit`) → assemble candidates in code (nearest live nodes to the whole text and to each segment, every person named by title, alias, or first or last name as a whole word, pinned participants) → Dwar reasoning with `emit_operations`, its `occurred_at` rewritten in the box's local offset → when a create resembles a live node extraction was not shown (same normalized title, or a plan within 12 hours), extraction runs once more with those nodes added and a `recheck` note → validate the batch (structure, then extraction guards: every `close_node` quotes its `evidence` from the text, and no create duplicates a live node or another create, as `duplicate_node`) → apply in one transaction. Concurrent modification is 409.
+
+Plans with `detail.all_day: true` have a date but no time of day: Yaad moves their `occurred_at` and `end_at` to local midnight of their dates (the box's `TZ`), so an all-day plan never carries an invented time. Absent `all_day` means a timed plan.
 
 ### Operations
 
@@ -129,12 +138,16 @@ Body: `{ kind?, name?, occurred_from?, occurred_to?, status?, limit?, offset? }`
 | --- | --- |
 | `create_node` | `temp_id`, `kind`, `title`, `body?`, `occurred_at?`, `ttl_days?`, `detail?` |
 | `update_node` | `node_id`, `title?`, `body?`, `occurred_at?`, `ttl_days?`, `detail?` |
-| `close_node` | `node_id`, `reason` |
+| `close_node` | `node_id`, `reason`, `evidence` (the utterance words that retract it, quoted exactly) |
 | `create_edge` | `src`, `dst`, `type`, `properties?`, `confidence` |
 | `close_edge` | `edge_id`, `reason` |
 | `noop` | `reason` |
 
 The `emit_operations` tool schema has one `create_node` variant per kind: `memory` offers no `detail`, `plan` requires `detail.status`, and `person`/`place` offer only their own detail keys.
+
+## Lint
+
+`GET /lint` returns `{ findings: [{ rule, node_ids, title, note }] }` for live nodes that match what past audits found wrong: `status_snapshot` (as-of / not-yet wording on a memory that never expires), `working_note` (paths, branches, credentials, site quirks), `noon_placeholder` (a timed plan at exactly 12:00 local), `dated_hub` (a hub with three or more facets or items that carries a date), `duplicate` (same kind and normalized title, plans in the same hour), and `unaliased_person` (a person whose first name is not an alias). It never changes the graph.
 
 ## Recall
 

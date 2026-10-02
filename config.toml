@@ -32,6 +32,12 @@ backoff_seconds = [0.5, 1.0, 2.0]
 candidate_similarity_floor = 0.35
 # Cap on ANN candidates after the floor. Raise for more context; lower to keep the prompt small.
 candidate_limit = 20
+# Lines and sentences searched one by one, so every item in a long multi-topic utterance
+# finds what is already stored about it. Longer texts are merged evenly down to this many.
+segment_limit = 12
+# ANN candidates per segment, on top of candidate_limit. Raise if items in long utterances
+# still get re-created; lower to keep the prompt small.
+segment_candidate_limit = 5
 # Cap on current edges attached to candidates. Raise if the model keeps recreating known relationships.
 edge_context_limit = 50
 

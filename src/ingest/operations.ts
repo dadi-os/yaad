@@ -37,11 +37,13 @@ const updateNodeOp = z
   })
   .strict();
 
+/** `evidence` quotes the utterance words that retract or contradict the node; Yaad checks the quote. */
 const closeNodeOp = z
   .object({
     op: z.literal("close_node"),
     node_id: z.string().uuid(),
     reason: z.string().min(1),
+    evidence: z.string().min(1),
   })
   .strict();
 
@@ -154,6 +156,7 @@ export const emitOperationsToolSchema = {
                 required: ["status"],
                 properties: {
                   end_at: nullableString,
+                  all_day: { type: "boolean" },
                   status: { type: "string", enum: ["idea", "tentative", "confirmed"] },
                   recurrence: nullableString,
                 },
@@ -195,11 +198,12 @@ export const emitOperationsToolSchema = {
           {
             type: "object",
             additionalProperties: false,
-            required: ["op", "node_id", "reason"],
+            required: ["op", "node_id", "reason", "evidence"],
             properties: {
               op: { const: "close_node" },
               node_id: { type: "string" },
               reason: { type: "string" },
+              evidence: { type: "string" },
             },
           },
           {

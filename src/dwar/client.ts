@@ -57,8 +57,11 @@ export type DwarClient = {
   }) => Promise<DwarChatResponse>;
 };
 
+/** The settings the Dwar client reads; process config satisfies it, and so does a bare config.toml. */
+export type DwarConfig = Pick<Config, "dwar" | "embedding">;
+
 /** Build a retrying axios client pointed at `DWAR_BASE_URL`. */
-export function createDwarClient(config: Config): DwarClient {
+export function createDwarClient(config: DwarConfig): DwarClient {
   const http: AxiosInstance = axios.create({
     baseURL: DWAR_BASE_URL,
     timeout: config.dwar.timeout_seconds * 1000,
@@ -135,7 +138,7 @@ export function createDwarClient(config: Config): DwarClient {
   };
 }
 
-async function withRetry(config: Config, fn: () => Promise<unknown>): Promise<unknown> {
+async function withRetry(config: DwarConfig, fn: () => Promise<unknown>): Promise<unknown> {
   const { attempts, backoff_seconds: backoff } = config.dwar;
   let lastError: unknown;
   for (let attempt = 0; attempt < attempts; attempt++) {

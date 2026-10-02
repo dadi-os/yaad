@@ -46,8 +46,9 @@ export type ApplyResult = {
 
 /**
  * Persist emit_operations results: create/update/close nodes and edges.
- * Materializes recurring plan series when create_node includes an RRULE, and
- * sweeps nodes the batch's closes left with no current edge.
+ * All-day plans are first moved to local midnight of their dates, recurring plan
+ * series are materialized when create_node includes an RRULE, and nodes the batch's
+ * closes left with no current edge are swept.
  */
 export async function applyOperations(opts: {
   db: Db;
@@ -56,8 +57,9 @@ export async function applyOperations(opts: {
   author: NodeAuthor;
   config: Config;
 }): Promise<ApplyResult> {
-  const embeddings = await embedForOps(opts.dwar, opts.db, opts.operations);
-  const referenced = referencedIds(opts.operations);
+  const operations = await anchorAllDayPlans(opts.db, opts.operations);
+  const embeddings = await embedForOps(opts.dwar, opts.db, operations);
+  const referenced = referencedIds(operations);
 
   return opts.db.transaction(async (tx) => {
     await lockReferenced(tx, referenced);
@@ -68,7 +70,7 @@ export async function applyOperations(opts: {
     const stranded: string[] = [];
     const at = new Date();
 
-    for (const op of opts.operations) {
+    for (const op of operations) {
       if (op.op === "create_node") {
         const id = randomUUID();
         const embedding = embeddings.get(`create:${op.temp_id}`);
@@ -107,6 +109,7 @@ export async function applyOperations(opts: {
           await tx.insert(planDetail).values({
             nodeId: id,
             endAt,
+            allDay: detail.all_day ?? false,
             status: detail.status,
             recurrence,
             seriesId: null,
@@ -120,6 +123,7 @@ export async function applyOperations(opts: {
               embedding,
               author: opts.author,
               status: detail.status,
+              allDay: detail.all_day ?? false,
               recurrence,
               start: occurredAt,
               endAt,
@@ -141,7 +145,7 @@ export async function applyOperations(opts: {
       }
     }
 
-    for (const op of opts.operations) {
+    for (const op of operations) {
       if (op.op === "update_node") {
         const current = await getNode(tx, op.node_id);
         if (op.detail !== undefined) {
@@ -162,6 +166,7 @@ export async function applyOperations(opts: {
                 ...(detail.end_at !== undefined
                   ? { endAt: detail.end_at ? new Date(detail.end_at) : null }
                   : {}),
+                ...(detail.all_day !== undefined ? { allDay: detail.all_day } : {}),
                 ...(detail.status !== undefined ? { status: detail.status } : {}),
                 ...(detail.recurrence !== undefined ? { recurrence: detail.recurrence } : {}),
               })
@@ -212,6 +217,7 @@ export async function applyOperations(opts: {
             },
             historyEmbeddings,
             at,
+            opts.author,
           );
         }
         if (op.ttl_days !== undefined) {
@@ -236,7 +242,7 @@ export async function applyOperations(opts: {
       }
     }
 
-    for (const op of opts.operations) {
+    for (const op of operations) {
       if (op.op === "create_edge") {
         const srcId = resolve(op.src, tempIds);
         const dstId = resolve(op.dst, tempIds);
@@ -259,7 +265,7 @@ export async function applyOperations(opts: {
       }
     }
 
-    for (const op of opts.operations) {
+    for (const op of operations) {
       if (op.op === "close_edge") {
         const closed = await closeEdge(tx, op.edge_id, at);
         stranded.push(closed.srcId, closed.dstId);
@@ -268,23 +274,23 @@ export async function applyOperations(opts: {
       }
     }
 
-    for (const op of opts.operations) {
+    for (const op of operations) {
       if (op.op === "close_node") {
-        const neighbors = await deleteNode(tx, op.node_id, at);
+        const neighbors = await deleteNode(tx, op.node_id, at, opts.author);
         stranded.push(...neighbors);
         closedNodes.add(op.node_id);
         applied.push(op);
       }
     }
 
-    for (const op of opts.operations) {
+    for (const op of operations) {
       if (op.op === "noop") {
         applied.push(op);
       }
     }
 
     await reverify(tx, referenced, closedNodes, closedEdges);
-    const orphans = await sweepOrphans(tx, stranded, at);
+    const orphans = await sweepOrphans(tx, stranded, at, opts.author);
 
     const counts: Record<Operation["op"], number> = {
       create_node: 0,
@@ -315,6 +321,7 @@ async function materializeSeries(opts: {
   embedding: number[];
   author: NodeAuthor;
   status: string;
+  allDay: boolean;
   recurrence: string;
   start: Date | null;
   endAt: Date | null;
@@ -356,6 +363,7 @@ async function materializeSeries(opts: {
     await opts.tx.insert(planDetail).values({
       nodeId: id,
       endAt: instance.endAt,
+      allDay: opts.allDay,
       status: opts.status,
       recurrence: null,
       seriesId: opts.templateId,
@@ -370,7 +378,7 @@ function changesSchedule(op: Extract<Operation, { op: "update_node" }>): boolean
   if (op.detail === null || typeof op.detail !== "object") {
     return false;
   }
-  return "recurrence" in op.detail || "end_at" in op.detail;
+  return "recurrence" in op.detail || "end_at" in op.detail || "all_day" in op.detail;
 }
 
 /**
@@ -392,7 +400,7 @@ async function rematerializeSeries(opts: {
     .where(eq(planDetail.seriesId, opts.templateId));
   const stranded: string[] = [];
   for (const instance of instances) {
-    const neighbors = await deleteNode(opts.tx, instance.id, opts.at);
+    const neighbors = await deleteNode(opts.tx, instance.id, opts.at, opts.author);
     stranded.push(...neighbors);
   }
   const detail = await getPlanDetail(opts.tx, opts.templateId);
@@ -411,6 +419,7 @@ async function rematerializeSeries(opts: {
     embedding: template.embedding,
     author: opts.author,
     status: detail.status,
+    allDay: detail.allDay,
     recurrence: detail.recurrence,
     start: template.occurredAt,
     endAt: detail.endAt,
@@ -418,6 +427,78 @@ async function rematerializeSeries(opts: {
     config: opts.config,
   });
   return stranded;
+}
+
+/** Local midnight of `instant`'s date. The process runs in the box's zone (`TZ`), so local is the box's. */
+function localMidnight(instant: Date): Date {
+  const day = new Date(instant);
+  day.setHours(0, 0, 0, 0);
+  return day;
+}
+
+/** `iso` moved to local midnight of its date, in the ISO form operations carry. */
+function midnightIso(iso: string): string {
+  return localMidnight(new Date(iso)).toISOString();
+}
+
+/**
+ * The batch with every all-day plan's occurred_at and end_at moved to local midnight of
+ * their dates, so an all-day plan never carries an invented time of day. An update that
+ * turns all_day on also moves the plan's existing start and end; one that leaves it on
+ * moves whichever of them it sets. Everything else passes through unchanged.
+ */
+async function anchorAllDayPlans(db: Db, operations: Operation[]): Promise<Operation[]> {
+  const anchored: Operation[] = [];
+  for (const op of operations) {
+    if (op.op === "create_node" && op.kind === "plan") {
+      const detail = parse(planDetailBody, op.detail ?? {});
+      if (detail.all_day === true) {
+        anchored.push({
+          ...op,
+          ...(op.occurred_at ? { occurred_at: midnightIso(op.occurred_at) } : {}),
+          detail: { ...detail, ...(detail.end_at ? { end_at: midnightIso(detail.end_at) } : {}) },
+        });
+        continue;
+      }
+    }
+    if (op.op === "update_node") {
+      const current = await getNode(db, op.node_id);
+      if (current.kind === "plan") {
+        const patch = op.detail !== undefined ? parse(patchPlanDetailBody, op.detail) : {};
+        const stored = await getPlanDetail(db, op.node_id);
+        if (patch.all_day ?? stored.allDay) {
+          const turningOn = patch.all_day === true && !stored.allDay;
+          const occurredAt =
+            op.occurred_at !== undefined
+              ? op.occurred_at
+              : turningOn && current.occurredAt
+                ? current.occurredAt.toISOString()
+                : undefined;
+          const endAt =
+            patch.end_at !== undefined
+              ? patch.end_at
+              : turningOn && stored.endAt
+                ? stored.endAt.toISOString()
+                : undefined;
+          anchored.push({
+            ...op,
+            ...(occurredAt !== undefined ? { occurred_at: occurredAt ? midnightIso(occurredAt) : null } : {}),
+            ...(op.detail !== undefined || endAt !== undefined
+              ? {
+                  detail: {
+                    ...patch,
+                    ...(endAt !== undefined ? { end_at: endAt ? midnightIso(endAt) : null } : {}),
+                  },
+                }
+              : {}),
+          });
+          continue;
+        }
+      }
+    }
+    anchored.push(op);
+  }
+  return anchored;
 }
 
 async function embedForOps(dwar: DwarClient, db: Db, operations: Operation[]): Promise<Map<string, number[]>> {

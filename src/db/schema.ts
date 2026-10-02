@@ -1,4 +1,5 @@
 import {
+  boolean,
   check,
   date,
   doublePrecision,
@@ -96,6 +97,11 @@ export const planDetail = pgTable(
       .primaryKey()
       .references(() => node.id, { onDelete: "cascade" }),
     endAt: timestamptz("end_at"),
+    /**
+     * The plan has a date but no time of day (an all-day event, or a deadline whose time
+     * was never stated). Its occurred_at and end_at sit at local midnight of their dates.
+     */
+    allDay: boolean("all_day").notNull().default(false),
     status: text("status").notNull(),
     recurrence: text("recurrence"),
     seriesId: uuid("series_id"),
@@ -124,11 +130,15 @@ export const nodeHistory = pgTable(
     newValue: text("new_value"),
     embedding: vector("embedding", { dimensions: embeddingDimension }),
     changedAt: timestamptz("changed_at").notNull().defaultNow(),
+    /** Who made this change, which may differ from who created the node. */
     source: text("source").notNull(),
+    /** Hath agent that made this change; only set when source is agent. */
+    agentId: text("agent_id"),
   },
   (table) => [
     check("node_history_field_check", sql`${table.field} IN ('title', 'body', 'occurred_at', 'deleted')`),
     check("node_history_source_check", sql`${table.source} IN ('manual', 'agent', 'ingest')`),
+    check("node_history_agent_id_check", sql`${table.agentId} IS NULL OR ${table.source} = 'agent'`),
     index("node_history_node_id_idx").on(table.nodeId),
     index("node_history_embedding_hnsw").using("hnsw", table.embedding.op("vector_cosine_ops")),
   ],

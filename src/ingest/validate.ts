@@ -1,9 +1,14 @@
-/** Pre-apply checks for emit_operations: temp_ids, details, TTL, endpoints. */
+/**
+ * Pre-apply checks. {@link validateOperations} is structural and runs on every batch
+ * (ingest and hand edits); {@link validateExtraction} adds the guards that only apply to
+ * what extraction emitted from an utterance.
+ */
 
 import type { Db } from "../db/client.js";
-import { getEdge, getNode } from "../db/read.js";
+import { getEdge, getNode, getPlanDetail } from "../db/read.js";
 import { YaadError } from "../errors.js";
 import { parse } from "../routers/v1/schemas.js";
+import { rejectDuplicates } from "./duplicates.js";
 import {
   patchPersonDetailBody,
   patchPlaceDetailBody,
@@ -14,9 +19,13 @@ import {
   type Operation,
 } from "./operations.js";
 
+/** Shortest `close_node` evidence quote accepted, so a stray word cannot stand in for a retraction. */
+const MIN_EVIDENCE_CHARS = 8;
+
 /**
- * Validate op batch before apply: unique temp_ids, kind-appropriate details,
- * TTL only on memory/plan, and edge endpoints that resolve to temp or live nodes.
+ * Validate op batch before apply: unique temp_ids, kind-appropriate details, all-day
+ * plans that have a date, TTL only on memory/plan, and edge endpoints that resolve to
+ * temp or live nodes.
  */
 export async function validateOperations(opts: {
   db: Db;
@@ -37,7 +46,10 @@ export async function validateOperations(opts: {
         parse(personDetailBody, op.detail ?? {});
       }
       if (op.kind === "plan") {
-        parse(planDetailBody, op.detail ?? {});
+        const detail = parse(planDetailBody, op.detail ?? {});
+        if (detail.all_day === true && !op.occurred_at) {
+          throw new YaadError(422, "invalid_request", `create_node ${op.temp_id}: an all-day plan needs occurred_at`);
+        }
       }
       if (op.kind === "place") {
         parse(placeDetailBody, op.detail ?? {});
@@ -63,11 +75,16 @@ export async function validateOperations(opts: {
         if (current.kind === "person") {
           parse(patchPersonDetailBody, op.detail);
         }
-        if (current.kind === "plan") {
-          parse(patchPlanDetailBody, op.detail);
-        }
         if (current.kind === "place") {
           parse(patchPlaceDetailBody, op.detail);
+        }
+      }
+      if (current.kind === "plan") {
+        const patch = op.detail !== undefined ? parse(patchPlanDetailBody, op.detail) : {};
+        const allDay = patch.all_day ?? (await getPlanDetail(opts.db, op.node_id)).allDay;
+        const occurredAt = op.occurred_at !== undefined ? op.occurred_at : current.occurredAt;
+        if (allDay && !occurredAt) {
+          throw new YaadError(422, "invalid_request", `update_node ${op.node_id}: an all-day plan needs occurred_at`);
         }
       }
       rejectTtlOnEntity(current.kind, op.ttl_days, `update_node ${op.node_id}`);
@@ -86,6 +103,45 @@ export async function validateOperations(opts: {
       }
     }
   }
+}
+
+/**
+ * Checks on a batch extraction emitted for `text`: every `close_node` quotes the words
+ * in the utterance that retract or contradict the node (a fact the utterance merely
+ * leaves out is not a retraction), and no create duplicates a live node or another
+ * create in the batch.
+ */
+export async function validateExtraction(opts: {
+  db: Db;
+  operations: Operation[];
+  text: string;
+}): Promise<void> {
+  const haystack = normalizeQuote(opts.text);
+  for (const op of opts.operations) {
+    if (op.op !== "close_node") {
+      continue;
+    }
+    const quote = normalizeQuote(op.evidence);
+    if (quote.length < MIN_EVIDENCE_CHARS || !haystack.includes(quote)) {
+      throw new YaadError(
+        422,
+        "invalid_request",
+        `close_node ${op.node_id}: evidence must quote the utterance words that retract it, got "${op.evidence}"`,
+      );
+    }
+  }
+  await rejectDuplicates(opts.db, opts.operations);
+}
+
+/** Lower-cased text with curly quotes, dashes, and whitespace folded, so a faithful quote matches. */
+function normalizeQuote(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201c\u201d]/g, '"')
+    .replace(/[\u2013\u2014]/g, "-")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function rejectTtlOnEntity(

@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { edge, node, nodeHistory, type EdgeRow, type NodeRow } from "./schema.js";
 import { YaadError } from "../errors.js";
 import { sameInstant } from "../serialize.js";
-import type { NodeSource } from "../types/domain.js";
+import type { NodeAuthor } from "../types/domain.js";
 import type { Db } from "./client.js";
 
 export type Tx = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -12,7 +12,6 @@ export type NodePatch = {
   title?: string;
   body?: string | null;
   occurredAt?: Date | null;
-  source?: NodeSource;
   embedding?: number[] | null;
 };
 
@@ -56,8 +55,9 @@ export async function closeEdge(tx: Tx, id: string, at: Date): Promise<EdgeRow> 
 }
 
 /**
- * Update a node in place and append one node_history row per changed field.
- * Callers compute history embeddings before the transaction and pass them in.
+ * Update a node in place and append one node_history row per changed field, attributed
+ * to `author` (the node's own source and agent_id stay its creator's). Callers compute
+ * history embeddings before the transaction and pass them in.
  */
 export async function updateNode(
   tx: Tx,
@@ -65,13 +65,13 @@ export async function updateNode(
   patch: NodePatch,
   historyEmbeddings: Map<string, number[]>,
   at: Date,
+  author: NodeAuthor,
 ): Promise<NodeRow> {
   const current = await lockNode(tx, id);
 
   const nextTitle = patch.title ?? current.title;
   const nextBody = patch.body !== undefined ? patch.body : current.body;
   const nextOccurredAt = patch.occurredAt !== undefined ? patch.occurredAt : current.occurredAt;
-  const nextSource = patch.source ?? current.source;
 
   const historyRows: Array<{
     field: "title" | "body" | "occurred_at";
@@ -98,7 +98,6 @@ export async function updateNode(
       title: nextTitle,
       body: nextBody,
       occurredAt: nextOccurredAt,
-      source: nextSource,
       embedding: patch.embedding !== undefined ? patch.embedding : current.embedding,
       updatedAt: at,
     })
@@ -119,7 +118,8 @@ export async function updateNode(
       newValue: row.newValue,
       embedding: historyEmbeddings.get(key) ?? null,
       changedAt: at,
-      source: nextSource,
+      source: author.source,
+      agentId: author.agentId,
     });
   }
 
@@ -127,11 +127,11 @@ export async function updateNode(
 }
 
 /**
- * Hard-delete a node, log a deleted history row, and soft-close open edges
- * touching it so edge history remains. Returns the neighbors those closed edges
- * led to, for {@link sweepOrphans}.
+ * Hard-delete a node, log a deleted history row attributed to `author`, and soft-close
+ * open edges touching it so edge history remains. Returns the neighbors those closed
+ * edges led to, for {@link sweepOrphans}.
  */
-export async function deleteNode(tx: Tx, id: string, at: Date): Promise<string[]> {
+export async function deleteNode(tx: Tx, id: string, at: Date, author: NodeAuthor): Promise<string[]> {
   const current = await lockNode(tx, id);
 
   const closed = await tx
@@ -148,7 +148,8 @@ export async function deleteNode(tx: Tx, id: string, at: Date): Promise<string[]
     newValue: null,
     embedding: null,
     changedAt: at,
-    source: current.source,
+    source: author.source,
+    agentId: author.agentId,
   });
 
   await tx.delete(node).where(eq(node.id, id));
@@ -159,9 +160,15 @@ export async function deleteNode(tx: Tx, id: string, at: Date): Promise<string[]
  * Delete each candidate a deletion or closed edge left with no current edge, so
  * disconnected nodes never linger in the graph. Dated plans are kept: they stand on
  * the timeline by themselves. Candidates already gone are skipped. An orphan has no
- * edges to close, so one pass settles the graph. Returns the ids deleted.
+ * edges to close, so one pass settles the graph. Deletions are attributed to `author`,
+ * whose change stranded them. Returns the ids deleted.
  */
-export async function sweepOrphans(tx: Tx, candidates: Iterable<string>, at: Date): Promise<string[]> {
+export async function sweepOrphans(
+  tx: Tx,
+  candidates: Iterable<string>,
+  at: Date,
+  author: NodeAuthor,
+): Promise<string[]> {
   const deleted: string[] = [];
   for (const id of new Set(candidates)) {
     const rows = await tx
@@ -181,7 +188,7 @@ export async function sweepOrphans(tx: Tx, candidates: Iterable<string>, at: Dat
     if (current.length > 0) {
       continue;
     }
-    await deleteNode(tx, id, at);
+    await deleteNode(tx, id, at, author);
     deleted.push(id);
   }
   return deleted;

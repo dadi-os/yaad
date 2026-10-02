@@ -21,11 +21,16 @@ export function testConfig(): Config {
 export function mockDwar(opts: {
   dimension: number;
   operations?: Operation[];
+  /** One operations list per extraction call, in order; overrides `operations`. */
+  rounds?: Operation[][];
+  /** Receives the user message of every extraction call. */
+  reasonUsers?: string[];
   embedAxis?: number;
   /** Map embed input text substrings to axis indices for semantic history search tests. */
   embedByText?: Array<{ match: string; axis: number }>;
 }): DwarClient {
   const axis = opts.embedAxis ?? 0;
+  let reasonCalls = 0;
   return {
     async embed(texts: string[]) {
       return texts.map((text) => {
@@ -39,8 +44,11 @@ export function mockDwar(opts: {
         return axisVector(opts.dimension, axis);
       });
     },
-    async reason(): Promise<DwarChatResponse> {
-      const operations = opts.operations ?? [{ op: "noop", reason: "nothing to store" }];
+    async reason(args): Promise<DwarChatResponse> {
+      opts.reasonUsers?.push(args.user);
+      const round = opts.rounds?.[reasonCalls];
+      reasonCalls += 1;
+      const operations = round ?? opts.operations ?? [{ op: "noop", reason: "nothing to store" }];
       return {
         stop_reason: "tool_use",
         content: [
@@ -128,6 +136,7 @@ export async function insertPlan(
     occurredAt: Date | null;
     endAt?: Date | null;
     status?: PlanStatus;
+    allDay?: boolean;
     recurrence?: string | null;
     seriesId?: string | null;
   },
@@ -148,6 +157,7 @@ export async function insertPlan(
   await db.insert(planDetail).values({
     nodeId: id,
     endAt: args.endAt ?? null,
+    allDay: args.allDay ?? false,
     status: args.status ?? "confirmed",
     recurrence: args.recurrence ?? null,
     seriesId: args.seriesId ?? null,

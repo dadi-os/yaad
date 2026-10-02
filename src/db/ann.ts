@@ -67,7 +67,7 @@ export async function searchNodeHistory(opts: {
       SELECT
         id, node_id AS "nodeId", field,
         old_value AS "oldValue", new_value AS "newValue",
-        embedding, changed_at AS "changedAt", source,
+        embedding, changed_at AS "changedAt", source, agent_id AS "agentId",
         (embedding <=> ${vec}::vector) AS distance
       FROM node_history
       WHERE embedding IS NOT NULL
@@ -85,6 +85,7 @@ export async function searchNodeHistory(opts: {
     embedding: row.embedding,
     changedAt: toDateRequired(row.changedAt),
     source: row.source,
+    agentId: row.agentId,
   }));
 }
 

@@ -91,6 +91,7 @@ export function toNodeHistoryRecord(row: NodeHistoryRow): NodeHistoryRecord {
     new_value: row.newValue,
     changed_at: row.changedAt.toISOString(),
     source: parseSource(row.source),
+    agent_id: row.agentId,
   };
 }
 
@@ -104,6 +105,7 @@ export function toPersonDetail(row: PersonDetailRow): PersonDetail {
 export function toPlanDetail(row: PlanDetailRow): PlanDetail {
   return {
     end_at: iso(row.endAt),
+    all_day: row.allDay,
     status: parseStatus(row.status),
     recurrence: row.recurrence,
     series_id: row.seriesId,

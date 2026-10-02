@@ -15,6 +15,13 @@
       "when": 1790551359292,
       "tag": "0001_node_agent_id",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1790966670742,
+      "tag": "0002_plan_all_day_history_agent",
+      "breakpoints": true
     }
   ]
 }

@@ -1,10 +1,10 @@
-/** Assemble ANN + name-match + participant context for Dwar extraction. */
+/** Assemble the context Dwar extraction sees: ANN over the whole text and each segment, people named in it, participants, and lookalikes. */
 
 import { inArray } from "drizzle-orm";
 import type { Config } from "../config.js";
 import type { Db, Sql } from "../db/client.js";
 import { annSearch } from "../db/ann.js";
-import { getCurrentPersons, getIncidentEdgesForIds, getNode } from "../db/read.js";
+import { getCurrentPersons, getIncidentEdgesForIds, getNode, getNodesByIds } from "../db/read.js";
 import {
   personDetail,
   placeDetail,
@@ -28,9 +28,57 @@ export type CandidateState = {
   edges: EdgeRecord[];
 };
 
+/** Shortest line or sentence searched on its own; shorter fragments carry too little to match. */
+const MIN_SEGMENT_CHARS = 12;
+
 /**
- * Build the candidate graph shown to extraction: similar live nodes, person
- * alias hits in the utterance text, and explicit participant ids.
+ * segmentsOf splits an utterance into its lines and sentences so each item in a long,
+ * multi-topic text gets its own nearest-neighbor search. Returns nothing for a single
+ * segment (the whole-text search already covers it) and merges neighbors evenly when
+ * there are more than `limit`.
+ */
+export function segmentsOf(text: string, limit: number): string[] {
+  const parts = text
+    .split(/\n+|(?<=[.!?;])\s+/)
+    .map((part) => part.trim())
+    .filter((part) => part.length >= MIN_SEGMENT_CHARS);
+  if (parts.length <= 1) {
+    return [];
+  }
+  if (parts.length <= limit) {
+    return parts;
+  }
+  const size = Math.ceil(parts.length / limit);
+  const merged: string[] = [];
+  for (let i = 0; i < parts.length; i += size) {
+    merged.push(parts.slice(i, i + size).join(" "));
+  }
+  return merged;
+}
+
+/**
+ * Names a person may be written as: their title, their aliases, and each capitalized word
+ * of the title at least three letters long (a first or last name). Agents write "Ankur",
+ * not "Ankur Desai", so the title alone would miss them.
+ */
+function personNames(title: string, aliases: string[]): string[] {
+  const words = title
+    .split(/\s+/)
+    .map((word) => word.replace(/[^\p{L}'-]/gu, ""))
+    .filter((word) => word.length >= 3 && /^\p{Lu}/u.test(word));
+  return [title, ...aliases, ...words].filter((name) => name.length >= 2);
+}
+
+/** True when `name` appears in `text` as a whole word or phrase, ignoring case. */
+function mentions(text: string, name: string): boolean {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`(?<![\\p{L}\\p{N}])${escaped}(?![\\p{L}\\p{N}])`, "iu").test(text);
+}
+
+/**
+ * Build the candidate graph shown to extraction: live nodes near the whole utterance and
+ * near each of its segments, every person named in the text, explicit participant ids,
+ * and `extraIds` (lookalikes found after a first extraction, see findLookalikes).
  */
 export async function assembleCandidates(opts: {
   db: Db;
@@ -38,29 +86,43 @@ export async function assembleCandidates(opts: {
   config: Config;
   text: string;
   embedding: number[];
+  /** One embedding per entry of segmentsOf(text), in the same order. */
+  segmentEmbeddings: number[][];
   participantIds: string[];
+  extraIds: string[];
 }): Promise<CandidateState> {
   const byId = new Map<string, NodeRow>();
 
-  const hits = await annSearch({
-    sql: opts.sql,
-    efSearch: opts.config.hnsw.ef_search,
-    embedding: opts.embedding,
-    limit: opts.config.ingest.candidate_limit,
-  });
-  for (const hit of hits) {
-    if (hit.similarity >= opts.config.ingest.candidate_similarity_floor) {
-      byId.set(hit.row.id, hit.row);
+  const searches = [
+    { embedding: opts.embedding, limit: opts.config.ingest.candidate_limit },
+    ...opts.segmentEmbeddings.map((embedding) => ({
+      embedding,
+      limit: opts.config.ingest.segment_candidate_limit,
+    })),
+  ];
+  for (const search of searches) {
+    const hits = await annSearch({
+      sql: opts.sql,
+      efSearch: opts.config.hnsw.ef_search,
+      embedding: search.embedding,
+      limit: search.limit,
+    });
+    for (const hit of hits) {
+      if (hit.similarity >= opts.config.ingest.candidate_similarity_floor) {
+        byId.set(hit.row.id, hit.row);
+      }
     }
   }
 
   const persons = await getCurrentPersons(opts.db);
-  const haystack = opts.text.toLowerCase();
   for (const person of persons) {
-    const names = [person.node.title, ...person.detail.aliases];
-    if (names.some((name) => name.length >= 2 && haystack.includes(name.toLowerCase()))) {
+    if (personNames(person.node.title, person.detail.aliases).some((name) => mentions(opts.text, name))) {
       byId.set(person.node.id, person.node);
     }
+  }
+
+  for (const row of await getNodesByIds(opts.db, opts.extraIds)) {
+    byId.set(row.id, row);
   }
 
   if (opts.participantIds.length > 0) {

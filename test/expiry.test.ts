@@ -395,7 +395,9 @@ test("assembleCandidates rejects expired participant_ids with 422", async () => 
         config,
         text: "hello",
         embedding: axisVector(dim, 0),
+        segmentEmbeddings: [],
         participantIds: [id],
+        extraIds: [],
       }),
     (err: unknown) => {
       assert.ok(err instanceof YaadError);

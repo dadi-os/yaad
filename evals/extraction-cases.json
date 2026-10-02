@@ -1,0 +1,843 @@
+{
+  "cases": [
+    {
+      "name": "cse300-report-repeats-stored-quizzes",
+      "finding": "D1, D2, S10, D5",
+      "occurred_at": "2026-09-30T20:06:19-04:00",
+      "text": "CSE 300 (Social, Ethical and Professional Issues in Computing, Fall 2026) course details as of Sep 30, 2026:\n\n- D2L Org Unit ID: 2676540. Kritik-based assignments on D2L only show a link to https://us.kritik.io with no inline prompt/rubric text — full assignment details must be fetched by logging into Kritik directly.\n- Kritik (us.kritik.io) requires its own separate login credentials for desaia11@msu.edu, distinct from MSU SSO/Okta/D2L credentials. These were added to Chaavi by Ankur around Sep 30, 2026.\n- Kritik Essay 2 stages: Milestone One (Create) due Sep 30, 2026 11:59pm EDT; Milestone Two (Evaluate) Oct 1 2:00am – Oct 9, 2026 11:59pm EDT; Milestone Three (Feedback) Oct 10 2:00am – Oct 13, 2026 11:59pm EDT; Grading finalized Oct 13, 2026 11:59pm EDT.\n- Essay 2 prompt topic: ethical implications of a healthcare company mandating generative AI for chart notes, patient-visit voice transcription (used for billing codes), and diagnosis assistance, in pursuit of a 20% patient volume increase. Required analysis: Utilitarianism and Deontology, word count 750–1,250 words (under 750 = auto 0), no student name allowed in submission, generative AI tools (ChatGPT, Grammarly, citation generators) explicitly BANNED by course policy for writing/outlining/rephrasing — a very important recurring compliance consideration for every essay in this course.\n- 4 D2L quizzes due Friday, Oct 2, 2026 11:59pm EDT: \"Ethical Considerations Creating Products and Services,\" \"Ethical Considerations for Data,\" \"Tools to Use in Ethical Decision-Making,\" \"Source Citations.\"\n- Gradebook snapshot as of Sep 29, 2026: Assignment Quizzes 11.44/35 (32.69%), Discussion Sessions 3.75/15 (Session 1 complete at 100%, Sessions 2-4 pending), Essays 0/35, Exams 0/15.\n- Standing org-wide policy (effective ~Sep 30, 2026): no agent may submit or finalize any coursework (quizzes, essays, discussion posts, peer evaluations) on any platform for any of Ankur's classes under any circumstances — all drafted/completed work must be delivered to Ankur for his personal review and manual submission.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "820f0ef7-2584-4800-a37e-11d55e599b2e",
+            "kind": "plan",
+            "title": "CSE 300: Social, Ethical and Professional Issues in Computing (Fall 2026)",
+            "occurred_at": null,
+            "detail": {
+              "end_at": null,
+              "all_day": false,
+              "status": "confirmed",
+              "recurrence": null,
+              "series_id": null
+            }
+          },
+          {
+            "id": "90b6ff8f-efe0-4450-9b18-462c13fd5b55",
+            "kind": "plan",
+            "title": "CSE 300 — Kritik Essay 2: Milestone One (Create) due",
+            "occurred_at": "2026-10-01T03:59:00.000Z",
+            "detail": {
+              "end_at": null,
+              "all_day": false,
+              "status": "confirmed",
+              "recurrence": null,
+              "series_id": null
+            }
+          },
+          {
+            "id": "25d94755-35c2-47e9-8642-336d1e0b9915",
+            "kind": "plan",
+            "title": "CSE 300 — Quiz: Ethical Considerations Creating Products and Services due",
+            "occurred_at": "2026-10-03T03:59:00.000Z",
+            "detail": {
+              "end_at": null,
+              "all_day": false,
+              "status": "confirmed",
+              "recurrence": null,
+              "series_id": null
+            }
+          },
+          {
+            "id": "3b0252e2-1044-43c3-83ee-aba8c428cd62",
+            "kind": "plan",
+            "title": "CSE 300 — Quiz: Ethical Considerations for Data due",
+            "occurred_at": "2026-10-03T03:59:00.000Z",
+            "detail": {
+              "end_at": null,
+              "all_day": false,
+              "status": "confirmed",
+              "recurrence": null,
+              "series_id": null
+            }
+          },
+          {
+            "id": "fae9607a-bc94-4898-a497-5773079163c7",
+            "kind": "plan",
+            "title": "CSE 300 — Quiz: Tools to Use in Ethical Decision-Making due",
+            "occurred_at": "2026-10-03T03:59:00.000Z",
+            "detail": {
+              "end_at": null,
+              "all_day": false,
+              "status": "confirmed",
+              "recurrence": null,
+              "series_id": null
+            }
+          },
+          {
+            "id": "233366e9-71b2-4561-b525-e46d53b5fd4c",
+            "kind": "plan",
+            "title": "CSE 300 — Quiz: Source Citations due",
+            "occurred_at": "2026-10-03T03:59:00.000Z",
+            "detail": {
+              "end_at": null,
+              "all_day": false,
+              "status": "confirmed",
+              "recurrence": null,
+              "series_id": null
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "00000001-0000-4000-8000-000000000001",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "820f0ef7-2584-4800-a37e-11d55e599b2e",
+            "type": "ENROLLED_IN",
+            "properties": {
+              "status": "enrolled"
+            }
+          },
+          {
+            "id": "00000002-0000-4000-8000-000000000002",
+            "src_id": "820f0ef7-2584-4800-a37e-11d55e599b2e",
+            "dst_id": "25d94755-35c2-47e9-8642-336d1e0b9915",
+            "type": "HAS_ITEM",
+            "properties": {
+              "item": "quiz"
+            }
+          },
+          {
+            "id": "00000003-0000-4000-8000-000000000003",
+            "src_id": "820f0ef7-2584-4800-a37e-11d55e599b2e",
+            "dst_id": "3b0252e2-1044-43c3-83ee-aba8c428cd62",
+            "type": "HAS_ITEM",
+            "properties": {
+              "item": "quiz"
+            }
+          },
+          {
+            "id": "00000004-0000-4000-8000-000000000004",
+            "src_id": "820f0ef7-2584-4800-a37e-11d55e599b2e",
+            "dst_id": "fae9607a-bc94-4898-a497-5773079163c7",
+            "type": "HAS_ITEM",
+            "properties": {
+              "item": "quiz"
+            }
+          },
+          {
+            "id": "00000005-0000-4000-8000-000000000005",
+            "src_id": "820f0ef7-2584-4800-a37e-11d55e599b2e",
+            "dst_id": "233366e9-71b2-4561-b525-e46d53b5fd4c",
+            "type": "HAS_ITEM",
+            "properties": {
+              "item": "quiz"
+            }
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "title": "Ethical Considerations Creating Products and Services"
+          },
+          "why": "Quiz 'Ethical Considerations Creating Products and Services' is already stored (D1)"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "title": "Ethical Considerations for Data"
+          },
+          "why": "Quiz 'Ethical Considerations for Data' is already stored (D1)"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "title": "Tools to Use in Ethical Decision-Making"
+          },
+          "why": "Quiz 'Tools to Use in Ethical Decision-Making' is already stored (D1)"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "title": "Source Citations"
+          },
+          "why": "Quiz 'Source Citations' is already stored (D1)"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "title": "Milestone One"
+          },
+          "why": "Essay 2 Milestone One is already stored (D2)"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "memory",
+            "text": "Chaavi"
+          },
+          "why": "Where credentials are stored is an agent working note; that Kritik needs its own login is a fact (S10)"
+        },
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "title": "Milestone Two"
+          },
+          "check": {
+            "has_end_at": true
+          },
+          "why": "Milestone Two is a review window: one plan with open and close (deadlines rule)"
+        },
+        {
+          "expect": "each",
+          "match": {
+            "op": "create_node",
+            "kind": "memory",
+            "title": "gradebook|earned|points"
+          },
+          "check": {
+            "ttl_days": true
+          },
+          "why": "A gradebook snapshot is dated and expires (D5, X1)"
+        },
+        {
+          "expect": "each",
+          "match": {
+            "op": "create_node",
+            "kind": "memory",
+            "title": "policy|submit"
+          },
+          "check": {
+            "occurred_at_null": true
+          },
+          "why": "A standing policy is a lasting fact, not an event (T5)"
+        }
+      ]
+    },
+    {
+      "name": "cse335-report-omits-a-stored-deadline",
+      "finding": "C3, D3, O1, S6, S7, K1",
+      "occurred_at": "2026-09-30T22:07:13-04:00",
+      "text": "CSE 335 (Object-Oriented Software Development, MSU Fall 2026, Ankur's course) — Step 4 \"Refactoring, Files, Time, and Animation\" was completed and committed locally (not submitted) on Oct 1, 2026 wake. Implementation lives in git repo /var/lib/dadi/code/cse-335, worktree /var/lib/dadi/code/cse-335.worktrees/step-4, branch feat/step-4, commit 2d68c5c. It still needs Ankur's manual review and submission via CLion (CSE335 > Connect > Export > Submit Solution) or web upload at https://cse335.egr.msu.edu/step4/submission before the Oct 1, 11:55 PM deadline.\n\nCSE 335 course facts: Grading = 5% participation, 20% design, 35% step assignments, 40% projects; must score ≥50% in Design, ≥50% in Step, and ≥50% in Project 2 to pass. Drop deadline Monday Oct 19, 2026. Strict no-late-work policy; all submissions are manual (CLion plugin or web upload), never auto-submitted by any agent — code is always presented to Ankur for review first. Step assignments do not use git remotes (gitlab.msu.edu is reserved for team Projects 1 & 2 only); each step builds forward from the previous step's local project folder. Course uses wxWidgets (with its built-in wxXmlDocument/wxXmlNode for XML, not a third-party XML library) and Google Test, built via CMake, documented via Doxygen. Upcoming CSE 335 deadlines as of Oct 2026: Design 4 Peer Reviews due Fri Oct 2 11:55PM; Design 5 (Advanced UML Class Diagrams) due Mon Oct 5 11:55PM; Projects 1 & 2 not yet posted.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "277b2685-c30e-4cda-ba9b-10198338e52d",
+            "kind": "plan",
+            "title": "CSE 335: Object-Oriented Software Design (Fall 2026)",
+            "occurred_at": null,
+            "detail": {
+              "end_at": null,
+              "all_day": false,
+              "status": "confirmed",
+              "recurrence": null,
+              "series_id": null
+            }
+          },
+          {
+            "id": "79e44c5c-2b51-4b51-b43f-3bef58562fa2",
+            "kind": "plan",
+            "title": "CSE 335 — Design 5: Advanced UML Class Diagrams due",
+            "occurred_at": "2026-10-06T03:55:00.000Z",
+            "detail": {
+              "end_at": null,
+              "all_day": false,
+              "status": "confirmed",
+              "recurrence": null,
+              "series_id": null
+            }
+          },
+          {
+            "id": "fc5787f1-3e2a-4c1b-9d0e-5a7b8c9d0e1f",
+            "kind": "plan",
+            "title": "CSE 335 — Design 5 peer reviews due",
+            "occurred_at": "2026-10-10T03:55:00.000Z",
+            "detail": {
+              "end_at": null,
+              "all_day": false,
+              "status": "confirmed",
+              "recurrence": null,
+              "series_id": null
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "00000001-0000-4000-8000-000000000001",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "277b2685-c30e-4cda-ba9b-10198338e52d",
+            "type": "ENROLLED_IN",
+            "properties": {
+              "status": "enrolled"
+            }
+          },
+          {
+            "id": "00000002-0000-4000-8000-000000000002",
+            "src_id": "277b2685-c30e-4cda-ba9b-10198338e52d",
+            "dst_id": "79e44c5c-2b51-4b51-b43f-3bef58562fa2",
+            "type": "HAS_ITEM",
+            "properties": {
+              "item": "assignment"
+            }
+          },
+          {
+            "id": "00000003-0000-4000-8000-000000000003",
+            "src_id": "277b2685-c30e-4cda-ba9b-10198338e52d",
+            "dst_id": "fc5787f1-3e2a-4c1b-9d0e-5a7b8c9d0e1f",
+            "type": "HAS_ITEM",
+            "properties": {
+              "item": "assignment"
+            }
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "none",
+          "match": {
+            "op": "close_node",
+            "node_id": "fc5787f1-3e2a-4c1b-9d0e-5a7b8c9d0e1f"
+          },
+          "why": "The text never mentions the Design 5 peer reviews, so they stay (C3)"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "close_node",
+            "node_id": "79e44c5c-2b51-4b51-b43f-3bef58562fa2"
+          },
+          "why": "Design 5 is restated, not retracted"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "title": "Design 5"
+          },
+          "why": "Design 5 is already stored (D3)"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "text": "branch|commit|worktree|/var/lib"
+          },
+          "why": "Repo, worktree, branch and commit are agent working notes, in a title or a body (O1)"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "memory",
+            "text": "still needs|needs Ankur|review and submi|committed locally"
+          },
+          "why": "Progress on an agent's own work for Ankur is the agent's to track, not memory (S6, S7)"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "title": "not (yet )?posted|not posted"
+          },
+          "why": "'Not yet posted' is a status that will change (S5)"
+        },
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "title": "drop"
+          },
+          "check": {
+            "all_day": true,
+            "local_date": "2026-10-19"
+          },
+          "why": "The drop deadline is a dated plan, all-day because no time is given (K1, T4)"
+        },
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "title": "Design 4"
+          },
+          "check": {
+            "local_date": "2026-10-02",
+            "local_time": "23:55"
+          },
+          "why": "Design 4 peer reviews are a plan at their stated time"
+        }
+      ]
+    },
+    {
+      "name": "ibio-exam-date-stays-off-the-course",
+      "finding": "T1, T4, S9",
+      "occurred_at": "2026-09-29T22:05:52-04:00",
+      "text": "IBIO 150 (Integrating Biology: From DNA to Populations), MSU, Fall 2026, section FS26-IBIO-150-005, D2L Org Unit 2519066, taught by Prof. Louise Mead:\n- Exam 1 (Class 9 - In Class Exam) is scheduled for Wednesday, September 30, 2026, during class (in-person, not an online submission). A study guide \"IBIO150 Exam 1 Study Guide.docx\" was posted in a D2L announcement on Sep 28, 2026 at 11:00 PM titled \"Review for Exam.\" Exam questions closely mirror the prep/practice reading questions.\n- Overdue/unsubmitted assignment: \"Class 4 - Constructing Phylogenetic Trees\" was due Sep 16, 2026 at 11:59 PM and remains open/unsubmitted as of Sep 29, 2026.\n- \"Class 2 - SARs CoV 2\" assignment was previously submitted, scoring 69.23%.\n- Codon Learning platform is used for this course; registration link found in a D2L announcement: app.codonlearning.com/register/4bf26d38-fd0f-41c9-91bc-ad37dc3a096e. As of Sep 29, 2026, no Codon Learning credentials exist in Chaavi, so Codon Learning content/assignments could not be checked yet.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "ad5c37ef-a5a0-46cc-a6ac-99b79cfc95ca",
+            "kind": "place",
+            "title": "Michigan State University",
+            "detail": {
+              "address": null,
+              "latitude": null,
+              "longitude": null
+            }
+          },
+          {
+            "id": "5d47de0a-c92b-480e-923b-a8b588df014f",
+            "kind": "plan",
+            "title": "IBIO 150: Integrating Biology: From DNA to Populations (Fall 2026)",
+            "occurred_at": null,
+            "detail": {
+              "end_at": null,
+              "all_day": false,
+              "status": "confirmed",
+              "recurrence": null,
+              "series_id": null
+            }
+          },
+          {
+            "id": "b4dc3fa5-e4b8-4147-9d50-be96c78d6709",
+            "kind": "person",
+            "title": "Louise Mead",
+            "detail": {
+              "birthday": null,
+              "aliases": [
+                "Louise",
+                "Prof. Mead"
+              ]
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "00000001-0000-4000-8000-000000000001",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "5d47de0a-c92b-480e-923b-a8b588df014f",
+            "type": "ENROLLED_IN",
+            "properties": {
+              "status": "enrolled"
+            }
+          },
+          {
+            "id": "00000002-0000-4000-8000-000000000002",
+            "src_id": "b4dc3fa5-e4b8-4147-9d50-be96c78d6709",
+            "dst_id": "5d47de0a-c92b-480e-923b-a8b588df014f",
+            "type": "TEACHES",
+            "properties": {
+              "role": "professor"
+            }
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "none",
+          "match": {
+            "op": "update_node",
+            "node_id": "5d47de0a-c92b-480e-923b-a8b588df014f",
+            "sets": "occurred_at"
+          },
+          "why": "The course hub must not take Exam 1's date (T1)"
+        },
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "title": "Exam 1"
+          },
+          "check": {
+            "all_day": true,
+            "local_date": "2026-09-30"
+          },
+          "why": "Exam 1 is its own plan on Sep 30, all-day because no time is given (T4)"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "text": "Chaavi|credential"
+          },
+          "why": "Missing Codon credentials is an agent working note (S9)"
+        }
+      ]
+    },
+    {
+      "name": "cse431-dates-without-times",
+      "finding": "T2, T4, S8, M2",
+      "occurred_at": "2026-09-29T21:57:15-04:00",
+      "text": "CSE 431/830 (Algorithm Engineering/Design, MSU Fall 2026) — course details from the public course website (https://emilydolson.github.io/msu_algorithms_fall_2026/), checked Sep 30, 2026:\n\nHomework schedule (submitted via Gradescope, entry code WJ23G3):\n- HW2 due Wednesday, September 30, 2026\n- HW3 due October 14, 2026\n- HW4 due November 4, 2026\n- HW5 due November 18, 2026\n- HW6 due Wednesday, December 7, 2026\n\nQuiz schedule (with retake dates):\n- October 1: Data Structures Quiz (retake Oct 15)\n- October 15: Algorithm Design Tools Quiz (retake Nov 5)\n- November 5: Optimization Quiz (retake Nov 19)\n- November 19: Graph Algorithms Quiz (retake Dec 10)\n- December 3: Intractability Quiz (retake Dec 10)\n- December 10: Module 5/6 retakes and excused-absence quiz retakes\n- December 17: Final retake opportunity for all quizzes\n\nCourse structure: grading is driven entirely by 6 homeworks and 6 module quizzes — no separate term project.\n\nSchedule status as of Sep 30, 2026: currently Week 7 — Profiling + Intro to Optimization Problems & Recursive Thinking, within Topic IV: Optimization Algorithms (Recursive algorithms & Dynamic Programming). Previous week (Week 6) covered Language-specific Algorithm Design (Topic III: Algorithm Design Tools). Upcoming Week 8 covers Dynamic Programming.\n\nLinks/codes: Gradescope entry code WJ23G3. Piazza Q&A URL: https://piazza.com/class/merel478d0t56q.\n\nNote: Ankur does not yet have D2L (Brightspace) or Piazza login credentials/session set up for this agent to check — grades and private announcements are still unavailable until he adds them.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "ce51c585-82de-407e-97a4-0dfcb67d79d3",
+            "kind": "plan",
+            "title": "CSE 431: Algorithm Engineering, standard section (Fall 2026)",
+            "occurred_at": null,
+            "detail": {
+              "end_at": null,
+              "all_day": false,
+              "status": "confirmed",
+              "recurrence": null,
+              "series_id": null
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "00000001-0000-4000-8000-000000000001",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "ce51c585-82de-407e-97a4-0dfcb67d79d3",
+            "type": "ENROLLED_IN",
+            "properties": {
+              "status": "enrolled"
+            }
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "each",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "title": "Quiz"
+          },
+          "check": {
+            "not_local_time": "12:00"
+          },
+          "why": "A quiz date with no time is never placed at an invented noon (T2)"
+        },
+        {
+          "expect": "each",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "title": "HW"
+          },
+          "check": {
+            "all_day": true
+          },
+          "why": "Homework due dates without a time are all-day (T4)"
+        },
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "title": "HW3"
+          },
+          "check": {
+            "local_date": "2026-10-14"
+          },
+          "why": "Each homework deadline reaches the calendar as a plan"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "title": "credential|this agent|session set up"
+          },
+          "why": "Missing logins for 'this agent' is an agent working note (S8)"
+        },
+        {
+          "expect": "each",
+          "match": {
+            "op": "create_node",
+            "kind": "memory",
+            "title": "Week 7|currently"
+          },
+          "check": {
+            "ttl_days": true
+          },
+          "why": "'Currently Week 7' is a status snapshot: dated and expiring"
+        }
+      ]
+    },
+    {
+      "name": "policy-with-an-effective-date",
+      "finding": "T5",
+      "occurred_at": "2026-09-30T19:47:15-04:00",
+      "text": "Ankur has set a standing policy (effective Sept 29, 2026): none of his course specialist agents (cse-431-specialist, cse-300-specialist, cse-380-specialist, cse-335-specialist, ibio-150-specialist, iah-241-specialist) or their workers may ever submit or finalize homework, quizzes, discussion posts, essays, or any coursework deliverable automatically. All drafts and completed work must be prepared and then presented directly to Ankur for his review and explicit approval before any submission happens on D2L, Piazza, Kritik, Codon Learning, or any course platform.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          }
+        ],
+        "edges": []
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "kind": "memory"
+          },
+          "check": {
+            "occurred_at_null": true
+          },
+          "why": "The policy is stored"
+        },
+        {
+          "expect": "each",
+          "match": {
+            "op": "create_node",
+            "kind": "memory"
+          },
+          "check": {
+            "occurred_at_null": true
+          },
+          "why": "A policy that took effect on a date is still a lasting fact (T5)"
+        }
+      ]
+    },
+    {
+      "name": "new-person-gets-first-name-alias",
+      "finding": "P1, P2",
+      "occurred_at": "2026-09-26T00:50:54-04:00",
+      "text": "Ankur's roommate is Sparsh Yandooru. Sparsh also attends Michigan State University and is studying Supply Chain Management.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "ad5c37ef-a5a0-46cc-a6ac-99b79cfc95ca",
+            "kind": "place",
+            "title": "Michigan State University",
+            "detail": {
+              "address": null,
+              "latitude": null,
+              "longitude": null
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "00000001-0000-4000-8000-000000000001",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "ad5c37ef-a5a0-46cc-a6ac-99b79cfc95ca",
+            "type": "ATTENDS",
+            "properties": {
+              "major": "Computer Science"
+            }
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "kind": "person",
+            "title": "Sparsh"
+          },
+          "check": {
+            "aliases_include": "Sparsh"
+          },
+          "why": "A new person carries their first name as an alias, so 'Sparsh' finds him later (P2)"
+        }
+      ]
+    },
+    {
+      "name": "evening-class-recurs-on-local-weekdays",
+      "finding": "R1, M2",
+      "occurred_at": "2026-08-20T10:00:00-04:00",
+      "text": "CSE 380 meets Mondays and Wednesdays from 8:00 to 9:20 PM, starting Monday, August 31, 2026 and ending Wednesday, December 9, 2026.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "f7bc7a01-423e-4524-adf4-85d933c313de",
+            "kind": "plan",
+            "title": "CSE 380: Information Management and the Cloud (Fall 2026)",
+            "occurred_at": null,
+            "detail": {
+              "end_at": null,
+              "all_day": false,
+              "status": "confirmed",
+              "recurrence": null,
+              "series_id": null
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "00000001-0000-4000-8000-000000000001",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "f7bc7a01-423e-4524-adf4-85d933c313de",
+            "type": "ENROLLED_IN",
+            "properties": {
+              "status": "enrolled"
+            }
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": "update_node",
+            "node_id": "f7bc7a01-423e-4524-adf4-85d933c313de"
+          },
+          "check": {
+            "recurrence_includes": "BYDAY=MO,WE",
+            "local_date": "2026-08-31",
+            "local_time": "20:00"
+          },
+          "why": "The schedule recurs on the local weekdays, even though 8 PM Eastern is past midnight UTC (R1)"
+        }
+      ]
+    },
+    {
+      "name": "not-yet-status-is-not-stored",
+      "finding": "S1, S2, S5",
+      "occurred_at": "2026-09-29T22:04:00-04:00",
+      "text": "As of Sept 29, 2026, the CSE 380 D2L course shell has no assignments, quizzes, or announcements posted yet, and no Piazza link was found.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "f7bc7a01-423e-4524-adf4-85d933c313de",
+            "kind": "plan",
+            "title": "CSE 380: Information Management and the Cloud (Fall 2026)",
+            "occurred_at": null,
+            "detail": {
+              "end_at": null,
+              "all_day": false,
+              "status": "confirmed",
+              "recurrence": null,
+              "series_id": null
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "00000001-0000-4000-8000-000000000001",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "f7bc7a01-423e-4524-adf4-85d933c313de",
+            "type": "ENROLLED_IN",
+            "properties": {
+              "status": "enrolled"
+            }
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node"
+          },
+          "why": "Nothing that has not happened yet is stored (S1, S2, S5)"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "update_node"
+          },
+          "why": "The course hub gains nothing from a 'not yet' report"
+        }
+      ]
+    }
+  ]
+}

@@ -31,9 +31,14 @@ export const personDetailBody = z
   })
   .strict();
 
+/**
+ * A plan's detail on create. `all_day: true` means a date without a time of day (Yaad
+ * anchors it at local midnight); absent or false means a timed plan.
+ */
 export const planDetailBody = z
   .object({
     end_at: z.string().datetime({ offset: true }).nullable().optional(),
+    all_day: z.boolean().optional(),
     status: planStatus,
     recurrence: z.string().nullable().optional(),
   })
@@ -52,6 +57,7 @@ export const patchPersonDetailBody = personDetailBody.partial();
 export const patchPlanDetailBody = z
   .object({
     end_at: z.string().datetime({ offset: true }).nullable().optional(),
+    all_day: z.boolean().optional(),
     status: planStatus.optional(),
     recurrence: z.string().nullable().optional(),
   })
@@ -61,16 +67,43 @@ export const patchPlaceDetailBody = placeDetailBody.partial();
 
 export const idParam = z.object({ id: z.string().uuid() }).strict();
 
-/** `PATCH /nodes/:id` — a hand edit. `detail` is checked against the node's kind. */
+/**
+ * `PATCH /nodes/:id` — a hand edit. `detail` is checked against the node's kind;
+ * `ttl_days` (memory and plan only) restarts expiry from now, and null clears it.
+ */
 export const patchNodeBody = z
   .object({
     title: z.string().min(1).optional(),
     body: z.string().nullable().optional(),
     occurred_at: z.string().datetime({ offset: true }).nullable().optional(),
+    ttl_days: z.number().int().positive().nullable().optional(),
     detail: z.record(z.unknown()).optional(),
   })
   .strict()
   .refine((body) => Object.keys(body).length > 0, "at least one field is required");
+
+/** `POST /nodes` — a node made by hand; `detail` is checked against `kind` as on ingest. */
+export const createNodeBody = z
+  .object({
+    kind: z.enum(["person", "memory", "plan", "place"]),
+    title: z.string().min(1),
+    body: z.string().nullable().optional(),
+    occurred_at: z.string().datetime({ offset: true }).nullable().optional(),
+    ttl_days: z.number().int().positive().nullable().optional(),
+    detail: z.record(z.unknown()).optional(),
+  })
+  .strict();
+
+/** `POST /edges` — an edge drawn by hand between two current nodes. */
+export const createEdgeBody = z
+  .object({
+    src_id: z.string().uuid(),
+    dst_id: z.string().uuid(),
+    type: z.string().regex(/^[A-Z][A-Z0-9]*(_[A-Z0-9]+)*$/, "type must be UPPER_SNAKE_CASE"),
+    properties: z.record(z.unknown()).optional(),
+    confidence: z.number().min(0).max(1),
+  })
+  .strict();
 
 const ingestFields = {
   text: z.string().min(1),

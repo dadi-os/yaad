@@ -38,6 +38,8 @@ const fileSchema = z.object({
   ingest: z.object({
     candidate_similarity_floor: z.number().min(0).max(2),
     candidate_limit: z.number().int().positive(),
+    segment_limit: z.number().int().positive(),
+    segment_candidate_limit: z.number().int().positive(),
     edge_context_limit: z.number().int().positive(),
   }),
   plan: z.object({

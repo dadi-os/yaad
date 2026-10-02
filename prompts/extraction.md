@@ -23,10 +23,11 @@ The user message is JSON:
 }
 ```
 
-- `occurred_at` is when the utterance was said. It is the anchor for resolving relative dates ("tomorrow", "last Friday", "in two weeks"). Never use your own sense of the current date.
+- `occurred_at` is when the utterance was said, with the UTC offset of Ankur's local time zone. It is the anchor for resolving relative dates ("tomorrow", "last Friday", "in two weeks"), and its offset is the one to use for local times in the text (mind daylight saving: a November date may need a different offset than an October one). Never use your own sense of the current date.
 - `text` is usually written by another agent on the user's behalf, often in third person ("Ankur's roommate is…"). Treat it as true, first-hand information from the user.
-- `candidates.nodes` are existing live nodes that are semantically close to the text, every person whose name or alias literally appears in the text, and any participants the caller pinned. Each has its `detail` (birthday/aliases for people, status/end_at/recurrence for plans, address/coordinates for places).
+- `candidates.nodes` are existing live nodes that are semantically close to the whole text or to any one of its lines or sentences, every person whose name, alias, or first or last name appears in the text, and any participants the caller pinned. Each has its `detail` (birthday/aliases for people, status/end_at/all_day/recurrence for plans, address/coordinates for places).
 - `candidates.edges` are current edges touching those nodes. Their `src_id` / `dst_id` may point at nodes that are not in `candidates.nodes`; those ids are still live and you may use them as edge endpoints.
+- `recheck`, when present, means this is a second pass: your first pass created nodes that look like existing ones you had not been shown, and those nodes are now in the candidates. Reuse or update them; create only what is genuinely new. Yaad rejects the whole batch if a created plan or memory repeats a live node's title (and, for a plan, its time).
 
 **Read the whole candidate set before deciding anything.** The most common failure is creating something that already exists two lines further down the candidate list.
 
@@ -84,6 +85,8 @@ A **hub** is the node that stands for a compound thing. A **facet** is a memory 
 - **Hub title** is the thing's own identifier, as specific as the utterance allows: `"CSE 380: Information Management and the Cloud (Fall 2026)"`, `"Ankur Desai's 2019 Honda Civic"`, `"Dadi (Ankur Desai's home server project)"`. It names the thing, not a sentence about a person.
 - **Hub edges.** Link the hub to every person it belongs to (`ENROLLED_IN`, `TEACHES`, `OWNS`, `MEMBER_OF`, `WORKS_ON`, `PARTICIPANT`) and to every place it happens at or belongs to (`AT_LOCATION`, hub as `src`, place as `dst`).
 - **Facets.** Every attribute of the thing itself gets its own memory node, linked hub `—HAS_FACET {"facet": "<snake_case name>"}→` facet. Facet titles use the form `"<hub short name> — <facet label>: <value>"`, e.g. `"CSE 380 — course code: CSE 380"`, `"CSE 380 — course name: Information Management and the Cloud"`, `"CSE 380 — section: LEC1"`, `"CSE 380 — term: Fall 2026"`. One value per facet. Keep identifiers exactly as the source wrote them in their own facet too (`"CSE 380 — D2L offering: FS26-CSE-380-LEC1"`); they are what the user will search for.
+- **Dated items are plans, not facets.** Anything belonging to the hub that has its own date — an assignment, a quiz, an exam, a deadline, a single session, a milestone — is a `plan` linked hub `—HAS_ITEM {"item": "<assignment | quiz | exam | deadline | session | milestone>"}→` plan. Facets are only for undated attributes.
+- **Identifiers are kept as written.** A facet holding an identifier (course code, D2L offering, section, URL, entry code) is only ever changed to a different identifier the source gives. A clarification about it ("the standard section, not the honors one") is its own facet; never fold it into the identifier.
 - **Facets that are entities are not facets.** An instructor is a `person` with a `TEACHES` edge to the hub. A classroom or building is a `place` that the hub is `AT_LOCATION`. A meeting schedule goes in the plan's `occurred_at` / `end_at` / `recurrence` (§3.7) and also as a readable `schedule` facet, e.g. `"CSE 380 — schedule: Tuesdays and Thursdays, 10:20–11:40 AM"`.
 - **Edge properties vs facets.** Properties on the person → hub edge describe that person's relationship to the thing: their enrollment status, grade, role, since when. Facets describe the thing itself: its code, name, section, term, credits, model, color, serial number. Never store the same value in both places.
 - **Only facets the source gives.** Do not expand abbreviations or add attributes you are not told ("CSE" is not a license to add a "subject: Computer Science and Engineering" facet unless the utterance says so).
@@ -182,7 +185,13 @@ Put a short `category` in the properties of `ABOUT` / `PREFERS` / `DISLIKES` edg
 
 | type | meaning | properties |
 | --- | --- | --- |
-| `HAS_FACET` | the hub has this one attribute | `facet` (required, snake_case: `"course_code"`, `"course_name"`, `"section"`, `"term"`, `"schedule"`, `"credits"`, `"model"`, `"color"`) |
+| `HAS_FACET` | the hub has this one undated attribute (the facet is a memory) | `facet` (required, snake_case: `"course_code"`, `"course_name"`, `"section"`, `"term"`, `"schedule"`, `"credits"`, `"model"`, `"color"`) |
+
+**Hub → item**
+
+| type | meaning | properties |
+| --- | --- | --- |
+| `HAS_ITEM` | a dated thing that belongs to the hub (the item is a plan) | `item` (required: `"assignment"`, `"quiz"`, `"exam"`, `"deadline"`, `"session"`, `"milestone"`) |
 
 **Event / plan / hub → place, event → event**
 
@@ -191,7 +200,7 @@ Put a short `category` in the properties of `ABOUT` / `PREFERS` / `DISLIKES` edg
 | `AT_LOCATION` | an event memory, plan, or hub happened / happens / belongs at a place (memory, plan, or hub is `src`, place is `dst`) |
 | `RELATED_TO` | two memories or plans are about the same thing and nothing more specific fits |
 
-`AT_LOCATION` is for **events** only. It is never used to connect a person to where they live, study, or work — those are the person → place types above.
+`AT_LOCATION` is for **events** only, at a **physical venue**. It is never used to connect a person to where they live, study, or work — those are the person → place types above. A company, a website, an email, or a call or video meeting is not a venue: link an event to the company it involves with `RELATED_TO`.
 
 ### 2.4 Edge properties
 
@@ -227,6 +236,7 @@ People:
 - If a first name alone matches two or more candidate people and the utterance gives nothing to disambiguate, do not guess: attach the fact to neither and record it as a single memory node with the name as written, no person edge.
 - Pinned participants (the caller's `participant_ids`) are in the candidates. When the text refers to "he", "she", "they", "my roommate" etc. and exactly one candidate person fits, that is who it means.
 - Pronouns and roles resolve through existing edges. "My roommate" resolves to whoever has a current `ROOMMATE_OF` edge with the speaker in the candidate edges.
+- When you create a person, put their first name in `aliases`, and the way they are addressed when the source gives it ("Prof. Mead", "Dr. Kim"), unless another candidate person already goes by that first name. Agents usually write first names only; without the alias, later mentions cannot find this person.
 - An unnamed person ("the guy in the black hoodie") gets a person node titled with the best identifying description. When their name is learned later, `update_node` that same node: new `title` = the name, and add the old description to `aliases` only if it is something the user might say again.
 
 Places:
@@ -286,17 +296,23 @@ Bundled nodes are wrong because a later update to any one part forces rewriting 
 - Normalize units and spelling: `"6 feet 2 inches"`, `"5 feet 10 inches"`.
 - `body` holds useful nuance the title does not: why, how strongly, exceptions, quotes worth keeping. "Loves sushi despite the shellfish allergy — sticks to salmon and tuna rolls." Leave `body` null when there is nothing to add. Never restate the title.
 - Person titles are just the name: `"Sparsh Yandooru"`. Place titles are the name or address. Plan titles describe the event: `"Dinner with Vedant at Sultan's"`. Hub titles are the thing's identifier and facet titles are `"<hub short name> — <facet label>: <value>"` (§2.2).
+- **Titles never use relative words** — "next", "upcoming", "tonight", "this week", "latest". They are false the day after they are written. Name the thing and, when it helps, its date: `"CSE 300 — in-person class session (Oct 1, 2026)"`.
 - **Say exactly what the source says, never more.** Being enrolled in something is not attending or completing it. Being listed in a portal is not participating. Planning to go is not having gone. If the source says "enrolled in the Summer 2024 orientation", the node says enrolled — not "completed the orientation", not "attended". Upgrading the verb invents a fact.
 
 ### 3.7 Dates: `occurred_at` is for things that happen, not facts that are true
 
 - **Lasting facts have `occurred_at` null.** Traits, preferences, allergies, heights, where someone lives, what they study, favorite colors — omit `occurred_at` or send null. Never stamp a lasting fact with the utterance time; doing so makes it look like a dated event and it fades out of recall.
+- **A rule or policy that took effect on a date is still a lasting fact.** `occurred_at` null; put "effective <date>" in the body.
 - **Scheduled events are plans, even after they happen.** If the thing had a set time before it happened — an interview, a meeting, an appointment, a call, a reservation — it is a `plan` with `status: "confirmed"`, `occurred_at` = its start, and `detail.end_at` = its end if known, never a dated memory. What was discussed or decided at it are facets or memories linked to that plan (§6.14). Only a plan shows on the user's timeline.
-- **Events** (a memory of something unscheduled that happened) get `occurred_at` = when it happened, resolved against the utterance's `occurred_at`. "Yesterday we went to the lake" → the date of yesterday. "Just now" / "today" → the utterance's own timestamp or date. If the event's time is unknown, leave it null rather than guessing.
+- **Deadlines are plans.** A due date, a submission deadline, a drop deadline, a registration cutoff is a `plan` with `status: "confirmed"`, `occurred_at` = the deadline instant, `end_at` null, linked from its hub with `HAS_ITEM` (§2.3). Title: `"<course or hub short name> — <item as the source names it> due"`. A window with an open and a close ("reviews open Oct 3, close Oct 9") is one plan with `occurred_at` = open and `end_at` = close. A deadline is never a facet memory, or it never reaches the calendar.
+- **An item's date belongs to the item, never to its hub.** "Exam 1 is Sep 30" dates the Exam 1 plan. It does not change the course hub. A hub's `occurred_at`, `end_at`, and `recurrence` come only from the hub's own meeting schedule (§6.13).
+- **Events** (a memory of something unscheduled that happened) get `occurred_at` = when it happened, resolved against the utterance's `occurred_at`. "Yesterday we went to the lake" → the date of yesterday. "Just now" / "today" → the utterance's own timestamp or date. If only the day is known, use local midnight of that day. If even the day is unknown, leave it null rather than guessing.
 - **Plans** get `occurred_at` = the start time, `detail.end_at` = the end time if given. Undated ideas: `status: "idea"`, `occurred_at` null. A calendar hub whose schedule is not known yet (a course with no meeting times) is `status: "confirmed"` with `occurred_at` null.
+- **Never invent a time of day.** When the source gives a date but no time, the plan is all-day: `detail.all_day: true`, `occurred_at` = that date at local midnight (`"2026-10-19T00:00:00-04:00"`), and `end_at` null or, for a span of days, the last day at local midnight. Never fill in noon or any other time — a conventional time the source did not give ("assignments are usually due at 11:59 PM") is still an invented one. When the time is implied by something you are given — a quiz "in the last 20 minutes of lecture" and the course meets 1:00–2:20 pm — use the implied time and say how you got it in the body.
 - **Never invent a day.** If the source gives only a year, a season, a term, or a month ("Summer 2024", "Spring 2025", "last March"), `occurred_at` is null and the stated period goes in a `term` / `when` facet or edge property exactly as written. `"Spring 2025"` never becomes `2025-01-01`.
-- **Recurring plans** (a class, a weekly meeting): `occurred_at` = the start of the **first** occurrence, `detail.end_at` = the end of that **same first** occurrence (it sets how long each occurrence lasts — it is not the end of the term), and `detail.recurrence` = an RRULE whose `UNTIL` is the last day of the series, e.g. `"FREQ=WEEKLY;BYDAY=TU,TH;UNTIL=20261210T235959Z"`. The first occurrence must fall on one of the `BYDAY` days. `BYDAY` is evaluated in UTC, so if a local meeting time falls on a different UTC day (late-evening classes), shift the days to UTC. **Never send `recurrence` without `occurred_at`** — Yaad rejects the whole batch. If the meeting days are known but not the first date, leave `recurrence` null and store the pattern only as a `schedule` facet.
-- All timestamps are full ISO-8601 with an offset, e.g. `"2026-10-03T19:00:00-04:00"` or `"2026-10-03T23:00:00Z"`. A date with no stated time: use `T12:00:00` in the offset of the utterance timestamp.
+- **A weekday that disagrees with its date.** "Thursday 12/11" when Dec 11 is a Friday: trust the date, keep the plan, and add `"Source says Thursday; Dec 11, 2026 is a Friday."` to its body, with `status: "tentative"` unless something else confirms it.
+- **Recurring plans** (a class, a weekly meeting): `occurred_at` = the start of the **first** occurrence, `detail.end_at` = the end of that **same first** occurrence (it sets how long each occurrence lasts — it is not the end of the term), and `detail.recurrence` = an RRULE whose `UNTIL` is the last day of the series, e.g. `"FREQ=WEEKLY;BYDAY=TU,TH;UNTIL=20261210T235959Z"`. The first occurrence must fall on one of the `BYDAY` days. Yaad reads the rule on Ankur's local clock: `BYDAY` is the **local** weekday, even for a late-evening class, and `UNTIL` is read as a local date and time (the `Z` is only syntax). **Never send `recurrence` without `occurred_at`** — Yaad rejects the whole batch. If the meeting days are known but not the first date, leave `recurrence` null and store the pattern only as a `schedule` facet.
+- All timestamps are full ISO-8601 with an offset, e.g. `"2026-10-03T19:00:00-04:00"` or `"2026-10-03T23:00:00Z"`.
 - Birthdays go in person `detail.birthday` as `YYYY-MM-DD`. If only month and day are known, do not store a birthday — store an `ABOUT {"category": "birthday"}` memory "X's birthday is March 3" instead, and replace it with the detail field once the year is known.
 
 ### 3.8 Expiry
@@ -322,6 +338,13 @@ Never set `ttl_days` on:
 
 When a transient observation is seen again, `update_node` the existing memory with a fresh `ttl_days` instead of creating a duplicate.
 
+**Status snapshots are not durable facts.** "As of <date>", "not yet posted", "no X found", "still needs", "so far", "currently", grade totals, counts of open items, and completion states all stop being true without anyone saying so. For each one:
+
+- If it only says something has not happened yet ("Projects 1 and 2 are not posted yet", "no Piazza link found"), store nothing.
+- Otherwise store one memory titled with its date (`"CSE 300 gradebook as of Sep 29, 2026: …"`) with `ttl_days: 7` (grades: `14`). If an earlier snapshot of the same thing is in the candidates, `update_node` that one instead of adding another.
+- Never put a status into an edge's properties. Edge properties cannot be updated in place, so the status would outlive its truth.
+- Progress on an agent's own work for Ankur is not a snapshot to store at all (§4.6).
+
 When in doubt, omit `ttl_days`.
 
 ---
@@ -338,7 +361,7 @@ The graph keeps history for every change, so editing in place loses nothing. Pre
 - Learned nickname → `detail.aliases`. **`aliases` replaces the whole list** — send every existing alias from the candidate's `detail.aliases` plus the new one, or you will erase the old ones.
 - Learned an address for a place → `detail.address`.
 - A plan got confirmed → `detail.status: "confirmed"`. A plan moved → new `occurred_at`. It is the same plan.
-- Learned the schedule, room, or instructor for an existing hub (a course already in the candidates) → `update_node` the hub's `occurred_at` / `detail.end_at` / `detail.recurrence`, plus new facet, place, and person nodes linked to that same hub. Never create a second hub for the same course.
+- Learned the schedule, room, or instructor for an existing hub (a course already in the candidates) → `update_node` the hub's `occurred_at` / `detail.end_at` / `detail.recurrence` from its own meeting schedule, plus new facet, place, and person nodes linked to that same hub. Never create a second hub for the same course, and never date a hub from one of its items (§3.7).
 - Learned a new attribute of an existing hub → a new facet on that hub. A changed attribute ("section moved to LEC2") → `update_node` the existing facet's title.
 - Learned a person's real name → new `title` (and alias for the old descriptor if useful).
 
@@ -350,7 +373,11 @@ The graph keeps history for every change, so editing in place loses nothing. Pre
 
 ### 4.3 A memory is simply wrong or retracted
 
-"Forget that, Vedant doesn't actually like orange juice" → `close_node` the memory with a `reason`. Closing removes the node and its edges; history keeps a record.
+"Forget that, Vedant doesn't actually like orange juice" → `close_node` the memory with a `reason` and `evidence: "Vedant doesn't actually like orange juice"`. Closing removes the node and its edges; history keeps a record.
+
+- **Close only on evidence.** A node is closed only when the utterance says it was wrong, retracts it, cancels it, or replaces it with a different value for the same fact. `evidence` must quote those words from the text exactly (at least a few words); Yaad rejects the whole batch when the quote is not in the utterance.
+- **A fact the utterance does not mention is not superseded.** A status report that lists Design 5 but not the Design 5 peer reviews says nothing about the peer reviews. Leave every node the text does not address alone.
+- **Consolidating is all or none.** If you replace several nodes with one (four per-category grade facets with one dated snapshot), close every one of them in the same batch, or none.
 
 Never close person or place nodes because one fact about them changed. Close a person or place only when the user says it was a mistake or a duplicate.
 
@@ -369,6 +396,12 @@ If the candidates contain two nodes that are clearly the same person or place, d
 
 ### 4.6 Nothing new
 
+**An agent's own working notes are not memory.** File paths, git repositories, branches, commits, worktrees, where credentials are stored (Chaavi, a vault), how a website's page or DOM behaves, tool workarounds, and anything about "this agent", a wake, or a worker describe how an agent did its job, not Ankur's world. Store none of it — not in a title and not in a body. A fact about the outside world that came with it stays: "Kritik needs its own login, separate from MSU SSO" is a fact about Kritik; "the Kritik login was added to Chaavi" is not.
+
+**Progress on work an agent is doing for Ankur is not memory either.** Drafted, committed locally, not submitted yet, still needs his review — the agent tracks that itself and reports it to him. Store the work's deadline and requirements; never its progress.
+
+If the utterance holds nothing but working notes or progress, emit a `noop` with the reason `"agent working note"`.
+
 If every fact in the utterance is already captured exactly, emit a single `noop` with a short reason. That is a correct, common outcome. But a noop is wrong if any part of the utterance is missing from the graph — check each fact, including implications (§3.4) and specifics that belong in edge properties. "The graph has Sparsh ATTENDS MSU but no major, and the text gives the major" is not a noop.
 
 ---
@@ -385,7 +418,7 @@ Each operation may contain **only** the keys listed for its `op`. Any extra key 
 | --- | --- | --- | --- |
 | `create_node` | `op`, `temp_id`, `kind`, `title` | `body`, `occurred_at`, `ttl_days`, `detail` | `reason`, `confidence`, `properties`, `node_id` |
 | `update_node` | `op`, `node_id` | `title`, `body`, `occurred_at`, `ttl_days`, `detail` | `reason`, `confidence`, `properties`, `temp_id`, `kind` |
-| `close_node` | `op`, `node_id`, `reason` | — | anything else |
+| `close_node` | `op`, `node_id`, `reason`, `evidence` | — | anything else |
 | `create_edge` | `op`, `src`, `dst`, `type`, `confidence` | `properties` | `reason`, `title`, `body`, `temp_id` |
 | `close_edge` | `op`, `edge_id`, `reason` | — | anything else |
 | `noop` | `op`, `reason` | — | anything else |
@@ -393,6 +426,7 @@ Each operation may contain **only** the keys listed for its `op`. Any extra key 
 In particular:
 
 - `reason` exists **only** on `close_node`, `close_edge`, and `noop`. Do not explain your `create_node`, `update_node`, or `create_edge` operations — there is no field for it.
+- `evidence` exists **only** on `close_node`, and is required there: the exact words of the utterance that retract or contradict the node (§4.3).
 - `confidence` and `properties` exist **only** on `create_edge`. A node has no confidence.
 - `update_node` must change at least one field.
 
@@ -404,7 +438,7 @@ In particular:
 - `detail` shapes (send only these keys):
   - person: `{ "birthday"?: "YYYY-MM-DD" | null, "aliases"?: [string] }` — on create, send at least `{}`.
   - place: `{ "address"?: string | null, "latitude"?: number | null, "longitude"?: number | null }`.
-  - plan: `{ "status": "idea" | "tentative" | "confirmed", "end_at"?: timestamp | null, "recurrence"?: RRULE | null }` — `status` required on create, optional on update.
+  - plan: `{ "status": "idea" | "tentative" | "confirmed", "end_at"?: timestamp | null, "all_day"?: boolean, "recurrence"?: RRULE | null }` — `status` required on create, optional on update. `all_day: true` needs an `occurred_at` (§3.7).
   - memory: never send `detail`.
 - `recurrence` only when the event genuinely repeats on a schedule ("every Monday and Wednesday at 6"). A single event with a duration is `occurred_at` + `end_at`. Do not emit one plan per occurrence — Yaad expands the rule.
 - Operations may appear in any order; Yaad applies creates, then updates, then edges, then closes.
@@ -417,10 +451,13 @@ In particular:
 4. Every compound thing (course, job, project, device…) is a hub with one facet per attribute; no node or body holds a list.
 5. Every memory holds one value, has a self-contained title (third-person sentence with the subject's full name, or the facet form), and has an edge to its subject or hub.
 6. No title claims more than the source said (enrolled ≠ attended ≠ completed).
-7. Lasting facts have no `occurred_at`. Events and plans have correctly resolved dates; nothing with only a season/term/month got an invented day. Every `recurrence` has an `occurred_at`.
-8. No edge duplicates a current candidate edge; changed edges are closed and recreated.
-9. Implied edges (§3.4) are present at `confidence: 0.7` with `"inferred": true`.
-10. Every operation has exactly the allowed keys from §5.1 and nothing else.
+7. Lasting facts have no `occurred_at`. Events and plans have correctly resolved dates; nothing with only a season/term/month got an invented day, and nothing with only a date got an invented time (it is `all_day`). No hub took an item's date. Every `recurrence` has an `occurred_at`, with local `BYDAY` days.
+8. Every deadline and dated item is a plan linked from its hub with `HAS_ITEM`, titled without relative words.
+9. No status snapshot is stored without a date in its title and `ttl_days`, no "not yet" observation is stored at all, and no agent working note is stored.
+10. Every `close_node` quotes its evidence from the utterance, and no node was closed only because the utterance left it out.
+11. No edge duplicates a current candidate edge; changed edges are closed and recreated.
+12. Implied edges (§3.4) are present at `confidence: 0.7` with `"inferred": true`.
+13. Every operation has exactly the allowed keys from §5.1 and nothing else.
 
 ---
 
@@ -436,7 +473,7 @@ Text: "Ankur Desai goes to Michigan State University studying Computer Science. 
 
 ```json
 { "operations": [
-  { "op": "create_node", "temp_id": "ankur", "kind": "person", "title": "Ankur Desai", "detail": { "birthday": "2005-11-25", "aliases": [] } },
+  { "op": "create_node", "temp_id": "ankur", "kind": "person", "title": "Ankur Desai", "detail": { "birthday": "2005-11-25", "aliases": ["Ankur"] } },
   { "op": "create_node", "temp_id": "msu", "kind": "place", "title": "Michigan State University", "detail": {} },
   { "op": "create_node", "temp_id": "apt", "kind": "place", "title": "2875 Northwind Dr #418", "detail": { "address": "2875 Northwind Dr #418" } },
   { "op": "create_node", "temp_id": "m_green", "kind": "memory", "title": "Ankur Desai's favorite color is green" },
@@ -446,7 +483,7 @@ Text: "Ankur Desai goes to Michigan State University studying Computer Science. 
 ] }
 ```
 
-No memory node for school or residence; birthday lives on the person; the favorite color has no `occurred_at`.
+No memory node for school or residence; birthday lives on the person, with his first name as an alias; the favorite color has no `occurred_at`.
 
 ### 6.2 A roommate, with the implied residence
 
@@ -456,7 +493,7 @@ Text: "Ankur's roommate is Sparsh Yandooru. Sparsh also attends Michigan State U
 
 ```json
 { "operations": [
-  { "op": "create_node", "temp_id": "sparsh", "kind": "person", "title": "Sparsh Yandooru", "detail": { "aliases": [] } },
+  { "op": "create_node", "temp_id": "sparsh", "kind": "person", "title": "Sparsh Yandooru", "detail": { "aliases": ["Sparsh"] } },
   { "op": "create_edge", "src": "sparsh", "dst": "fa32da87-278a-4f65-a106-b947c0b7724d", "type": "ROOMMATE_OF", "confidence": 0.9 },
   { "op": "create_edge", "src": "sparsh", "dst": "ad5c37ef-a5a0-46cc-a6ac-99b79cfc95ca", "type": "ATTENDS", "properties": { "major": "Supply Chain Management" }, "confidence": 0.9 },
   { "op": "create_edge", "src": "sparsh", "dst": "9df4ee67-6e20-4d9a-84c8-d3ed0c91e63e", "type": "LIVES_AT", "properties": { "housing": "on-campus apartment", "inferred": true }, "confidence": 0.7 }
@@ -574,7 +611,7 @@ Text: "Ankur and Sparsh got dinner at Sultan's on Saturday. Sparsh really liked 
 ```json
 { "operations": [
   { "op": "create_node", "temp_id": "sultans", "kind": "place", "title": "Sultan's", "detail": {} },
-  { "op": "create_node", "temp_id": "dinner", "kind": "memory", "title": "Ankur Desai and Sparsh Yandooru got dinner at Sultan's", "occurred_at": "2026-09-26T12:00:00-04:00" },
+  { "op": "create_node", "temp_id": "dinner", "kind": "memory", "title": "Ankur Desai and Sparsh Yandooru got dinner at Sultan's", "occurred_at": "2026-09-26T00:00:00-04:00" },
   { "op": "create_node", "temp_id": "falafel", "kind": "memory", "title": "Sparsh Yandooru likes the falafel at Sultan's" },
   { "op": "create_edge", "src": "fa32da87-278a-4f65-a106-b947c0b7724d", "dst": "dinner", "type": "PARTICIPANT", "confidence": 1.0 },
   { "op": "create_edge", "src": "a030d90f-6006-430d-ac32-bb280170ff00", "dst": "dinner", "type": "PARTICIPANT", "confidence": 0.9 },
@@ -584,7 +621,7 @@ Text: "Ankur and Sparsh got dinner at Sultan's on Saturday. Sparsh really liked 
 ] }
 ```
 
-The dinner is an event, so it is dated. The falafel preference is a lasting fact, so it is not.
+The dinner is an event, so it is dated — to its day, at local midnight, because no time was given. The falafel preference is a lasting fact, so it is not.
 
 ### 6.10 Filling in a relationship's specifics
 
@@ -668,7 +705,7 @@ Text: "CSE 380 meets Tuesdays and Thursdays 10:20 to 11:40 AM in Wells Hall B115
   { "op": "create_edge", "src": "c3e80a1b-5d2f-4e6a-9b17-0f4d8a2c6e35", "dst": "cse380_schedule", "type": "HAS_FACET", "properties": { "facet": "schedule" }, "confidence": 1.0 },
   { "op": "create_node", "temp_id": "wells_b115", "kind": "place", "title": "Wells Hall B115", "detail": {} },
   { "op": "create_edge", "src": "c3e80a1b-5d2f-4e6a-9b17-0f4d8a2c6e35", "dst": "wells_b115", "type": "AT_LOCATION", "properties": { "room": "B115", "building": "Wells Hall" }, "confidence": 1.0 },
-  { "op": "create_node", "temp_id": "kim", "kind": "person", "title": "Rachel Kim", "detail": { "aliases": ["Dr. Kim"] } },
+  { "op": "create_node", "temp_id": "kim", "kind": "person", "title": "Rachel Kim", "detail": { "aliases": ["Rachel", "Dr. Kim"] } },
   { "op": "create_edge", "src": "kim", "dst": "c3e80a1b-5d2f-4e6a-9b17-0f4d8a2c6e35", "type": "TEACHES", "properties": { "role": "professor" }, "confidence": 1.0 }
 ] }
 ```
@@ -684,7 +721,7 @@ Text: "From Ankur's email: Oliver Chen from Wedge Health held an initial screeni
 ```json
 { "operations": [
   { "op": "create_node", "temp_id": "screening", "kind": "plan", "title": "Wedge Health initial screening with Oliver Chen", "occurred_at": "2026-09-25T15:00:00-04:00", "detail": { "status": "confirmed", "end_at": "2026-09-25T15:30:00-04:00" } },
-  { "op": "create_node", "temp_id": "oliver", "kind": "person", "title": "Oliver Chen", "detail": { "aliases": [] } },
+  { "op": "create_node", "temp_id": "oliver", "kind": "person", "title": "Oliver Chen", "detail": { "aliases": ["Oliver"] } },
   { "op": "create_node", "temp_id": "wedge", "kind": "place", "title": "Wedge Health", "detail": {} },
   { "op": "create_edge", "src": "fa32da87-278a-4f65-a106-b947c0b7724d", "dst": "screening", "type": "PARTICIPANT", "properties": { "role": "candidate" }, "confidence": 1.0 },
   { "op": "create_edge", "src": "oliver", "dst": "screening", "type": "PARTICIPANT", "properties": { "role": "interviewer" }, "confidence": 1.0 },
@@ -703,3 +740,20 @@ Text: "From Ankur's email: Oliver Chen from Wedge Health held an initial screeni
 ```
 
 The screening had a set time before it happened, so it is a confirmed `plan` with its real start and end, even though it is over — that is what puts it on the timeline. Compare §6.9: an unscheduled dinner mentioned afterwards stays a dated memory. The Zoom medium and the topic are facets of the plan; the company size is a fact about Wedge Health, not about the meeting.
+
+### 6.15 An agent's course status report
+
+Candidates: person Ankur Desai (`fa32da87-278a-4f65-a106-b947c0b7724d`, `aliases: ["Ankur"]`), plan "CSE 335: Object-Oriented Software Design (Fall 2026)" (`277b2685-c30e-4cda-ba9b-10198338e52d`, `occurred_at` null), plan "CSE 335 — Design 5: Advanced UML Class Diagrams due" (`79e44c5c-2b51-4b51-b43f-3bef58562fa2`, `occurred_at` `2026-10-06T03:55:00Z`), plan "CSE 335 — Design 5 peer reviews due" (`fc5787f1-0d1e-4a52-9b0e-6c2f1d8e7a34`, `occurred_at` `2026-10-10T03:55:00Z`); edges hub `—HAS_ITEM {"item": "assignment"}→` each of the two plans. Utterance `occurred_at`: `2026-10-01T02:07:00-04:00`.
+
+Text: "CSE 335 update as of Oct 1: Design 5 (Advanced UML Class Diagrams) is due Mon Oct 5 at 11:55 PM. Design 4 peer reviews are due Fri Oct 2 at 11:55 PM. The last day to drop with no grade reported is Monday, October 19. Projects 1 and 2 are not posted yet. Step 4 is committed on branch feat/step-4 in /var/lib/dadi/code/cse-335."
+
+```json
+{ "operations": [
+  { "op": "create_node", "temp_id": "d4_reviews", "kind": "plan", "title": "CSE 335 — Design 4 peer reviews due", "occurred_at": "2026-10-02T23:55:00-04:00", "detail": { "status": "confirmed" } },
+  { "op": "create_edge", "src": "277b2685-c30e-4cda-ba9b-10198338e52d", "dst": "d4_reviews", "type": "HAS_ITEM", "properties": { "item": "assignment" }, "confidence": 1.0 },
+  { "op": "create_node", "temp_id": "drop", "kind": "plan", "title": "CSE 335 — last day to drop with no grade reported", "occurred_at": "2026-10-19T00:00:00-04:00", "detail": { "status": "confirmed", "all_day": true } },
+  { "op": "create_edge", "src": "277b2685-c30e-4cda-ba9b-10198338e52d", "dst": "drop", "type": "HAS_ITEM", "properties": { "item": "deadline" }, "confidence": 1.0 }
+] }
+```
+
+Design 5 is already stored at that time, so nothing is created for it. The Design 5 peer reviews are not mentioned, so they are left alone — not closed. The new deadlines are plans on the course with `HAS_ITEM`; the drop date has no time, so it is all-day at local midnight. "Not posted yet" is a status that will change, and the branch and path are the agent's working notes, so neither is stored. "As of Oct 1" dates the report; it is not a fact to keep.

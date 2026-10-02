@@ -73,7 +73,7 @@ test("close_node writes a deleted history row and closes incident edges", async 
     dwar,
     author: { source: "agent", agentId: "test-agent" },
     config,
-    operations: [{ op: "close_node", node_id: b, reason: "retracted" }],
+    operations: [{ op: "close_node", node_id: b, reason: "retracted", evidence: "forget that" }],
   });
 
   const history = await handle.db.select().from(nodeHistory).where(eq(nodeHistory.nodeId, b));
@@ -246,4 +246,99 @@ test("close_edge that strands a memory deletes it and reports it as an orphan", 
   assert.deepEqual(result.orphans, [fact]);
   const left = await handle.db.select({ id: node.id }).from(node);
   assert.deepEqual(new Set(left.map((row) => row.id)), new Set([person, friend]));
+});
+
+test("POST /nodes creates a node by hand, anchors an all-day plan, and rejects a duplicate", async () => {
+  await resetGraph(handle.sql);
+  const app = await buildApp(config, { db: handle.db, sql: handle.sql, dwar: mockDwar({ dimension: dim }) });
+  const payload = {
+    kind: "plan",
+    title: "CSE 335 — Design 5 peer reviews due",
+    occurred_at: "2026-10-09T23:55:00-04:00",
+    detail: { status: "confirmed" },
+  };
+
+  const created = await app.inject({ method: "POST", url: "/nodes", payload });
+  assert.equal(created.statusCode, 201, created.body);
+  assert.equal(created.json().occurred_at, "2026-10-10T03:55:00.000Z");
+  assert.equal(created.json().source, "manual");
+
+  const again = await app.inject({ method: "POST", url: "/nodes", payload });
+  assert.equal(again.statusCode, 422);
+  assert.equal(again.json().error.type, "duplicate_node");
+
+  const allDay = await app.inject({
+    method: "POST",
+    url: "/nodes",
+    payload: {
+      kind: "plan",
+      title: "CSE 335 — last day to drop",
+      occurred_at: "2026-10-19T09:00:00-04:00",
+      detail: { status: "confirmed", all_day: true },
+    },
+  });
+  assert.equal(allDay.statusCode, 201, allDay.body);
+  assert.equal(allDay.json().occurred_at, "2026-10-19T04:00:00.000Z");
+  assert.equal(allDay.json().detail.all_day, true);
+  await app.close();
+});
+
+test("PATCH /nodes/:id sets and clears expiry with ttl_days, and rejects it on a person", async () => {
+  await resetGraph(handle.sql);
+  const memory = await insertMemory(handle.db, { title: "CSE 300 gradebook as of Sep 29", embedding: axisVector(dim, 0) });
+  const person = await insertPerson(handle.db, { title: "Riya", embedding: axisVector(dim, 1) });
+  const app = await buildApp(config, { db: handle.db, sql: handle.sql, dwar: mockDwar({ dimension: dim }) });
+
+  const set = await app.inject({ method: "PATCH", url: `/nodes/${memory}`, payload: { ttl_days: 14 } });
+  assert.equal(set.statusCode, 200, set.body);
+  const expires = new Date(set.json().expires_at).getTime();
+  assert.ok(Math.abs(expires - (Date.now() + 14 * 86_400_000)) < 60_000);
+
+  const cleared = await app.inject({ method: "PATCH", url: `/nodes/${memory}`, payload: { ttl_days: null } });
+  assert.equal(cleared.json().expires_at, null);
+
+  const onPerson = await app.inject({ method: "PATCH", url: `/nodes/${person}`, payload: { ttl_days: 3 } });
+  assert.equal(onPerson.statusCode, 422);
+  await app.close();
+});
+
+test("POST /edges draws an edge by hand and POST /edges/:id/close closes it, sweeping what it strands", async () => {
+  await resetGraph(handle.sql);
+  const ankur = await insertPerson(handle.db, { title: "Ankur Desai", embedding: axisVector(dim, 0) });
+  const sparsh = await insertPerson(handle.db, { title: "Sparsh Yandooru", embedding: axisVector(dim, 2) });
+  await insertEdge(handle.db, { src: sparsh, dst: ankur, type: "ROOMMATE_OF" });
+  const seafood = await insertMemory(handle.db, { title: "Ankur Desai doesn't like other seafood", embedding: axisVector(dim, 1) });
+  const app = await buildApp(config, { db: handle.db, sql: handle.sql, dwar: mockDwar({ dimension: dim }) });
+
+  const badType = await app.inject({
+    method: "POST",
+    url: "/edges",
+    payload: { src_id: ankur, dst_id: seafood, type: "dislikes", confidence: 1 },
+  });
+  assert.equal(badType.statusCode, 422);
+  const missing = await app.inject({
+    method: "POST",
+    url: "/edges",
+    payload: { src_id: ankur, dst_id: "00000000-0000-4000-8000-000000000000", type: "DISLIKES", confidence: 1 },
+  });
+  assert.equal(missing.statusCode, 422);
+
+  const created = await app.inject({
+    method: "POST",
+    url: "/edges",
+    payload: { src_id: ankur, dst_id: seafood, type: "DISLIKES", properties: { category: "food" }, confidence: 1 },
+  });
+  assert.equal(created.statusCode, 201, created.body);
+  assert.equal(created.json().type, "DISLIKES");
+  assert.deepEqual(created.json().properties, { category: "food" });
+
+  const closed = await app.inject({ method: "POST", url: `/edges/${created.json().id}/close` });
+  assert.equal(closed.statusCode, 200, closed.body);
+  assert.deepEqual(closed.json().orphans, [seafood]);
+  const [row] = await handle.db.select().from(edge).where(eq(edge.id, created.json().id));
+  assert.ok(row?.validTo);
+
+  const again = await app.inject({ method: "POST", url: `/edges/${created.json().id}/close` });
+  assert.equal(again.statusCode, 422);
+  await app.close();
 });
