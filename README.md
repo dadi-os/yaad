@@ -33,7 +33,7 @@ yaad/
 
 Topology is hardcoded in `src/constants.ts` (host, port, log level, `DWAR_BASE_URL`).
 
-`DATABASE_URL` is required at startup (no empty default). Nas injects it in compose and on the appliance (`postgres://yaad:yaad@yaad-postgres:5432/yaad`). There is no Yaad `.env` — Postgres is not Preferences-editable; `.env.example` documents the variable.
+`DATABASE_URL` is required at startup (no empty default). Nas injects it in compose and on the appliance (`postgres://yaad:yaad@yaad-postgres:5432/yaad`). There is no Yaad `.env` — Postgres is not Preferences-editable; `.env.example` documents the variables. `TZ` is required too and must be an IANA zone: it is the box's time zone, which Nas writes to `/var/lib/dadi/timezone.env` from `/etc/localtime` on every boot and the container loads with `EnvironmentFile=`; compose requires it in the shell.
 
 ## Local run
 
@@ -76,7 +76,7 @@ A place is a real entity that recurs across events. Coordinates are optional. Ya
 
 ## Recurrence
 
-`plan_detail.recurrence` holds an RRULE on a **template** row. Yaad materializes instance rows out to `plan.recurrence_horizon_days`. Templates are excluded from date-bounded `POST /query` but remain visible to `recall`. Cap: `plan.max_instances_per_series`. Rules expand in `plan.timezone` wall-clock time, so a weekly 10:20 class stays at 10:20 across daylight-saving changes. An `update_node` that changes a template's `occurred_at`, `end_at`, or `recurrence` deletes its instances (history kept) and materializes them again from the new rule.
+`plan_detail.recurrence` holds an RRULE on a **template** row. Yaad materializes instance rows out to `plan.recurrence_horizon_days`. Templates are excluded from date-bounded `POST /query` but remain visible to `recall`. Cap: `plan.max_instances_per_series`. Rules expand in the box's wall-clock time (the required `TZ`, which Nas writes from `/etc/localtime`), so a weekly 10:20 class stays at 10:20 across daylight-saving changes. An `update_node` that changes a template's `occurred_at`, `end_at`, or `recurrence` deletes its instances (history kept) and materializes them again from the new rule.
 
 ## Query vs recall
 

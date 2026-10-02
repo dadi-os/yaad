@@ -337,7 +337,7 @@ async function materializeSeries(opts: {
     end: opts.endAt,
     horizonEnd,
     maxInstances: opts.config.plan.max_instances_per_series,
-    timeZone: opts.config.plan.timezone,
+    timeZone: opts.config.env.timezone,
   });
   for (const instance of instances) {
     const id = randomUUID();

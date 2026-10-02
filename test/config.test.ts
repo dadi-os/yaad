@@ -16,6 +16,31 @@ test("loadConfig requires DATABASE_URL", () => {
   }
 });
 
+test("loadConfig requires TZ to be an IANA zone", () => {
+  const previous = process.env.TZ;
+  try {
+    for (const [value, error] of [
+      [undefined, /TZ is required/],
+      ["Mars/Olympus", /TZ is not an IANA time zone: Mars\/Olympus/],
+    ] as const) {
+      resetConfigCache();
+      if (value === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = value;
+      }
+      assert.throws(() => loadConfig(), error);
+    }
+  } finally {
+    if (previous === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = previous;
+    }
+    resetConfigCache();
+  }
+});
+
 test("loadConfig returns databaseUrl when set", () => {
   resetConfigCache();
   assert.ok(process.env.DATABASE_URL);

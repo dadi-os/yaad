@@ -43,7 +43,6 @@ const fileSchema = z.object({
   plan: z.object({
     recurrence_horizon_days: z.number().int().positive(),
     max_instances_per_series: z.number().int().positive(),
-    timezone: z.string().min(1),
   }),
   recall: z.object({
     anchor_similarity_floor: z.number().min(0).max(2),
@@ -78,6 +77,8 @@ export type Config = {
   serviceRoot: string;
   env: {
     databaseUrl: string;
+    /** The box's IANA zone from `TZ`; recurring plans keep their wall-clock time in it across DST. */
+    timezone: string;
     dwarBaseUrl: string;
     host: string;
     port: number;
@@ -114,9 +115,6 @@ export function loadFileConfig(): FileConfig {
   if (parsed.data.search.default_limit > parsed.data.search.max_limit) {
     throw new Error("config.toml search.default_limit must be <= search.max_limit");
   }
-  if (!Intl.supportedValuesOf("timeZone").includes(parsed.data.plan.timezone)) {
-    throw new Error(`config.toml plan.timezone is not an IANA time zone: ${parsed.data.plan.timezone}`);
-  }
   return parsed.data;
 }
 
@@ -129,7 +127,7 @@ export function resetConfigCache(): void {
 
 /**
  * Load process config from config.toml and required env.
- * @throws When config.toml is invalid or DATABASE_URL is missing.
+ * @throws When config.toml is invalid, DATABASE_URL is missing, or TZ is missing or not an IANA zone.
  */
 export function loadConfig(): Config {
   if (cached) {
@@ -140,10 +138,18 @@ export function loadConfig(): Config {
   if (!databaseUrl) {
     throw new Error("DATABASE_URL is required");
   }
+  const timezone = process.env.TZ;
+  if (!timezone) {
+    throw new Error("TZ is required");
+  }
+  if (!Intl.supportedValuesOf("timeZone").includes(timezone)) {
+    throw new Error(`TZ is not an IANA time zone: ${timezone}`);
+  }
   cached = {
     serviceRoot,
     env: {
       databaseUrl,
+      timezone,
       dwarBaseUrl: DWAR_BASE_URL,
       host: HOST,
       port: PORT,

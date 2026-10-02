@@ -35,6 +35,7 @@ jobs:
         run: |
           docker run --rm --network host \
             -e DATABASE_URL=postgres://yaad:yaad@localhost:5432/yaad \
+            -e TZ=America/New_York \
             -v "$PWD:/app" -v /app/node_modules \
             yaad-dev npm run db:migrate
 
@@ -42,6 +43,7 @@ jobs:
         run: |
           docker run --rm --network host \
             -e DATABASE_URL=postgres://yaad:yaad@localhost:5432/yaad \
+            -e TZ=America/New_York \
             -v "$PWD:/app" -v /app/node_modules \
             yaad-dev npm test
 
