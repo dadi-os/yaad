@@ -16,8 +16,6 @@ import type { LintFinding } from "../../types/domain.js";
 const STATUS_PATTERN = String.raw`\m(as of|not yet|so far|still needs?|unconfirmed)\M|\mno\M.{0,60}\m(found|posted|yet)\M`;
 /** Wording of an agent's own working notes rather than facts about Ankur's world. */
 const WORKING_NOTE_PATTERN = String.raw`/var/lib|\mworktree|\mbranch\M|\mcommit\M|this agent|\mwake\M|record_thought|shadow dom|\mdom\M|credentials? (set up|exist|stored)|\mchaavi\M`;
-/** A hub with at least this many facets or items is a course, job, or project rather than an event. */
-const HUB_EDGE_MIN = 3;
 
 /** Register `GET /lint`. */
 export async function registerLint(app: FastifyInstance): Promise<void> {
@@ -76,7 +74,7 @@ export async function registerLint(app: FastifyInstance): Promise<void> {
       });
     }
 
-    const hubEdges = sql<number>`(SELECT count(*) FROM ${edge} WHERE ${edge.srcId} = ${node.id} AND ${edge.validTo} IS NULL AND ${edge.type} IN ('HAS_FACET', 'HAS_ITEM'))`;
+    const ownsItems = sql`EXISTS (SELECT 1 FROM ${edge} WHERE ${edge.srcId} = ${node.id} AND ${edge.validTo} IS NULL AND ${edge.type} = 'HAS_ITEM')`;
     const hubs = await app.db
       .select({ id: node.id, title: node.title })
       .from(node)
@@ -87,7 +85,7 @@ export async function registerLint(app: FastifyInstance): Promise<void> {
           isNotNull(node.occurredAt),
           isNull(planDetail.recurrence),
           isNull(planDetail.seriesId),
-          sql`${hubEdges} >= ${HUB_EDGE_MIN}`,
+          ownsItems,
         ),
       );
     for (const row of hubs) {
@@ -95,7 +93,7 @@ export async function registerLint(app: FastifyInstance): Promise<void> {
         rule: "dated_hub",
         node_ids: [row.id],
         title: row.title,
-        note: "A hub with facets or items carries a single date, often copied from one of its items; a hub's date comes only from its own schedule.",
+        note: "A hub that owns dated items (HAS_ITEM) carries a single date, often copied from one of them; a hub's date comes only from its own schedule.",
       });
     }
 

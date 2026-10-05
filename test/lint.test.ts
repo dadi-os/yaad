@@ -54,8 +54,14 @@ test("GET /lint flags snapshots, working notes, noon placeholders, dated hubs, d
     embedding: axisVector(dim, 8),
     occurredAt: new Date("2026-09-30T04:00:00.000Z"),
   });
+  await insertEdge(handle.db, { src: hub, dst: noon, type: "HAS_ITEM" });
+  const assignment = await insertPlan(handle.db, {
+    title: "CSE 335 — Step 4 due",
+    embedding: axisVector(dim, 11),
+    occurredAt: new Date("2026-10-02T03:55:00.000Z"),
+  });
   for (const facet of [termA, termB, snapshot]) {
-    await insertEdge(handle.db, { src: hub, dst: facet, type: "HAS_FACET" });
+    await insertEdge(handle.db, { src: assignment, dst: facet, type: "HAS_FACET" });
   }
 
   const ankur = await insertPerson(handle.db, { title: "Ankur Desai", embedding: axisVector(dim, 9) });
