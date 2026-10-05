@@ -1,6 +1,6 @@
 /** Request lifecycle logging aligned with the nas JSON contract. */
 
-import type { FastifyInstance, FastifyPluginAsync } from "fastify";
+import type { FastifyInstance } from "fastify";
 import { randomBytes } from "node:crypto";
 
 declare module "fastify" {
@@ -13,10 +13,12 @@ declare module "fastify" {
 }
 
 /**
- * Registers onRequest / onResponse hooks that emit one structured request line
- * per call: request_id, method, path, status, duration_ms.
+ * Install onRequest / onResponse hooks on the root instance that emit one structured
+ * request line per call (request_id, method, path, status, duration_ms) and echo
+ * X-Request-Id. Not an `app.register` plugin: that encapsulates the hooks, so they
+ * never ran for the app's routes.
  */
-export const requestLoggingPlugin: FastifyPluginAsync = async (app) => {
+export async function registerRequestLogging(app: FastifyInstance): Promise<void> {
   app.decorateRequest("requestId", "");
   app.decorateRequest("requestStartedAt", 0n);
 
@@ -54,9 +56,4 @@ export const requestLoggingPlugin: FastifyPluginAsync = async (app) => {
     reply.header("X-Request-Id", request.requestId);
     return payload;
   });
-};
-
-/** Register the nas-aligned request logging plugin on an app. */
-export async function registerRequestLogging(app: FastifyInstance): Promise<void> {
-  await app.register(requestLoggingPlugin);
 }
