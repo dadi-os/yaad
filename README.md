@@ -146,7 +146,7 @@ The `emit_operations` tool schema has one `create_node` variant per kind: `memor
 
 ## Lint
 
-`GET /lint` returns `{ findings: [{ rule, node_ids, title, note }] }` for live nodes that match what past audits found wrong: `status_snapshot` (as-of / not-yet wording on a memory that never expires), `working_note` (paths, branches, credentials, site quirks), `noon_placeholder` (a timed plan at exactly 12:00 local), `dated_hub` (a plan that owns dated items through `HAS_ITEM` yet carries a date of its own), `duplicate` (same kind and normalized title, plans in the same hour), and `unaliased_person` (a person whose first name is not an alias). It never changes the graph.
+`GET /lint` returns `{ findings: [{ rule, node_ids, title, note }] }` for live nodes that match what past audits found wrong: `status_snapshot` (as-of / not-yet wording on a memory that never expires), `working_note` (paths, branches, wakes, credentials; lessons about how a site behaves are memory), `noon_placeholder` (a timed plan at exactly 12:00 local), `dated_hub` (a plan that owns dated items through `HAS_ITEM` yet carries a date of its own), `duplicate` (same kind and normalized title, plans in the same hour), and `unaliased_person` (a person whose first name is not an alias). It never changes the graph.
 
 ## Recall
 

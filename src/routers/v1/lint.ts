@@ -14,8 +14,8 @@ import type { LintFinding } from "../../types/domain.js";
 
 /** Status wording that stops being true: "as of", "not yet", "so far", "still needs", "no … found". */
 const STATUS_PATTERN = String.raw`\m(as of|not yet|so far|still needs?|unconfirmed)\M|\mno\M.{0,60}\m(found|posted|yet)\M`;
-/** Wording of an agent's own working notes rather than facts about Ankur's world. */
-const WORKING_NOTE_PATTERN = String.raw`/var/lib|\mworktree|\mbranch\M|\mcommit\M|this agent|\mwake\M|record_thought|shadow dom|\mdom\M|credentials? (set up|exist|stored)|\mchaavi\M`;
+/** Wording of an agent's own progress and plumbing (paths, branches, wakes, stored credentials) rather than facts or site lessons about Ankur's world. */
+const WORKING_NOTE_PATTERN = String.raw`/var/lib|\mworktree|\mbranch\M|\mcommit\M|this agent|\mwake\M|credentials? (set up|exist|stored)|\mchaavi\M`;
 
 /** Register `GET /lint`. */
 export async function registerLint(app: FastifyInstance): Promise<void> {
@@ -48,7 +48,7 @@ export async function registerLint(app: FastifyInstance): Promise<void> {
         rule: "working_note",
         node_ids: [row.id],
         title: row.title,
-        note: "Reads as an agent's working note (paths, branches, tools, credentials, site quirks), which belongs in record_thought.",
+        note: "Reads as an agent's working note (paths, branches, wakes, credentials) rather than a fact or lesson about Ankur's world; delete it.",
       });
     }
 

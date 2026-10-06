@@ -396,7 +396,9 @@ If the candidates contain two nodes that are clearly the same person or place, d
 
 ### 4.6 Nothing new
 
-**An agent's own working notes are not memory.** File paths, git repositories, branches, commits, worktrees, where credentials are stored (Chaavi, a vault), how a website's page or DOM behaves, tool workarounds, and anything about "this agent", a wake, or a worker describe how an agent did its job, not Ankur's world. Store none of it — not in a title and not in a body. A fact about the outside world that came with it stays: "Kritik needs its own login, separate from MSU SSO" is a fact about Kritik; "the Kritik login was added to Chaavi" is not.
+**An agent's own working notes are not memory.** File paths, branches, commits, worktrees, where credentials are stored (Chaavi, a vault), and anything about "this agent", a wake, or a worker describe how an agent did its job, not Ankur's world. Store none of it — not in a title and not in a body. A fact about the outside world that came with it stays: "Kritik needs its own login, separate from MSU SSO" is a fact about Kritik; "the Kritik login was added to Chaavi" is not.
+
+**A lesson about how one of Ankur's sites, accounts, or repos behaves is memory.** "MSU D2L sign-in goes through Okta and takes Ankur's passkey" and "Codon Learning locks a quiz after its first submit" save the next agent from relearning them. Store each as one memory about that site, account, or repo — on its hub when one exists, otherwise `Ankur —ABOUT {"category": "how-to"}→` — keeping the lesson and dropping the play-by-play of how it was found.
 
 **Progress on work an agent is doing for Ankur is not memory either.** Drafted, committed locally, not submitted yet, still needs his review — the agent tracks that itself and reports it to him. Store the work's deadline and requirements; never its progress.
 
