@@ -108,7 +108,7 @@ export function toPlanDetail(row: PlanDetailRow): PlanDetail {
     all_day: row.allDay,
     status: parseStatus(row.status),
     recurrence: row.recurrence,
-    series_id: row.seriesId,
+    series_id: null,
   };
 }
 

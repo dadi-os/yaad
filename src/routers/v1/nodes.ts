@@ -2,7 +2,7 @@
  * Node routes: `GET /nodes/:id` and `GET /nodes/:id/history` read; `POST /nodes`,
  * `PATCH /nodes/:id`, and `DELETE /nodes/:id` are hand edits from a client. `POST` and
  * `PATCH` run as one validated `create_node` / `update_node`, so they embed, write
- * history, anchor all-day plans, and materialize a series exactly like ingest, and a
+ * history, anchor all-day plans, and validate a recurring rule exactly like ingest, and a
  * create that duplicates a live node is a 422 `duplicate_node`. `DELETE` deletes the
  * node and sweeps the neighbors it leaves with no current edge, logging what it swept.
  * An unknown id is a 404.

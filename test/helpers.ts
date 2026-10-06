@@ -138,7 +138,6 @@ export async function insertPlan(
     status?: PlanStatus;
     allDay?: boolean;
     recurrence?: string | null;
-    seriesId?: string | null;
   },
 ): Promise<string> {
   const id = randomUUID();
@@ -160,7 +159,6 @@ export async function insertPlan(
     allDay: args.allDay ?? false,
     status: args.status ?? "confirmed",
     recurrence: args.recurrence ?? null,
-    seriesId: args.seriesId ?? null,
   });
   return id;
 }

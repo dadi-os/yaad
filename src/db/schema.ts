@@ -104,7 +104,6 @@ export const planDetail = pgTable(
     allDay: boolean("all_day").notNull().default(false),
     status: text("status").notNull(),
     recurrence: text("recurrence"),
-    seriesId: uuid("series_id"),
   },
   (table) => [
     check("plan_status_check", sql`${table.status} IN ('idea', 'tentative', 'confirmed')`),

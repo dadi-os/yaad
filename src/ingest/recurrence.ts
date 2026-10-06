@@ -1,54 +1,72 @@
-/** Expand RRULE plan templates into dated instances within a horizon. */
+/** RRULE plan templates: validated on write, expanded into occurrences on read. */
 
 import rrule from "rrule";
 import { YaadError } from "../errors.js";
 
 const { rrulestr } = rrule;
 
+/** One dated occurrence of a recurring plan. */
+export type Occurrence = { occurredAt: Date; endAt: Date | null };
+
 /**
- * Materialize recurrence dates between `start` and the nearer of rule `until` or `horizonEnd`.
- * The rule runs on `timeZone` wall-clock time, so a 10:20 class stays at 10:20 across DST changes.
- * Preserves event duration when `end` is set. Rejects rules that exceed `maxInstances`.
+ * Parse `rule` from `start` in `timeZone` wall-clock time; an unparsable rule is a 422. The
+ * rule is either a bare RRULE (`FREQ=WEEKLY;BYDAY=FR`) or RRULE and EXDATE lines, with
+ * UNTIL and EXDATE in local time. The start goes in as a DTSTART line because rrule drops
+ * its dtstart option for multi-line rules.
  */
-export function expandRecurrence(opts: {
-  rule: string;
-  start: Date;
-  end: Date | null;
-  horizonEnd: Date;
-  maxInstances: number;
-  /** IANA zone the schedule is kept in, e.g. `America/Detroit`. */
-  timeZone: string;
-}): Array<{ occurredAt: Date; endAt: Date | null }> {
-  const wallStart = toWallClock(opts.start, opts.timeZone);
-  let rule;
+function parseRule(rule: string, start: Date, timeZone: string) {
+  const dtstart = toWallClock(start, timeZone).toISOString().replace(/[-:]/g, "").replace(/\.\d{3}Z$/, "");
+  const lines = rule.includes(":") ? rule : `RRULE:${rule}`;
   try {
-    rule = rrulestr(opts.rule, { dtstart: wallStart });
+    return rrulestr(`DTSTART:${dtstart}\n${lines}`, { forceset: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     throw new YaadError(422, "invalid_request", `invalid recurrence rule: ${message}`);
   }
+}
 
-  const wallHorizon = toWallClock(opts.horizonEnd, opts.timeZone);
-  const until = rule.options.until;
-  const rangeEnd = until && until.getTime() < wallHorizon.getTime() ? until : wallHorizon;
-  const dates = rule.between(wallStart, rangeEnd, true);
+/** Reject a recurring plan with no start (its occurred_at) or a rule that does not parse. */
+export function assertRecurrence(opts: { rule: string; start: Date | null; timeZone: string }): void {
+  if (!opts.start) {
+    throw new YaadError(422, "invalid_request", "recurring plan requires occurred_at as the series start");
+  }
+  parseRule(opts.rule, opts.start, opts.timeZone);
+}
 
+/**
+ * Occurrences of a recurring plan that overlap `from`..`to`, keeping each one's duration.
+ * The rule runs on `timeZone` wall-clock time, so a 10:20 class stays at 10:20 across DST
+ * changes. Rejects a window holding more than `maxInstances` occurrences.
+ */
+export function occurrencesBetween(opts: {
+  rule: string;
+  start: Date;
+  end: Date | null;
+  from: Date;
+  to: Date;
+  maxInstances: number;
+  /** IANA zone the schedule is kept in, e.g. `America/Detroit`. */
+  timeZone: string;
+}): Occurrence[] {
+  const rule = parseRule(opts.rule, opts.start, opts.timeZone);
+  const durationMs = opts.end !== null ? opts.end.getTime() - opts.start.getTime() : 0;
+  const dates = rule.between(
+    toWallClock(new Date(opts.from.getTime() - durationMs), opts.timeZone),
+    toWallClock(opts.to, opts.timeZone),
+    true,
+  );
   if (dates.length > opts.maxInstances) {
     throw new YaadError(
       422,
       "invalid_request",
-      `recurrence rule expands to ${dates.length} instances, exceeding max_instances_per_series (${opts.maxInstances}): ${opts.rule}`,
+      `recurrence rule has ${dates.length} occurrences in the requested range, more than max_instances_per_series (${opts.maxInstances}); narrow the date range: ${opts.rule}`,
     );
   }
-
-  const durationMs =
-    opts.end !== null ? opts.end.getTime() - opts.start.getTime() : null;
-
   return dates.map((wall) => {
     const occurredAt = fromWallClock(wall, opts.timeZone);
     return {
       occurredAt,
-      endAt: durationMs !== null ? new Date(occurredAt.getTime() + durationMs) : null,
+      endAt: opts.end !== null ? new Date(occurredAt.getTime() + durationMs) : null,
     };
   });
 }

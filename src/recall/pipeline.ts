@@ -3,7 +3,7 @@
 import { inArray, sql } from "drizzle-orm";
 import type { Config } from "../config.js";
 import type { Db, Sql } from "../db/client.js";
-import { filterNodes, hasFilter, type NodeFilter } from "../db/filter.js";
+import { filterNodes, hasFilter, type FilteredNode, type NodeFilter } from "../db/filter.js";
 import {
   getEdgesAmong,
   getIncidentEdgesForIds,
@@ -190,10 +190,13 @@ async function selectAnchorRows(
     });
   }
   if (opts.filter !== undefined && hasFilter(opts.filter)) {
+    const series = { timeZone: opts.config.env.timezone, plan: opts.config.plan };
     if (!queryEmbedding) {
-      return filterNodes(opts.db, opts.filter, opts.limit, 0);
+      return distinctRows(await filterNodes(opts.db, opts.filter, opts.limit, 0, series));
     }
-    const matches = await filterNodes(opts.db, opts.filter, opts.config.page.max_size, 0);
+    const matches = distinctRows(
+      await filterNodes(opts.db, opts.filter, opts.config.page.max_size, 0, series),
+    );
     return matches
       .map((row) => ({ row, similarity: semanticScore(queryEmbedding, row.embedding) }))
       .sort((a, b) => b.similarity - a.similarity)
@@ -205,6 +208,15 @@ async function selectAnchorRows(
   }
   const hits = await findAnchors({ sql: opts.sql, config: opts.config, embedding: queryEmbedding });
   return hits.map((hit) => hit.row);
+}
+
+/** Each matched node once: a recurring plan anchors recall as itself, not once per occurrence. */
+function distinctRows(matches: FilteredNode[]): NodeRow[] {
+  const byId = new Map<string, NodeRow>();
+  for (const { row } of matches) {
+    byId.set(row.id, row);
+  }
+  return [...byId.values()];
 }
 
 /** Walk entry for a node the walk must already hold; absence is an internal error. */

@@ -16,7 +16,7 @@ yaad/
     app.ts, config.ts, logging.ts, errors.ts, constants.ts
     db/           Drizzle client, schema, ANN, temporal reads
     dwar/         Dwar axios client
-    ingest/       extract → validate → apply, RRULE materialization
+    ingest/       extract → validate → apply, RRULE validation and expansion
     recall/       anchor → expand → score → gate
     routers/v1/   HTTP routes + schemas
     types/        domain types
@@ -67,7 +67,7 @@ HTTP errors: `{ "error": { "type": "<code>", "message": "..." } }`. Shared infra
 | --- | --- | --- |
 | `person` | someone Dadi knows | `person_detail` (birthday, aliases) |
 | `memory` | a thing that happened | none |
-| `plan` | an idea, reminder, or dated event | `plan_detail` (end_at, status, recurrence, series_id) |
+| `plan` | an idea, reminder, or dated event | `plan_detail` (end_at, all_day, status, recurrence) |
 | `place` | somewhere you go | `place_detail` (address, latitude, longitude) |
 
 `occurred_at` is the single "when" for every kind. Unknown dates are `NULL`. `expires_at` is null for permanent nodes; observations get a timestamp from `ttl_days`.
@@ -78,7 +78,7 @@ A place is a real entity that recurs across events. Coordinates are optional. Ya
 
 ## Recurrence
 
-`plan_detail.recurrence` holds an RRULE on a **template** row. Yaad materializes instance rows out to `plan.recurrence_horizon_days`. Templates are excluded from date-bounded `POST /query` but remain visible to `recall`. Cap: `plan.max_instances_per_series`. Rules expand in the box's wall-clock time (the required `TZ`, which Nas writes from `/etc/localtime`), so a weekly 10:20 class stays at 10:20 across daylight-saving changes. An `update_node` that changes a template's `occurred_at`, `end_at`, or `recurrence` deletes its instances (history kept) and materializes them again from the new rule.
+`plan_detail.recurrence` holds a rule on the plan itself: a bare RRULE (`FREQ=WEEKLY;BYDAY=FR;UNTIL=…`) or `RRULE:` and `EXDATE:` lines for skipped days. The plan's `occurred_at` / `end_at` are its first occurrence. A recurring plan is stored once and validated on write (it needs `occurred_at`, and the rule must parse); its occurrences are never stored. A date-bounded `POST /query` works them out on read and merges them, in time order, with dated nodes before paging: each occurrence carries the plan's id, its own `occurred_at` / `end_at`, and `detail.series_id` = the plan's id (null on everything else). An open-ended range reaches `plan.recurrence_horizon_days` past its start; a range holding more than `plan.max_instances_per_series` occurrences of one plan is `invalid_request`. `recall` sees the plan once. Rules expand in the box's wall-clock time (the required `TZ`, which Nas writes from `/etc/localtime`), so a weekly 10:20 class stays at 10:20 across daylight-saving changes; `UNTIL` and `EXDATE` are local times. Changing the rule, start, or duration changes the next query's occurrences.
 
 ## Query vs recall
 
@@ -86,11 +86,11 @@ A place is a real entity that recurs across events. Coordinates are optional. Ya
 
 ## Corrections
 
-Corrections go through `POST /ingest` as `update_node` / `close_node`, or by hand (source `manual`) through `POST /nodes`, `PATCH` / `DELETE /nodes/:id`, `POST /edges`, and `POST /edges/:id/close`. Each hand edit runs as one validated operation through ingest's apply path, so it writes history, re-embeds, anchors all-day plans, and rematerializes a series the same way; `POST /nodes` is rejected as `duplicate_node` like an ingest create. `PATCH` also takes `ttl_days` (memory and plan only) to set expiry from now, or null to clear it. Changed fields write `node_history`, attributed to whoever made the change (`source`, and `agent_id` for an agent), while the node keeps its creator's. Edges use `valid_from`/`valid_to`; to change one, close it and create its replacement.
+Corrections go through `POST /ingest` as `update_node` / `close_node`, or by hand (source `manual`) through `POST /nodes`, `PATCH` / `DELETE /nodes/:id`, `POST /edges`, and `POST /edges/:id/close`. Each hand edit runs as one validated operation through ingest's apply path, so it writes history, re-embeds, anchors all-day plans, and validates a recurring rule the same way; `POST /nodes` is rejected as `duplicate_node` like an ingest create. `PATCH` also takes `ttl_days` (memory and plan only) to set expiry from now, or null to clear it. Changed fields write `node_history`, attributed to whoever made the change (`source`, and `agent_id` for an agent), while the node keeps its creator's. Edges use `valid_from`/`valid_to`; to change one, close it and create its replacement.
 
 ## Orphans
 
-A node left with no current edge by a delete, a `close_edge`, or a series rematerialization is deleted in the same transaction (with a `deleted` history row). Dated plans are kept: they stand on the timeline alone. `POST /ingest` and `DELETE /nodes/:id` return the swept ids as `orphans`. Nodes that were edgeless before the batch are not touched.
+A node left with no current edge by a delete or a `close_edge` is deleted in the same transaction (with a `deleted` history row). Dated plans are kept: they stand on the timeline alone. `POST /ingest` and `DELETE /nodes/:id` return the swept ids as `orphans`. Nodes that were edgeless before the batch are not touched.
 
 ## Expiry
 

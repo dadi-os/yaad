@@ -18,7 +18,7 @@ import {
   type Tx,
 } from "../db/temporal.js";
 import { YaadError } from "../errors.js";
-import { expandRecurrence } from "./recurrence.js";
+import { assertRecurrence } from "./recurrence.js";
 import { parse } from "../routers/v1/schemas.js";
 import { historyEmbeddingText, sameInstant } from "../serialize.js";
 import type { NodeAuthor } from "../types/domain.js";
@@ -46,9 +46,9 @@ export type ApplyResult = {
 
 /**
  * Persist emit_operations results: create/update/close nodes and edges.
- * All-day plans are first moved to local midnight of their dates, recurring plan
- * series are materialized when create_node includes an RRULE, and nodes the batch's
- * closes left with no current edge are swept.
+ * All-day plans are first moved to local midnight of their dates, a recurring plan's
+ * rule is validated (its occurrences are expanded when read, never stored), and nodes
+ * the batch's closes left with no current edge are swept.
  */
 export async function applyOperations(opts: {
   db: Db;
@@ -112,24 +112,9 @@ export async function applyOperations(opts: {
             allDay: detail.all_day ?? false,
             status: detail.status,
             recurrence,
-            seriesId: null,
           });
           if (recurrence) {
-            await materializeSeries({
-              tx,
-              templateId: id,
-              title: op.title,
-              body: op.body ?? null,
-              embedding,
-              author: opts.author,
-              status: detail.status,
-              allDay: detail.all_day ?? false,
-              recurrence,
-              start: occurredAt,
-              endAt,
-              createdAt: at,
-              config: opts.config,
-            });
+            assertRecurrence({ rule: recurrence, start: occurredAt, timeZone: opts.config.env.timezone });
           }
         } else if (op.kind === "place") {
           const detail = parse(placeDetailBody, op.detail ?? {});
@@ -229,14 +214,15 @@ export async function applyOperations(opts: {
             .where(eq(node.id, op.node_id));
         }
         if (current.kind === "plan" && changesSchedule(op)) {
-          const rebuilt = await rematerializeSeries({
-            tx,
-            templateId: op.node_id,
-            author: opts.author,
-            at,
-            config: opts.config,
-          });
-          stranded.push(...rebuilt);
+          const detail = await getPlanDetail(tx, op.node_id);
+          if (detail.recurrence) {
+            const updated = await getNode(tx, op.node_id);
+            assertRecurrence({
+              rule: detail.recurrence,
+              start: updated.occurredAt,
+              timeZone: opts.config.env.timezone,
+            });
+          }
         }
         applied.push(op);
       }
@@ -313,64 +299,6 @@ export async function applyOperations(opts: {
   });
 }
 
-async function materializeSeries(opts: {
-  tx: Tx;
-  templateId: string;
-  title: string;
-  body: string | null;
-  embedding: number[];
-  author: NodeAuthor;
-  status: string;
-  allDay: boolean;
-  recurrence: string;
-  start: Date | null;
-  endAt: Date | null;
-  createdAt: Date;
-  config: Config;
-}): Promise<void> {
-  if (!opts.start) {
-    throw new YaadError(
-      422,
-      "invalid_request",
-      "recurring plan requires occurred_at as the series start",
-    );
-  }
-  const horizonEnd = new Date(
-    opts.createdAt.getTime() + opts.config.plan.recurrence_horizon_days * 86_400_000,
-  );
-  const instances = expandRecurrence({
-    rule: opts.recurrence,
-    start: opts.start,
-    end: opts.endAt,
-    horizonEnd,
-    maxInstances: opts.config.plan.max_instances_per_series,
-    timeZone: opts.config.env.timezone,
-  });
-  for (const instance of instances) {
-    const id = randomUUID();
-    await opts.tx.insert(node).values({
-      id,
-      kind: "plan",
-      title: opts.title,
-      body: opts.body,
-      embedding: opts.embedding,
-      occurredAt: instance.occurredAt,
-      source: opts.author.source,
-      agentId: opts.author.agentId,
-      createdAt: opts.createdAt,
-      updatedAt: opts.createdAt,
-    });
-    await opts.tx.insert(planDetail).values({
-      nodeId: id,
-      endAt: instance.endAt,
-      allDay: opts.allDay,
-      status: opts.status,
-      recurrence: null,
-      seriesId: opts.templateId,
-    });
-  }
-}
-
 function changesSchedule(op: Extract<Operation, { op: "update_node" }>): boolean {
   if (op.occurred_at !== undefined) {
     return true;
@@ -379,54 +307,6 @@ function changesSchedule(op: Extract<Operation, { op: "update_node" }>): boolean
     return false;
   }
   return "recurrence" in op.detail || "end_at" in op.detail || "all_day" in op.detail;
-}
-
-/**
- * Rebuild a series after its schedule changed: delete the template's existing instances
- * (history kept, edges closed) and materialize again from the template's current rule.
- * A template whose rule was cleared ends with no instances. Returns the neighbors the
- * deleted instances were linked to.
- */
-async function rematerializeSeries(opts: {
-  tx: Tx;
-  templateId: string;
-  author: NodeAuthor;
-  at: Date;
-  config: Config;
-}): Promise<string[]> {
-  const instances = await opts.tx
-    .select({ id: planDetail.nodeId })
-    .from(planDetail)
-    .where(eq(planDetail.seriesId, opts.templateId));
-  const stranded: string[] = [];
-  for (const instance of instances) {
-    const neighbors = await deleteNode(opts.tx, instance.id, opts.at, opts.author);
-    stranded.push(...neighbors);
-  }
-  const detail = await getPlanDetail(opts.tx, opts.templateId);
-  if (!detail.recurrence) {
-    return stranded;
-  }
-  const template = await getNode(opts.tx, opts.templateId);
-  if (!template.embedding) {
-    throw new YaadError(500, "internal_error", `plan ${opts.templateId} has no embedding`);
-  }
-  await materializeSeries({
-    tx: opts.tx,
-    templateId: opts.templateId,
-    title: template.title,
-    body: template.body,
-    embedding: template.embedding,
-    author: opts.author,
-    status: detail.status,
-    allDay: detail.allDay,
-    recurrence: detail.recurrence,
-    start: template.occurredAt,
-    endAt: detail.endAt,
-    createdAt: opts.at,
-    config: opts.config,
-  });
-  return stranded;
 }
 
 /** Local midnight of `instant`'s date. The process runs in the box's zone (`TZ`), so local is the box's. */

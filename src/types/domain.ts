@@ -26,7 +26,10 @@ export type PlanDetail = {
   status: PlanStatus;
   /** RRULE string when this plan is a recurrence template; null on instances. */
   recurrence: string | null;
-  /** Template node id for materialized instances; null on the template itself. */
+  /**
+   * On an occurrence a date-bounded query expanded from a recurring plan, that plan's id
+   * (the record's own id); null on every stored node.
+   */
   series_id: string | null;
 };
 

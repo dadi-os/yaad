@@ -1,4 +1,7 @@
-/** `POST /query` — exact/filter lookup over live nodes (kind, name, date, plan status). */
+/**
+ * `POST /query` — exact/filter lookup over live nodes (kind, name, date, plan status). A date
+ * range lists a recurring plan once per occurrence, each carrying the plan's id as series_id.
+ */
 
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../../db/client.js";
@@ -29,13 +32,22 @@ export async function registerQuery(app: FastifyInstance): Promise<void> {
 
     const limit = requestedLimit ?? app.config.page.default_size;
     const offset = requestedOffset ?? 0;
-    const rows = await filterNodes(app.db, filter, limit, offset);
+    const matches = await filterNodes(app.db, filter, limit, offset, {
+      timeZone: app.config.env.timezone,
+      plan: app.config.plan,
+    });
     const nodes = [];
-    for (const row of rows) {
-      nodes.push({
-        ...toNodeRecord(row),
-        detail: await loadDetail(app.db, row),
-      });
+    for (const { row, occurrence } of matches) {
+      if (occurrence) {
+        const plan = toPlanDetail(await getPlanDetail(app.db, row.id));
+        nodes.push({
+          ...toNodeRecord(row),
+          occurred_at: occurrence.occurredAt.toISOString(),
+          detail: { ...plan, end_at: occurrence.endAt ? occurrence.endAt.toISOString() : null, series_id: row.id },
+        });
+        continue;
+      }
+      nodes.push({ ...toNodeRecord(row), detail: await loadDetail(app.db, row) });
     }
     return { nodes, limit, offset };
   });

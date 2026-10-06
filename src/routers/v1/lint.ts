@@ -84,7 +84,6 @@ export async function registerLint(app: FastifyInstance): Promise<void> {
           live,
           isNotNull(node.occurredAt),
           isNull(planDetail.recurrence),
-          isNull(planDetail.seriesId),
           ownsItems,
         ),
       );
