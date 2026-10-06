@@ -18,7 +18,7 @@ import {
   type Tx,
 } from "../db/temporal.js";
 import { YaadError } from "../errors.js";
-import { expandRecurrence } from "../plans/recurrence.js";
+import { expandRecurrence } from "./recurrence.js";
 import { parse } from "../routers/v1/schemas.js";
 import { historyEmbeddingText, sameInstant } from "../serialize.js";
 import type { NodeAuthor } from "../types/domain.js";

@@ -16,9 +16,8 @@ yaad/
     app.ts, config.ts, logging.ts, errors.ts, constants.ts
     db/           Drizzle client, schema, ANN, temporal reads
     dwar/         Dwar axios client
-    ingest/       extract → validate → apply
+    ingest/       extract → validate → apply, RRULE materialization
     recall/       anchor → expand → score → gate
-    plans/        RRULE materialization
     routers/v1/   HTTP routes + schemas
     types/        domain types
   test/           Node test runner suites

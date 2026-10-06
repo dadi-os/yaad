@@ -47,7 +47,10 @@ export async function registerRecall(app: FastifyInstance): Promise<void> {
       app.db,
       result.nodes.map((item) => item.id),
     ).catch((err) => {
-      request.log.error(err);
+      request.log.error(
+        { code: "record_access_failed", request_id: request.requestId, err },
+        "record access failed",
+      );
     });
     return result;
   });
