@@ -1,7 +1,8 @@
 /**
  * `GET /lint` — a read-only report of live nodes that match patterns past audits found
  * wrong: status snapshots and agent working notes stored as permanent memory, plans at a
- * placeholder noon, dated hubs, duplicates, and people missing their first-name alias.
+ * placeholder noon, dated hubs, duplicates, people missing their first-name alias, and
+ * nodes with no current edge.
  * It never changes the graph; someone reads the report and fixes what is really wrong.
  */
 
@@ -126,6 +127,25 @@ export async function registerLint(app: FastifyInstance): Promise<void> {
           note: `"${first}" is not an alias, so a text that says only "${first}" may not reach this person.`,
         });
       }
+    }
+
+    const floating = await app.db
+      .select({ id: node.id, title: node.title })
+      .from(node)
+      .where(
+        and(
+          live,
+          sql`NOT EXISTS (SELECT 1 FROM ${edge} WHERE (${edge.srcId} = ${node.id} OR ${edge.dstId} = ${node.id}) AND ${edge.validTo} IS NULL)`,
+        ),
+      )
+      .orderBy(asc(node.createdAt));
+    for (const row of floating) {
+      findings.push({
+        rule: "floating",
+        node_ids: [row.id],
+        title: row.title,
+        note: "Has no current edge, so recall only reaches it by similarity; link it to its subject, hub, or Ankur, or delete it.",
+      });
     }
 
     return { findings };

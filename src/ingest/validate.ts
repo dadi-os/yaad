@@ -106,10 +106,27 @@ export async function validateOperations(opts: {
 }
 
 /**
+ * unlinkedCreates returns the batch's `create_node` operations that no `create_edge` in
+ * the batch touches. Such a node would float in the graph with nothing leading to it.
+ */
+export function unlinkedCreates(operations: Operation[]): Extract<Operation, { op: "create_node" }>[] {
+  const linked = new Set<string>();
+  for (const op of operations) {
+    if (op.op === "create_edge") {
+      linked.add(op.src);
+      linked.add(op.dst);
+    }
+  }
+  return operations.filter(
+    (op): op is Extract<Operation, { op: "create_node" }> => op.op === "create_node" && !linked.has(op.temp_id),
+  );
+}
+
+/**
  * Checks on a batch extraction emitted for `text`: every `close_node` quotes the words
  * in the utterance that retract or contradict the node (a fact the utterance merely
- * leaves out is not a retraction), and no create duplicates a live node or another
- * create in the batch.
+ * leaves out is not a retraction), every created node has an edge in the batch, and no
+ * create duplicates a live node or another create in the batch.
  */
 export async function validateExtraction(opts: {
   db: Db;
@@ -131,6 +148,14 @@ export async function validateExtraction(opts: {
     }
   }
   await rejectDuplicates(opts.db, opts.operations);
+  const unlinked = unlinkedCreates(opts.operations);
+  if (unlinked.length > 0) {
+    throw new YaadError(
+      422,
+      "unlinked_node",
+      `created nodes have no edge in the batch: ${unlinked.map((op) => `${op.temp_id} "${op.title}"`).join(", ")}`,
+    );
+  }
 }
 
 /** Lower-cased text with curly quotes, dashes, and whitespace folded, so a faithful quote matches. */

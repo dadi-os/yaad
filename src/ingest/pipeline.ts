@@ -1,6 +1,7 @@
 /**
  * End-to-end ingest: embed the utterance and its segments → candidates → Dwar extraction,
- * re-run once with any lookalikes the first pass missed → validate → apply.
+ * re-run once with any lookalikes the first pass missed or nodes it left without an
+ * edge → validate → apply.
  */
 
 import type { Config } from "../config.js";
@@ -11,8 +12,8 @@ import type { NodeAuthor } from "../types/domain.js";
 import { applyOperations, type ApplyResult } from "./apply.js";
 import { assembleCandidates, segmentsOf } from "./candidates.js";
 import { findLookalikes } from "./duplicates.js";
-import { emitOperations } from "./emit.js";
-import { validateExtraction, validateOperations } from "./validate.js";
+import { emitOperations, recheckNote } from "./emit.js";
+import { unlinkedCreates, validateExtraction, validateOperations } from "./validate.js";
 
 /** Extract memory ops from an utterance and apply them in one transaction. */
 export async function ingest(opts: {
@@ -31,7 +32,7 @@ export async function ingest(opts: {
   if (!embedding || vectors.length !== segments.length + 1) {
     throw new YaadError(502, "dwar", `Dwar returned ${vectors.length} embeddings for ${segments.length + 1} texts`);
   }
-  const extract = async (extraIds: string[]) => {
+  const extract = async (extraIds: string[], recheck: string | null) => {
     const candidates = await assembleCandidates({
       db: opts.db,
       sql: opts.sql,
@@ -48,18 +49,22 @@ export async function ingest(opts: {
       occurredAt: opts.occurredAt,
       text: opts.text,
       candidates,
-      recheck: extraIds.length > 0,
+      recheck,
     });
     return { candidates, operations };
   };
 
-  const first = await extract([]);
+  const first = await extract([], null);
   const missed = await findLookalikes(
     opts.db,
     first.operations,
     new Set(first.candidates.nodes.map((candidate) => candidate.id)),
   );
-  const { operations } = missed.length > 0 ? await extract(missed) : first;
+  const unlinked = unlinkedCreates(first.operations);
+  const { operations } =
+    missed.length > 0 || unlinked.length > 0
+      ? await extract(missed, recheckNote({ lookalikes: missed.length > 0, unlinked }))
+      : first;
 
   await validateOperations({ db: opts.db, operations });
   await validateExtraction({ db: opts.db, operations, text: opts.text });

@@ -20,10 +20,15 @@ const serviceRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const nodeKind = z.enum(["person", "memory", "plan", "place"]);
 
-/** Which emitted operations an expectation is about; `title` and `text` (title and body) are case-insensitive regexes. */
+const opName = z.enum(["create_node", "update_node", "close_node", "create_edge", "close_edge", "noop"]);
+
+/**
+ * Which emitted operations an expectation is about; `op` is one op or any of several,
+ * and `title` and `text` (title and body) are case-insensitive regexes.
+ */
 const matcherSchema = z
   .object({
-    op: z.enum(["create_node", "update_node", "close_node", "create_edge", "close_edge", "noop"]),
+    op: z.union([opName, z.array(opName).min(1)]),
     kind: nodeKind.optional(),
     node_id: z.string().uuid().optional(),
     title: z.string().optional(),
@@ -155,7 +160,7 @@ function localParts(iso: string): { date: string; time: string } {
 
 /** True when `op` is one the matcher is about. */
 function matches(op: Operation, match: Expectation["match"]): boolean {
-  if (op.op !== match.op) {
+  if (!(Array.isArray(match.op) ? match.op.includes(op.op) : op.op === match.op)) {
     return false;
   }
   if (match.kind !== undefined && !(op.op === "create_node" && op.kind === match.kind)) {
@@ -263,7 +268,7 @@ for (const testCase of cases) {
       occurredAt: testCase.occurred_at,
       text: testCase.text,
       candidates: expandCandidates(testCase.candidates),
-      recheck: false,
+      recheck: null,
     });
     const failures = testCase.expectations.flatMap((expectation) =>
       evaluate(expectation, operations).map((detail) => `  ✗ ${expectation.why}\n      ${detail}`),

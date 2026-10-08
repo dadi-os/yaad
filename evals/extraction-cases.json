@@ -838,6 +838,212 @@
           "why": "The course hub gains nothing from a 'not yet' report"
         }
       ]
+    },
+    {
+      "name": "correction-mixed-with-progress-is-applied",
+      "finding": "Y1 (2026-10-08 networking-specialist correction stored as a noop 'agent working note')",
+      "occurred_at": "2026-10-08T08:01:28-04:00",
+      "text": "Correction: the 2026-10-06 networking playbook memory (35-45 invites/week, Wed-Sun only, Mon/Tue zero, notes under 300 characters) is wrong and superseded. Current approved playbook: daily sending (about 12-14 invites/day, every day including weekends), 1-2 contacts per company live at once, connection notes strictly under 200 characters with zero em-dashes, sends in the 8-9 AM ET window with jitter, and a second contact at the same company held in reserve until 4-5 business days after the first if there is no reply. Day 1 (Wed Oct 7, 2026) sent 11 invites to Noah Engerer (Google), Nick McComb (Apple), Isaac Dorgbefu (Microsoft), Lucy Jeong (Amazon), Gram Boyle (GM), Egor Villaire (Ford), Zac Lanzon (Rocket Companies), Odon Mulambo (Ally Financial), Nafisa Lenseni (Figma), Matthew Dennis (Atrios), and Alec Gillis (Coast). Batch 1 contacts not yet sent as of Oct 8: Zehua Li (Salesforce), Reece Roskam (Squib Labs), Christian White (Nasdisc), Keith Barber (8Flow), Attulya Pratap Gupta (Loanranger AI); reserve second contacts Angelo LaCivita (Microsoft) and Zachary Matson (Amazon).",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "ce3e1e80-8fb6-408f-8251-9eef98dcb476",
+            "kind": "memory",
+            "title": "Approved LinkedIn connection note policy: under 200 characters, zero em-dashes",
+            "body": "Changed from the previously proposed 300-character limit per Sparsh Yandooru's advice that 300 characters feels like a wall of text on mobile."
+          },
+          {
+            "id": "73fffe61-6940-434f-ad77-512baa527341",
+            "kind": "memory",
+            "title": "Ankur Desai's LinkedIn networking strategy for referrals: visit target company page, filter employees by college (MSU), send personalized connection invitations",
+            "body": "Strategy suggested by his contact Sparsh Yandooru. Began 2026-10-06. Ankur explicitly does not want to blast 100 identical-note requests at once since targets at the same company may know each other; wants a structured, paced plan with varied notes per company, built after online research on best practices, before any outreach is sent."
+          },
+          {
+            "id": "4c06655b-bfca-4b3f-a8b5-61ab91d42e31",
+            "kind": "memory",
+            "title": "LinkedIn networking outreach Batch 1 of 15 candidate profiles drafted and approved by Ankur Desai on 2026-10-06",
+            "body": "Covers Tier 1 (Microsoft: Isaac Dorgbefu, Angelo LaCivita; Amazon: Lucy Jeong, Zachary Matson; Salesforce: Zehua Li), Tier 2 (GM: Gram Boyle; Ford: Egor Villaire; Rocket Companies: Zac Lanzon; Ally Financial: Odon Mulambo), Tier 3 startups (Atrios: Matthew Dennis; Squib Labs: Reece Roskam; Coast: Alec Gillis; Nasdisc/YC: Christian White; 8Flow: Keith Barber; Loanranger AI: Attulya Pratap Gupta). All notes under 200 characters, zero em-dashes."
+          },
+          {
+            "id": "237ede92-65e7-4712-9f1c-ea0820c28d0e",
+            "kind": "memory",
+            "title": "Approved LinkedIn networking outreach expanded to 60-80 candidates/week across 32+ companies, still capped at 1-2 contacts per company",
+            "body": "Expanded from the original 35-45/week plan to cast a much wider net (Big Tech, Spartan-heavy employers, and startups/scale-ups), as of 2026-10-06."
+          },
+          {
+            "id": "82559533-de0e-4586-8ddb-5d8f2c369fbf",
+            "kind": "memory",
+            "title": "Networking playbook for Ankur Desai's LinkedIn alumni outreach strategy, built by networking-specialist (2026-10-06)",
+            "body": "Based on web research. Recommended cadence: 35-45 invites/week spread Wed-Sun (8-10/day Wed-Fri, 4-6/day weekend), Mon/Tue kept to 0-5 async invites and no calls per Ankur's standing study-day preference. Withdraw pending invites older than 21 days. Max 2-3 contacts per company at once, wait 4-5 business days before messaging a second contact at same company, halt outreach to a company once someone engages. Three message template variants (alumni journey, tech/team focus, recent grad angle), all under 300 characters, no em-dashes. 3-touchpoint follow-up sequence: connect, informational chat ask within 24-48hrs of acceptance, referral ask only after rapport. Target tiers: Tier 1 (Microsoft, Amazon, Google, Salesforce, Uber, Stripe); Tier 2 (GM, Ford, Rocket Companies, UWM, Ally, Target, Stryker, Auto-Owners, Steelcase, Epic Systems - strong MSU alumni density); Tier 3 (Fast Enterprises, Crowe, Plante Moran, regional consultancies/health tech). This full plan was sent to career-manager for review before presenting to Ankur; nothing has been sent on LinkedIn yet."
+          }
+        ],
+        "edges": [
+          {
+            "id": "00000002-0000-4000-8000-000000000001",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "82559533-de0e-4586-8ddb-5d8f2c369fbf",
+            "type": "ABOUT",
+            "properties": {
+              "category": "career"
+            }
+          },
+          {
+            "id": "00000002-0000-4000-8000-000000000002",
+            "src_id": "82559533-de0e-4586-8ddb-5d8f2c369fbf",
+            "dst_id": "73fffe61-6940-434f-ad77-512baa527341",
+            "type": "RELATED_TO",
+            "properties": {}
+          },
+          {
+            "id": "00000002-0000-4000-8000-000000000003",
+            "src_id": "ce3e1e80-8fb6-408f-8251-9eef98dcb476",
+            "dst_id": "82559533-de0e-4586-8ddb-5d8f2c369fbf",
+            "type": "RELATED_TO",
+            "properties": {}
+          },
+          {
+            "id": "00000002-0000-4000-8000-000000000004",
+            "src_id": "237ede92-65e7-4712-9f1c-ea0820c28d0e",
+            "dst_id": "82559533-de0e-4586-8ddb-5d8f2c369fbf",
+            "type": "RELATED_TO",
+            "properties": {}
+          },
+          {
+            "id": "00000002-0000-4000-8000-000000000005",
+            "src_id": "4c06655b-bfca-4b3f-a8b5-61ab91d42e31",
+            "dst_id": "82559533-de0e-4586-8ddb-5d8f2c369fbf",
+            "type": "RELATED_TO",
+            "properties": {}
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": [
+              "update_node",
+              "close_node"
+            ],
+            "node_id": "82559533-de0e-4586-8ddb-5d8f2c369fbf"
+          },
+          "why": "The text says the stored playbook is wrong and superseded; it must be updated or closed, not noop'd as a working note (Y1)"
+        }
+      ]
+    },
+    {
+      "name": "superseding-preferences-retire-the-old-plan",
+      "finding": "Y2 (2026-10-08 new preferences stored beside the old playbook)",
+      "occurred_at": "2026-10-08T08:01:34-04:00",
+      "text": "Ankur Desai's standing LinkedIn outreach preferences (set 2026-10-06, supersede the earlier 35-45 per week Wed-Sun plan and the 300-character limit): connection invitations go out every day including weekends, about 12-14 per day, sent between 8 and 9 AM ET; no more than 1-2 contacts per company at a time; connection notes stay strictly under 200 characters with no em-dashes; a second contact at the same company waits 4-5 business days and is cancelled if the first one responds positively.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "ce3e1e80-8fb6-408f-8251-9eef98dcb476",
+            "kind": "memory",
+            "title": "Approved LinkedIn connection note policy: under 200 characters, zero em-dashes",
+            "body": "Changed from the previously proposed 300-character limit per Sparsh Yandooru's advice that 300 characters feels like a wall of text on mobile."
+          },
+          {
+            "id": "73fffe61-6940-434f-ad77-512baa527341",
+            "kind": "memory",
+            "title": "Ankur Desai's LinkedIn networking strategy for referrals: visit target company page, filter employees by college (MSU), send personalized connection invitations",
+            "body": "Strategy suggested by his contact Sparsh Yandooru. Began 2026-10-06. Ankur explicitly does not want to blast 100 identical-note requests at once since targets at the same company may know each other; wants a structured, paced plan with varied notes per company, built after online research on best practices, before any outreach is sent."
+          },
+          {
+            "id": "4c06655b-bfca-4b3f-a8b5-61ab91d42e31",
+            "kind": "memory",
+            "title": "LinkedIn networking outreach Batch 1 of 15 candidate profiles drafted and approved by Ankur Desai on 2026-10-06",
+            "body": "Covers Tier 1 (Microsoft: Isaac Dorgbefu, Angelo LaCivita; Amazon: Lucy Jeong, Zachary Matson; Salesforce: Zehua Li), Tier 2 (GM: Gram Boyle; Ford: Egor Villaire; Rocket Companies: Zac Lanzon; Ally Financial: Odon Mulambo), Tier 3 startups (Atrios: Matthew Dennis; Squib Labs: Reece Roskam; Coast: Alec Gillis; Nasdisc/YC: Christian White; 8Flow: Keith Barber; Loanranger AI: Attulya Pratap Gupta). All notes under 200 characters, zero em-dashes."
+          },
+          {
+            "id": "237ede92-65e7-4712-9f1c-ea0820c28d0e",
+            "kind": "memory",
+            "title": "Approved LinkedIn networking outreach expanded to 60-80 candidates/week across 32+ companies, still capped at 1-2 contacts per company",
+            "body": "Expanded from the original 35-45/week plan to cast a much wider net (Big Tech, Spartan-heavy employers, and startups/scale-ups), as of 2026-10-06."
+          },
+          {
+            "id": "82559533-de0e-4586-8ddb-5d8f2c369fbf",
+            "kind": "memory",
+            "title": "Networking playbook for Ankur Desai's LinkedIn alumni outreach strategy, built by networking-specialist (2026-10-06)",
+            "body": "Based on web research. Recommended cadence: 35-45 invites/week spread Wed-Sun (8-10/day Wed-Fri, 4-6/day weekend), Mon/Tue kept to 0-5 async invites and no calls per Ankur's standing study-day preference. Withdraw pending invites older than 21 days. Max 2-3 contacts per company at once, wait 4-5 business days before messaging a second contact at same company, halt outreach to a company once someone engages. Three message template variants (alumni journey, tech/team focus, recent grad angle), all under 300 characters, no em-dashes. 3-touchpoint follow-up sequence: connect, informational chat ask within 24-48hrs of acceptance, referral ask only after rapport. Target tiers: Tier 1 (Microsoft, Amazon, Google, Salesforce, Uber, Stripe); Tier 2 (GM, Ford, Rocket Companies, UWM, Ally, Target, Stryker, Auto-Owners, Steelcase, Epic Systems - strong MSU alumni density); Tier 3 (Fast Enterprises, Crowe, Plante Moran, regional consultancies/health tech). This full plan was sent to career-manager for review before presenting to Ankur; nothing has been sent on LinkedIn yet."
+          }
+        ],
+        "edges": [
+          {
+            "id": "00000002-0000-4000-8000-000000000001",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "82559533-de0e-4586-8ddb-5d8f2c369fbf",
+            "type": "ABOUT",
+            "properties": {
+              "category": "career"
+            }
+          },
+          {
+            "id": "00000002-0000-4000-8000-000000000002",
+            "src_id": "82559533-de0e-4586-8ddb-5d8f2c369fbf",
+            "dst_id": "73fffe61-6940-434f-ad77-512baa527341",
+            "type": "RELATED_TO",
+            "properties": {}
+          },
+          {
+            "id": "00000002-0000-4000-8000-000000000003",
+            "src_id": "ce3e1e80-8fb6-408f-8251-9eef98dcb476",
+            "dst_id": "82559533-de0e-4586-8ddb-5d8f2c369fbf",
+            "type": "RELATED_TO",
+            "properties": {}
+          },
+          {
+            "id": "00000002-0000-4000-8000-000000000004",
+            "src_id": "237ede92-65e7-4712-9f1c-ea0820c28d0e",
+            "dst_id": "82559533-de0e-4586-8ddb-5d8f2c369fbf",
+            "type": "RELATED_TO",
+            "properties": {}
+          },
+          {
+            "id": "00000002-0000-4000-8000-000000000005",
+            "src_id": "4c06655b-bfca-4b3f-a8b5-61ab91d42e31",
+            "dst_id": "82559533-de0e-4586-8ddb-5d8f2c369fbf",
+            "type": "RELATED_TO",
+            "properties": {}
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": [
+              "update_node",
+              "close_node"
+            ],
+            "node_id": "82559533-de0e-4586-8ddb-5d8f2c369fbf"
+          },
+          "why": "'Supersede the earlier 35-45 per week Wed-Sun plan' names the stored playbook; it must not stay live beside the new preferences (Y2)"
+        }
+      ]
     }
   ]
 }

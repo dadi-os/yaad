@@ -26,24 +26,24 @@ after(async () => {
   await handle.close();
 });
 
-test("GET /lint flags snapshots, working notes, noon placeholders, dated hubs, duplicates, and unaliased people", async () => {
+test("GET /lint flags snapshots, working notes, noon placeholders, dated hubs, duplicates, unaliased people, and floating nodes", async () => {
   await resetGraph(handle.sql);
   const memory = (title: string, axis: number, expiresAt: Date | null = null) =>
     insertMemory(handle.db, { title, embedding: axisVector(dim, axis), occurredAt: null, expiresAt });
 
   const snapshot = await memory("CSE 380 — D2L status as of Sept 29: no assignments posted", 0);
-  await memory("CSE 380 — lab status as of Oct 1", 1, new Date(Date.now() + 86_400_000));
+  const labStatus = await memory("CSE 380 — lab status as of Oct 1", 1, new Date(Date.now() + 86_400_000));
   const note = await memory("CSE 335 Step 4 is on branch feat/step-4 in /var/lib/dadi/code/cse-335", 2);
   const termA = await memory("CSE 300 — term: Fall 2026", 3);
   const termB = await memory("CSE 300 - term: Fall 2026 (fall)", 4);
-  await memory("Ankur Desai likes chai", 5);
+  const chai = await memory("Ankur Desai likes chai", 5);
 
   const noon = await insertPlan(handle.db, {
     title: "IBIO 150 Exam 1",
     embedding: axisVector(dim, 6),
     occurredAt: new Date("2026-09-30T16:00:00.000Z"),
   });
-  await insertPlan(handle.db, {
+  const drop = await insertPlan(handle.db, {
     title: "CSE 335 — last day to drop",
     embedding: axisVector(dim, 7),
     occurredAt: new Date("2026-10-19T04:00:00.000Z"),
@@ -65,7 +65,7 @@ test("GET /lint flags snapshots, working notes, noon placeholders, dated hubs, d
   }
 
   const ankur = await insertPerson(handle.db, { title: "Ankur Desai", embedding: axisVector(dim, 9) });
-  await insertPerson(handle.db, { title: "Sparsh Yandooru", embedding: axisVector(dim, 10), aliases: ["Sparsh"] });
+  const sparsh = await insertPerson(handle.db, { title: "Sparsh Yandooru", embedding: axisVector(dim, 10), aliases: ["Sparsh"] });
 
   const app = await buildApp(config, { db: handle.db, sql: handle.sql, dwar: mockDwar({ dimension: dim }) });
   const res = await app.inject({ method: "GET", url: "/lint" });
@@ -83,5 +83,9 @@ test("GET /lint flags snapshots, working notes, noon placeholders, dated hubs, d
     [[termA, termB].sort()],
   );
   assert.deepEqual(flagged("unaliased_person"), [[ankur]]);
+  assert.deepEqual(
+    flagged("floating").flat().sort(),
+    [labStatus, note, chai, drop, ankur, sparsh].sort(),
+  );
   await app.close();
 });

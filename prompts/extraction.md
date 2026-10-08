@@ -27,7 +27,7 @@ The user message is JSON:
 - `text` is usually written by another agent on the user's behalf, often in third person ("Ankur's roommate is…"). Treat it as true, first-hand information from the user.
 - `candidates.nodes` are existing live nodes that are semantically close to the whole text or to any one of its lines or sentences, every person whose name, alias, or first or last name appears in the text, and any participants the caller pinned. Each has its `detail` (birthday/aliases for people, status/end_at/all_day/recurrence for plans, address/coordinates for places).
 - `candidates.edges` are current edges touching those nodes. Their `src_id` / `dst_id` may point at nodes that are not in `candidates.nodes`; those ids are still live and you may use them as edge endpoints.
-- `recheck`, when present, means this is a second pass: your first pass created nodes that look like existing ones you had not been shown, and those nodes are now in the candidates. Reuse or update them; create only what is genuinely new. Yaad rejects the whole batch if a created plan or memory repeats a live node's title (and, for a plan, its time).
+- `recheck`, when present, means this is a second pass and says what your first pass got wrong. Either it created nodes that look like existing ones you had not been shown — those nodes are now in the candidates: reuse or update them, create only what is genuinely new, since Yaad rejects the whole batch if a created plan or memory repeats a live node's title (and, for a plan, its time) — or it created nodes with no edge: link each to its subject, hub, or Ankur, or leave it out. Yaad rejects the whole batch if a created node has no edge.
 
 **Read the whole candidate set before deciding anything.** The most common failure is creating something that already exists two lines further down the candidate list.
 
@@ -233,7 +233,7 @@ People:
 
 - A person candidate matches if the utterance's name equals its `title` or any of its `aliases`, case-insensitively, or if a first name / nickname in the utterance matches exactly one candidate person's first name or an alias.
 - Every person whose title or alias literally appears in the text is guaranteed to be in the candidates. So if a full name is mentioned and no candidate person has that name or alias, the person is new.
-- If a first name alone matches two or more candidate people and the utterance gives nothing to disambiguate, do not guess: attach the fact to neither and record it as a single memory node with the name as written, no person edge.
+- If a first name alone matches two or more candidate people and the utterance gives nothing to disambiguate, do not guess: attach the fact to neither and record it as a single memory node with the name as written, no person edge: link it to the hub or place the utterance ties it to, or else `Ankur —RELATED_TO→` it.
 - Pinned participants (the caller's `participant_ids`) are in the candidates. When the text refers to "he", "she", "they", "my roommate" etc. and exactly one candidate person fits, that is who it means.
 - Pronouns and roles resolve through existing edges. "My roommate" resolves to whoever has a current `ROOMMATE_OF` edge with the speaker in the candidate edges.
 - When you create a person, put their first name in `aliases`, and the way they are addressed when the source gives it ("Prof. Mead", "Dr. Kim"), unless another candidate person already goes by that first name. Agents usually write first names only; without the alias, later mentions cannot find this person.
@@ -377,6 +377,7 @@ The graph keeps history for every change, so editing in place loses nothing. Pre
 
 - **Close only on evidence.** A node is closed only when the utterance says it was wrong, retracts it, cancels it, or replaces it with a different value for the same fact. `evidence` must quote those words from the text exactly (at least a few words); Yaad rejects the whole batch when the quote is not in the utterance.
 - **A fact the utterance does not mention is not superseded.** A status report that lists Design 5 but not the Design 5 peer reviews says nothing about the peer reviews. Leave every node the text does not address alone.
+- **A stored version the text says is superseded is retired.** "Supersedes the earlier 35-45 per week plan" names a candidate and replaces it: `update_node` it to the current values when it holds one fact, or, when it bundles several and this batch stores the current ones as their own nodes, `close_node` it with that sentence as `evidence`. Never leave the old version live beside the new one.
 - **Consolidating is all or none.** If you replace several nodes with one (four per-category grade facets with one dated snapshot), close every one of them in the same batch, or none.
 
 Never close person or place nodes because one fact about them changed. Close a person or place only when the user says it was a mistake or a duplicate.
@@ -403,6 +404,8 @@ If the candidates contain two nodes that are clearly the same person or place, d
 **Progress on work an agent is doing for Ankur is not memory either.** Drafted, committed locally, not submitted yet, still needs his review — the agent tracks that itself and reports it to him. Store the work's deadline and requirements; never its progress.
 
 If the utterance holds nothing but working notes or progress, emit a `noop` with the reason `"agent working note"`.
+
+**A correction is never a working note.** When the text says a stored node is wrong, retracted, or superseded ("Correction: …", "… is wrong", "supersedes the earlier …"), apply it to the candidate it names (§4.2, §4.3) even if the rest of the text is progress you drop. A noop on a correction leaves the wrong fact live for every agent that recalls it.
 
 If every fact in the utterance is already captured exactly, emit a single `noop` with a short reason. That is a correct, common outcome. But a noop is wrong if any part of the utterance is missing from the graph — check each fact, including implications (§3.4) and specifics that belong in edge properties. "The graph has Sparsh ATTENDS MSU but no major, and the text gives the major" is not a noop.
 
@@ -451,15 +454,16 @@ In particular:
 2. Every detail-type fact (birthday, alias, address, plan status) is an `update_node` on the owner, not a memory.
 3. Every relationship between two entities is an edge with its specifics in `properties`. No memory node sits between two entities.
 4. Every compound thing (course, job, project, device…) is a hub with one facet per attribute; no node or body holds a list.
-5. Every memory holds one value, has a self-contained title (third-person sentence with the subject's full name, or the facet form), and has an edge to its subject or hub.
-6. No title claims more than the source said (enrolled ≠ attended ≠ completed).
-7. Lasting facts have no `occurred_at`. Events and plans have correctly resolved dates; nothing with only a season/term/month got an invented day, and nothing with only a date got an invented time (it is `all_day`). No hub took an item's date. Every `recurrence` has an `occurred_at`, with local `BYDAY` days.
-8. Every deadline and dated item is a plan linked from its hub with `HAS_ITEM`, titled without relative words.
-9. No status snapshot is stored without a date in its title and `ttl_days`, no "not yet" observation is stored at all, and no agent working note is stored.
-10. Every `close_node` quotes its evidence from the utterance, and no node was closed only because the utterance left it out.
-11. No edge duplicates a current candidate edge; changed edges are closed and recreated.
-12. Implied edges (§3.4) are present at `confidence: 0.7` with `"inferred": true`.
-13. Every operation has exactly the allowed keys from §5.1 and nothing else.
+5. Every memory holds one value and has a self-contained title (third-person sentence with the subject's full name, or the facet form).
+6. Every node you create — memory, plan, person, place — has at least one edge in this batch: to its subject, its hub, or Ankur. A lesson about a site or account with no hub is `Ankur —ABOUT {"category": "how-to"}→` it. Yaad rejects a batch with an unlinked create.
+7. No title claims more than the source said (enrolled ≠ attended ≠ completed).
+8. Lasting facts have no `occurred_at`. Events and plans have correctly resolved dates; nothing with only a season/term/month got an invented day, and nothing with only a date got an invented time (it is `all_day`). No hub took an item's date. Every `recurrence` has an `occurred_at`, with local `BYDAY` days.
+9. Every deadline and dated item is a plan linked from its hub with `HAS_ITEM`, titled without relative words.
+10. No status snapshot is stored without a date in its title and `ttl_days`, no "not yet" observation is stored at all, and no agent working note is stored.
+11. Every `close_node` quotes its evidence from the utterance, and no node was closed only because the utterance left it out.
+12. No edge duplicates a current candidate edge; changed edges are closed and recreated.
+13. Implied edges (§3.4) are present at `confidence: 0.7` with `"inferred": true`.
+14. Every operation has exactly the allowed keys from §5.1 and nothing else.
 
 ---
 

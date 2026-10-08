@@ -139,7 +139,8 @@ test("close_node must quote the utterance words that retract the node", async ()
 test("a created plan or memory that repeats a live one is rejected unless the batch closes it", async () => {
   await resetGraph(handle.sql);
   const quiz = await insertPlan(handle.db, { title: QUIZ, embedding: axisVector(dim, 0), occurredAt: new Date(QUIZ_AT) });
-  await insertMemory(handle.db, { title: "CSE 300 — term: Fall 2026", embedding: axisVector(dim, 1), occurredAt: null });
+  const term = await insertMemory(handle.db, { title: "CSE 300 — term: Fall 2026", embedding: axisVector(dim, 1), occurredAt: null });
+  const linkQuiz: Operation = { op: "create_edge", src: term, dst: "quiz", type: "RELATED_TO", confidence: 1 };
   const createQuiz = (title: string, occurredAt: string): Operation => ({
     op: "create_node",
     temp_id: "quiz",
@@ -185,15 +186,64 @@ test("a created plan or memory that repeats a live one is rejected unless the ba
     /same batch/,
   );
 
-  await validateExtraction({ db: handle.db, text: "next week", operations: [createQuiz(QUIZ, "2026-10-09T23:59:00-04:00")] });
+  await validateExtraction({
+    db: handle.db,
+    text: "next week",
+    operations: [createQuiz(QUIZ, "2026-10-09T23:59:00-04:00"), linkQuiz],
+  });
   await validateExtraction({
     db: handle.db,
     text: "Correction: the Source Citations quiz is replaced.",
     operations: [
       { op: "close_node", node_id: quiz, reason: "replaced", evidence: "the Source Citations quiz is replaced" },
       createQuiz(QUIZ, QUIZ_AT),
+      linkQuiz,
     ],
   });
+});
+
+test("every created node needs an edge in the batch; ingest re-extracts once naming the unlinked ones, then rejects", async () => {
+  await resetGraph(handle.sql);
+  const ankur = await insertPerson(handle.db, { title: "Ankur Desai", embedding: axisVector(dim, 0) });
+  const lesson: Operation = { op: "create_node", temp_id: "lesson", kind: "memory", title: "LinkedIn checkpoints need a phone tap" };
+  const link: Operation = {
+    op: "create_edge",
+    src: ankur,
+    dst: "lesson",
+    type: "ABOUT",
+    properties: { category: "how-to" },
+    confidence: 1,
+  };
+  await rejectsWith(
+    () => validateExtraction({ db: handle.db, text: "lesson", operations: [lesson] }),
+    422,
+    "unlinked_node",
+    /LinkedIn checkpoints need a phone tap/,
+  );
+  await validateExtraction({ db: handle.db, text: "lesson", operations: [lesson, link] });
+
+  const run = (rounds: Operation[][], users: string[]) =>
+    ingest({
+      db: handle.db,
+      sql: handle.sql,
+      dwar: mockDwar({ dimension: dim, embedAxis: 1, rounds, reasonUsers: users }),
+      config,
+      text: "LinkedIn checkpoints need a phone tap.",
+      occurredAt: "2026-10-08T09:00:00-04:00",
+      participantIds: [],
+      author: INGEST,
+    });
+  const users: string[] = [];
+  const result = await run([[lesson], [lesson, link]], users);
+  assert.equal(users.length, 2);
+  assert.ok(!users[0]?.includes('"recheck"'));
+  assert.ok(users[1]?.includes("A first pass created nodes with no edge"));
+  assert.equal(result.counts.create_edge, 1);
+
+  await resetGraph(handle.sql);
+  await insertPerson(handle.db, { title: "Ankur Desai", embedding: axisVector(dim, 0) });
+  await rejectsWith(() => run([[lesson], [lesson]], []), 422, "unlinked_node");
+  assert.equal(await countCurrentNodes(handle.sql), 1);
 });
 
 test("ingest re-extracts once with a lookalike it was not shown, and fails if the second pass still duplicates it", async () => {

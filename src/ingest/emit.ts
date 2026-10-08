@@ -27,9 +27,29 @@ function localIso(iso: string): string {
   return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}T${pad(at.getHours())}:${pad(at.getMinutes())}:${pad(at.getSeconds())}${sign}${pad(Math.trunc(offset / 60))}:${pad(offset % 60)}`;
 }
 
-/** Told to extraction on its second pass, after its first pass created lookalikes of nodes it had not been shown. */
-const RECHECK_NOTE =
-  "A first pass on this utterance created nodes that look like existing ones it had not been shown. Those nodes are now in candidates: reuse or update them instead of creating a second copy.";
+/**
+ * recheckNote tells extraction on its second pass what its first pass got wrong: it
+ * created lookalikes of nodes it had not been shown (now added to candidates), or it
+ * created nodes with no edge.
+ */
+export function recheckNote(opts: {
+  lookalikes: boolean;
+  unlinked: Extract<Operation, { op: "create_node" }>[];
+}): string {
+  const notes: string[] = [];
+  if (opts.lookalikes) {
+    notes.push(
+      "A first pass on this utterance created nodes that look like existing ones it had not been shown. Those nodes are now in candidates: reuse or update them instead of creating a second copy.",
+    );
+  }
+  if (opts.unlinked.length > 0) {
+    const titles = opts.unlinked.map((op) => `"${op.title}"`).join(", ");
+    notes.push(
+      `A first pass created nodes with no edge: ${titles}. Every node you create needs at least one edge in this batch, to its subject, its hub, or Ankur (§5.3); link each one, or leave it out if it is not worth storing.`,
+    );
+  }
+  return notes.join(" ");
+}
 
 /**
  * Run one reasoning turn that must call `emit_operations` exactly once.
@@ -41,15 +61,15 @@ export async function emitOperations(opts: {
   occurredAt: string;
   text: string;
   candidates: CandidateState;
-  /** This is the second pass, with lookalikes the first pass missed added to candidates. */
-  recheck: boolean;
+  /** On the second pass, what the first pass got wrong (see {@link recheckNote}); null on the first. */
+  recheck: string | null;
 }): Promise<Operation[]> {
   const system = loadExtractionPrompt(opts.config.serviceRoot);
   const user = JSON.stringify({
     occurred_at: localIso(opts.occurredAt),
     text: opts.text,
     candidates: opts.candidates,
-    ...(opts.recheck ? { recheck: RECHECK_NOTE } : {}),
+    ...(opts.recheck !== null ? { recheck: opts.recheck } : {}),
   });
   const response = await opts.dwar.reason({
     system,

@@ -88,7 +88,8 @@ export type LintRule =
   | "noon_placeholder"
   | "dated_hub"
   | "duplicate"
-  | "unaliased_person";
+  | "unaliased_person"
+  | "floating";
 
 /** One `GET /lint` finding: the nodes it concerns and what to check. Lint never changes the graph. */
 export type LintFinding = {

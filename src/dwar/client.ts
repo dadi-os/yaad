@@ -48,7 +48,10 @@ export function embeddingText(title: string, body: string | null): string {
  */
 export type DwarClient = {
   embed: (texts: string[], caller: string) => Promise<number[][]>;
-  /** One `/chat/reasoning` call with `tool_choice: "any"`: a single forced tool call, never a prose reply. */
+  /**
+   * One `/chat/reasoning` call with `tool_choice: "auto"`, so the model can think before
+   * its tool call (a forced call skips thinking); callers reject a reply with no tool call.
+   */
   reason: (args: {
     system: string;
     user: string;
@@ -123,7 +126,7 @@ export function createDwarClient(config: DwarConfig): DwarClient {
               system: args.system,
               messages: [{ role: "user", content: args.user }],
               tools: args.tools,
-              tool_choice: "any",
+              tool_choice: "auto",
             },
             { headers: { "x-dadi-caller": args.caller } },
           )
