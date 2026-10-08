@@ -164,6 +164,5 @@ export const recallBody = z
 export const graphBody = z
   .object({
     seed_ids: z.array(z.string().uuid()).min(1).optional(),
-    limit: z.number().int().positive().optional(),
   })
   .strict();

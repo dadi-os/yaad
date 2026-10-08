@@ -22,10 +22,6 @@ const fileSchema = z.object({
     default_size: z.number().int().positive(),
     max_size: z.number().int().positive(),
   }),
-  graph: z.object({
-    default_nodes: z.number().int().positive(),
-    max_nodes: z.number().int().positive(),
-  }),
   search: z.object({
     default_limit: z.number().int().positive(),
     max_limit: z.number().int().positive(),
@@ -89,7 +85,6 @@ export type Config = {
   embedding: FileConfig["embedding"];
   hnsw: FileConfig["hnsw"];
   page: FileConfig["page"];
-  graph: FileConfig["graph"];
   search: FileConfig["search"];
   dwar: FileConfig["dwar"];
   ingest: FileConfig["ingest"];
@@ -111,9 +106,6 @@ export function loadFileConfig(): FileConfig {
   }
   if (parsed.data.page.default_size > parsed.data.page.max_size) {
     throw new Error("config.toml page.default_size must be <= page.max_size");
-  }
-  if (parsed.data.graph.default_nodes > parsed.data.graph.max_nodes) {
-    throw new Error("config.toml graph.default_nodes must be <= graph.max_nodes");
   }
   if (parsed.data.search.default_limit > parsed.data.search.max_limit) {
     throw new Error("config.toml search.default_limit must be <= search.max_limit");
@@ -161,7 +153,6 @@ export function loadConfig(): Config {
     embedding: file.embedding,
     hnsw: file.hnsw,
     page: file.page,
-    graph: file.graph,
     search: file.search,
     dwar: file.dwar,
     ingest: file.ingest,

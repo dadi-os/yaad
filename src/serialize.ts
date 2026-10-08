@@ -1,6 +1,7 @@
 import type {
   EdgeRow,
   NodeHistoryRow,
+  NodeRecordRow,
   NodeRow,
   PersonDetailRow,
   PlaceDetailRow,
@@ -51,7 +52,7 @@ function parseHistoryField(value: string): NodeHistoryRecord["field"] {
   throw new YaadError(500, "internal_error", `invalid node_history field in database: ${value}`);
 }
 
-export function toNodeRecord(row: NodeRow): NodeRecord {
+export function toNodeRecord(row: NodeRecordRow): NodeRecord {
   return {
     id: row.id,
     kind: parseKind(row.kind),

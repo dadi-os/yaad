@@ -29,7 +29,7 @@ yaad/
 
 ## Config vs env
 
-`config.toml` (checked in, baked into the image): recall weights, ingest thresholds (including `segment_limit` and `segment_candidate_limit`, the per-line candidate search), HNSW, Dwar timeout/retry, page and graph sizes, plan recurrence horizon. Every key is required; a missing one fails startup.
+`config.toml` (checked in, baked into the image): recall weights, ingest thresholds (including `segment_limit` and `segment_candidate_limit`, the per-line candidate search), HNSW, Dwar timeout/retry, page sizes, plan recurrence horizon. Every key is required; a missing one fails startup.
 
 Topology is hardcoded in `src/constants.ts` (host, port, log level, `DWAR_BASE_URL`).
 
@@ -110,7 +110,7 @@ Observations may set `ttl_days`; expired nodes are filtered from recall/query/in
 | `DELETE` | `/nodes/:id` | delete plus orphan sweep; returns `{ id, orphans }` |
 | `GET` | `/nodes/:id/history` | correction log |
 | `POST` | `/history/search` | semantic search over `node_history` |
-| `POST` | `/graph` | bounded live subgraph for the Memory network view |
+| `POST` | `/graph` | live subgraph for the Memory network view |
 | `POST` | `/edges` | hand-drawn edge: `{ src_id, dst_id, type (UPPER_SNAKE_CASE), properties?, confidence }`; 201 with the edge |
 | `POST` | `/edges/:id/close` | close a current edge plus orphan sweep; returns `{ id, orphans }` |
 | `GET` | `/lint` | read-only report of suspicious live nodes; see Lint |
@@ -119,7 +119,7 @@ Unknown request fields are a 422.
 
 ### `POST /graph`
 
-Body: `{ seed_ids?, limit? }`. Without seeds: the `limit` most-accessed live nodes (default `graph.default_nodes`, cap `graph.max_nodes`). With seeds: the seeds plus their live one-hop neighbors, most-accessed first, up to `limit` total. `edges` are the current edges among the returned nodes. An unknown or expired seed is a 404.
+Body: `{ seed_ids? }`. Without seeds: every live node. With seeds: the seeds plus all their live one-hop neighbors. `edges` are the current edges among the returned nodes. An unknown or expired seed is a 404.
 
 ### `POST /query`
 

@@ -63,21 +63,25 @@ test("graph returns live nodes and only current edges among them", async () => {
   assert.deepEqual(ids(body.edges), [current]);
 });
 
-test("graph limit keeps the most-accessed nodes and drops edges leaving the set", async () => {
+test("graph returns every live node and edge, not only the most accessed", async () => {
   await resetGraph(handle.sql);
-  const a = await insertPerson(handle.db, { title: "a", embedding: axisVector(dim, 0) });
-  const b = await insertMemory(handle.db, { title: "b", embedding: axisVector(dim, 1) });
-  const c = await insertMemory(handle.db, { title: "c", embedding: axisVector(dim, 2) });
-  await handle.db.update(node).set({ accessCount: 9 }).where(eq(node.id, a));
-  await handle.db.update(node).set({ accessCount: 5 }).where(eq(node.id, b));
-  const kept = await insertEdge(handle.db, { src: a, dst: b, type: "knows" });
-  await insertEdge(handle.db, { src: a, dst: c, type: "knows" });
+  const hub = await insertPerson(handle.db, { title: "hub", embedding: axisVector(dim, 0) });
+  await handle.db.update(node).set({ accessCount: 9 }).where(eq(node.id, hub));
+  const leaves = [];
+  for (let i = 1; i <= 5; i++) {
+    leaves.push(await insertMemory(handle.db, { title: `leaf ${i}`, embedding: axisVector(dim, i) }));
+  }
+  const edges = [];
+  for (const leaf of leaves) {
+    edges.push(await insertEdge(handle.db, { src: hub, dst: leaf, type: "HAS_FACET" }));
+  }
 
-  const res = await graph({ limit: 2 });
+  const res = await graph({});
   assert.equal(res.statusCode, 200);
   const body = res.json();
-  assert.deepEqual(ids(body.nodes), [a, b].sort());
-  assert.deepEqual(ids(body.edges), [kept]);
+  assert.deepEqual(ids(body.nodes), [hub, ...leaves].sort());
+  assert.deepEqual(ids(body.edges), edges.sort());
+  assert.equal("embedding" in body.nodes[0], false);
 });
 
 test("graph seed_ids returns seeds plus one-hop neighbors, not two hops", async () => {
@@ -99,11 +103,11 @@ test("graph seed_ids returns seeds plus one-hop neighbors, not two hops", async 
   assert.deepEqual(ids(body.edges), [e1, e2, between].sort());
 });
 
-test("graph rejects an oversized limit and reports unknown seeds", async () => {
+test("graph rejects a limit and reports unknown seeds", async () => {
   await resetGraph(handle.sql);
-  const tooMany = await graph({ limit: config.graph.max_nodes + 1 });
-  assert.equal(tooMany.statusCode, 422);
-  assert.equal(tooMany.json().error.type, "invalid_request");
+  const limited = await graph({ limit: 2 });
+  assert.equal(limited.statusCode, 422);
+  assert.equal(limited.json().error.type, "invalid_request");
 
   const missing = await graph({ seed_ids: [randomUUID()] });
   assert.equal(missing.statusCode, 404);

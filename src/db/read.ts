@@ -1,4 +1,5 @@
-import { and, asc, desc, eq, gt, inArray, isNull, or } from "drizzle-orm";
+import { and, asc, desc, eq, getTableColumns, gt, inArray, isNull, or } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import type { Db } from "./client.js";
 import {
   edge,
@@ -9,6 +10,7 @@ import {
   planDetail,
   type EdgeRow,
   type NodeHistoryRow,
+  type NodeRecordRow,
   type NodeRow,
   type PersonDetailRow,
   type PlaceDetailRow,
@@ -84,15 +86,33 @@ export async function getNodesByIds(db: Db, ids: string[]): Promise<NodeRow[]> {
     .where(and(inArray(node.id, ids), or(isNull(node.expiresAt), gt(node.expiresAt, now))));
 }
 
-/** Most-used live nodes first: access_count, then most recently updated. */
-export async function getTopLiveNodes(db: Db, limit: number): Promise<NodeRow[]> {
+/** Every live node without its embedding, oldest first. */
+export async function getLiveNodes(db: Db): Promise<NodeRecordRow[]> {
+  const { embedding: _embedding, ...columns } = getTableColumns(node);
+  return db
+    .select(columns)
+    .from(node)
+    .where(or(isNull(node.expiresAt), gt(node.expiresAt, new Date())))
+    .orderBy(asc(node.createdAt), asc(node.id));
+}
+
+/** Every current edge whose endpoints are both live. */
+export async function getLiveEdges(db: Db): Promise<EdgeRow[]> {
+  const src = alias(node, "src");
+  const dst = alias(node, "dst");
   const now = new Date();
   return db
-    .select()
-    .from(node)
-    .where(or(isNull(node.expiresAt), gt(node.expiresAt, now)))
-    .orderBy(desc(node.accessCount), desc(node.updatedAt), asc(node.id))
-    .limit(limit);
+    .select(getTableColumns(edge))
+    .from(edge)
+    .innerJoin(src, eq(src.id, edge.srcId))
+    .innerJoin(dst, eq(dst.id, edge.dstId))
+    .where(
+      and(
+        isNull(edge.validTo),
+        or(isNull(src.expiresAt), gt(src.expiresAt, now)),
+        or(isNull(dst.expiresAt), gt(dst.expiresAt, now)),
+      ),
+    );
 }
 
 /** Current edges whose endpoints are both in `nodeIds`. */

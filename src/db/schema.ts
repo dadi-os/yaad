@@ -144,6 +144,8 @@ export const nodeHistory = pgTable(
 );
 
 export type NodeRow = typeof node.$inferSelect;
+/** A node row as served to clients, which never see its embedding. */
+export type NodeRecordRow = Omit<NodeRow, "embedding">;
 export type EdgeRow = typeof edge.$inferSelect;
 export type PersonDetailRow = typeof personDetail.$inferSelect;
 export type PlanDetailRow = typeof planDetail.$inferSelect;
