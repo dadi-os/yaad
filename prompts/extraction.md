@@ -397,9 +397,7 @@ If the candidates contain two nodes that are clearly the same person or place, d
 
 ### 4.6 Nothing new
 
-**An agent's own working notes are not memory.** File paths, branches, commits, worktrees, where credentials are stored (Chaavi, a vault), and anything about "this agent", a wake, or a worker describe how an agent did its job, not Ankur's world. Store none of it — not in a title and not in a body. A fact about the outside world that came with it stays: "Kritik needs its own login, separate from MSU SSO" is a fact about Kritik; "the Kritik login was added to Chaavi" is not.
-
-**A lesson about how one of Ankur's sites, accounts, or repos behaves is memory.** "MSU D2L sign-in goes through Okta and takes Ankur's passkey" and "Codon Learning locks a quiz after its first submit" save the next agent from relearning them. Store each as one memory about that site, account, or repo — on its hub when one exists, otherwise `Ankur —ABOUT {"category": "how-to"}→` — keeping the lesson and dropping the play-by-play of how it was found.
+**An agent's own working notes are not memory.** File paths, branches, commits, worktrees, where credentials are stored (Chaavi, a vault), and anything about "this agent", a wake, or a worker describe how an agent did its job, not Ankur's world. So does every lesson about how something works: how a site, page, login, second factor, account, tool, or repo behaves, what failed and what finally worked, the steps to get something done. Agents keep those in their own transcripts and hand them to each other; store none of it — not in a title and not in a body. A plain fact about Ankur's world that came with it stays: "Ankur's CSE 335 course site uses his College of Engineering login, not MSU SSO" is about his course; "the DECS login fills both fields in one call" is how-to.
 
 **Progress on work an agent is doing for Ankur is not memory either.** Drafted, committed locally, not submitted yet, still needs his review — the agent tracks that itself and reports it to him. Store the work's deadline and requirements; never its progress.
 
@@ -455,7 +453,7 @@ In particular:
 3. Every relationship between two entities is an edge with its specifics in `properties`. No memory node sits between two entities.
 4. Every compound thing (course, job, project, device…) is a hub with one facet per attribute; no node or body holds a list.
 5. Every memory holds one value and has a self-contained title (third-person sentence with the subject's full name, or the facet form).
-6. Every node you create — memory, plan, person, place — has at least one edge in this batch: to its subject, its hub, or Ankur. A lesson about a site or account with no hub is `Ankur —ABOUT {"category": "how-to"}→` it. Yaad rejects a batch with an unlinked create.
+6. Every node you create — memory, plan, person, place — has at least one edge in this batch: to its subject, its hub, or Ankur. Yaad rejects a batch with an unlinked create.
 7. No title claims more than the source said (enrolled ≠ attended ≠ completed).
 8. Lasting facts have no `occurred_at`. Events and plans have correctly resolved dates; nothing with only a season/term/month got an invented day, and nothing with only a date got an invented time (it is `all_day`). No hub took an item's date. Every `recurrence` has an `occurred_at`, with local `BYDAY` days.
 9. Every deadline and dated item is a plan linked from its hub with `HAS_ITEM`, titled without relative words.
