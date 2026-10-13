@@ -1044,6 +1044,408 @@
           "why": "'Supersede the earlier 35-45 per week Wed-Sun plan' names the stored playbook; it must not stay live beside the new preferences (Y2)"
         }
       ]
+    },
+    {
+      "name": "agent-routines-stay-off-the-calendar",
+      "finding": "TL1",
+      "occurred_at": "2026-10-13T00:08:00-04:00",
+      "text": "Ankur wants an internal application to IBM through his aunt, Manisha Mami, who sent him a list of roles she says are open. The list has not reached career-manager yet, and the IBM resume waits on it. Ankur approves LinkedIn invites the night before: the 8:00 AM ET send goes only for invites he approved, and unapproved rows carry over; the 9:00 PM ET evening run sends him the day's results and tomorrow's batch. Ankur said yes to cancelling his LinkedIn Premium trial before its Nov 6 renewal, to be done Thu Nov 5 at 11:00 AM ET. Efficiency-specialist now triages both of his inboxes at 7:30 AM ET and sends the career mail; the daily Gmail career pass is retired.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          }
+        ],
+        "edges": []
+      },
+      "expectations": [
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "title": "triage|invite|evening|career pass|gmail"
+          },
+          "why": "The 7:30 triage, 8:00 send and 9:00 PM run are agents' routines, not Ankur's calendar (TL1)"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "title": "triage|career pass"
+          },
+          "why": "An agent's routine is a working note in any kind (TL1)"
+        },
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "title": "IBM"
+          },
+          "why": "The IBM application Ankur wants is still stored as his plan"
+        }
+      ]
+    },
+    {
+      "name": "applied-idea-becomes-a-dated-plan",
+      "finding": "TL2",
+      "occurred_at": "2026-10-13T00:35:00-04:00",
+      "text": "Ankur applied to Dryft, Member of Technical Staff Intern (US, AshbyHQ, cycle 2027), on Mon Oct 13, 2026 at about 12:34 AM ET. The application was submitted with his resume and his answer that he can stay 3 months for the summer 2027 internship (June through August), the full summer.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "82a29816-c6aa-45a9-9436-349e09b28731",
+            "kind": "plan",
+            "title": "Dryft — Member of Technical Staff Intern - US (AshbyHQ)",
+            "occurred_at": null,
+            "detail": {
+              "end_at": null,
+              "all_day": false,
+              "status": "idea",
+              "recurrence": null,
+              "series_id": null
+            }
+          },
+          {
+            "id": "fe3e6958-5cbf-42ae-8594-172d9d836c20",
+            "kind": "place",
+            "title": "Dryft",
+            "detail": {
+              "address": null,
+              "latitude": null,
+              "longitude": null
+            }
+          },
+          {
+            "id": "3435e07b-6d1f-4c55-9a0e-2b7f8c1d4e90",
+            "kind": "memory",
+            "title": "Dryft MTS Intern posting — recruiting cycle: 2027"
+          }
+        ],
+        "edges": [
+          {
+            "id": "7ee870e8-9631-4239-95f4-20ba0752bc8f",
+            "src_id": "82a29816-c6aa-45a9-9436-349e09b28731",
+            "dst_id": "3435e07b-6d1f-4c55-9a0e-2b7f8c1d4e90",
+            "type": "HAS_FACET",
+            "properties": {
+              "facet": "recruiting_cycle"
+            }
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": "update_node",
+            "node_id": "82a29816-c6aa-45a9-9436-349e09b28731",
+            "sets": "occurred_at"
+          },
+          "check": {
+            "local_date": "2026-10-13"
+          },
+          "why": "The applied-to idea is dated to when he applied, so it leaves Someday (TL2)"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "close_node",
+            "node_id": "82a29816-c6aa-45a9-9436-349e09b28731"
+          },
+          "why": "Closing the idea would drop the posting facets hung on it; it was done, not dropped (TL2)"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "title": "Dryft"
+          },
+          "why": "The application is the same plan as the idea, never a second one"
+        }
+      ]
+    },
+    {
+      "name": "booked-visits-with-a-condition-that-is-no-idea",
+      "finding": "TL3",
+      "occurred_at": "2026-10-13T02:11:00-04:00",
+      "text": "Ankur Desai booked his LifeStance Health visits with Lisabeth Grove himself by phone on Oct 13, 2026: a virtual initial psychiatric consult on Mon Oct 26, 2026 at 8:00 AM ET, and an in-person follow-up at LifeStance East Lansing on Tue Nov 17, 2026 at 8:00 AM ET. Both are confirmed. Open items still stand: a stimulant restart needs a physician evaluation first (heart history, blood pressure, dose reset), since Grove is a nurse practitioner; whether Grove is in-network under his Ford HSA PPO (BCBSM) and whether LifeStance prescribes stimulants under Michigan rules are still unchecked.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "e1b731fa-e86a-4c02-8b4e-019b1919944e",
+            "kind": "person",
+            "title": "Lisabeth Grove",
+            "detail": {
+              "birthday": null,
+              "aliases": [
+                "Lisabeth",
+                "Dr. Grove"
+              ]
+            }
+          },
+          {
+            "id": "5c16c33a-a15c-4b43-97b2-eca0602dd684",
+            "kind": "place",
+            "title": "LifeStance Health East Lansing",
+            "detail": {
+              "address": "East Lansing, MI",
+              "latitude": null,
+              "longitude": null
+            }
+          }
+        ],
+        "edges": []
+      },
+      "expectations": [
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "title": "physician|stimulant"
+          },
+          "why": "A condition on a stimulant restart is a rule, never an idea on Someday (TL3)"
+        },
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "title": "consult"
+          },
+          "check": {
+            "local_date": "2026-10-26",
+            "local_time": "08:00"
+          },
+          "why": "The booked Oct 26 consult is a dated plan"
+        },
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "title": "follow-up"
+          },
+          "check": {
+            "local_date": "2026-11-17",
+            "local_time": "08:00"
+          },
+          "why": "The booked Nov 17 follow-up is a dated plan"
+        }
+      ]
+    },
+    {
+      "name": "workout-preference-is-no-idea",
+      "finding": "TL3",
+      "occurred_at": "2026-10-12T23:39:00-04:00",
+      "text": "Standing preference from Ankur (2026-10-12 23:39 EDT): every Sunday at 1:00 PM, efficiency-specialist asks health-specialist for Ankur's gym regimen for the coming week. Health-specialist answers with the workout plan he is on (his upper/lower split and the Hevy routines it uses, including the lower-body day kept at the MSU New Student Recreation and Wellness Center). No scheduling is needed on health-specialist's side; the request arrives on its own.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          }
+        ],
+        "edges": []
+      },
+      "expectations": [
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "plan"
+          },
+          "why": "Keeping a lower-body day is a preference and the Sunday ask is an agent routine; neither is a plan (TL1, TL3)"
+        }
+      ]
+    },
+    {
+      "name": "open-dates-stay-in-the-due-plan",
+      "finding": "TL4",
+      "occurred_at": "2026-10-11T00:07:00-04:00",
+      "text": "IBIO 150 (FS26-IBIO-150-005, Fall 2026, MSU, Ankur Desai) items due Oct 12-14, 2026 as shown on Codon Learning on Oct 10-11, 2026 (read-only check; Codon shows no time zone): \"Impacts of Climate Change and Biodiversity\" homework (Class 11) due Mon Oct 12, 2026 at 11:59 PM, not complete. \"Exam 2 Prep Questions\" due Tue Oct 13, 2026 at 8:30 AM, not complete. \"Exam 2 Practice Test\" due Tue Oct 13, 2026 at 8:30 AM, not complete. Class 13 \"In-class Exam 2\" is on the Codon calendar for Wed Oct 14, 2026 with no due time shown. Meiosis and Mitosis open Mon Oct 12 and are due Sun Oct 18, 2026 at 11:59 PM; Natural Selection opens Wed Oct 14 and is due Tue Oct 20, 2026 at 11:59 PM.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "5d47de0a-c92b-480e-923b-a8b588df014f",
+            "kind": "plan",
+            "title": "IBIO 150: Integrating Biology: From DNA to Populations (Fall 2026)",
+            "occurred_at": null,
+            "detail": {
+              "end_at": null,
+              "all_day": false,
+              "status": "confirmed",
+              "recurrence": null,
+              "series_id": null
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "0c1d6a52-6f0e-4b8e-9a51-3f7d2e4b9c10",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "5d47de0a-c92b-480e-923b-a8b588df014f",
+            "type": "ENROLLED_IN",
+            "properties": {
+              "status": "enrolled"
+            }
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "title": "open"
+          },
+          "why": "The day an assignment opens is not a plan of its own (TL4)"
+        },
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "title": "Meiosis"
+          },
+          "check": {
+            "local_date": "2026-10-18"
+          },
+          "why": "Meiosis and Mitosis is stored at its due date"
+        },
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "title": "Natural Selection"
+          },
+          "check": {
+            "local_date": "2026-10-20"
+          },
+          "why": "Natural Selection is stored at its due date"
+        }
+      ]
+    },
+    {
+      "name": "late-cutoff-stays-in-the-due-plan",
+      "finding": "TL5 (text rebuilt from the stored plans; the worker's log had rolled off)",
+      "occurred_at": "2026-10-12T18:00:00-04:00",
+      "text": "IBIO 150 Codon deadlines as shown on Codon on Oct 12, 2026: \"Reading: Biodiversity and Conservation\" is due Sun Oct 11, 2026 at 11:59 PM, and late submissions earn 75% credit until Tue Oct 13, 2026 at 11:59 PM. \"Impacts of Climate Change and Biodiversity\" is due Mon Oct 12, 2026 at 11:59 PM, with 75% credit for late work until Tue Oct 13, 2026 at 11:59 PM.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "5d47de0a-c92b-480e-923b-a8b588df014f",
+            "kind": "plan",
+            "title": "IBIO 150: Integrating Biology: From DNA to Populations (Fall 2026)",
+            "occurred_at": null,
+            "detail": {
+              "end_at": null,
+              "all_day": false,
+              "status": "confirmed",
+              "recurrence": null,
+              "series_id": null
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "0c1d6a52-6f0e-4b8e-9a51-3f7d2e4b9c10",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "5d47de0a-c92b-480e-923b-a8b588df014f",
+            "type": "ENROLLED_IN",
+            "properties": {
+              "status": "enrolled"
+            }
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "title": "late|75%|credit"
+          },
+          "why": "A reduced-credit late cutoff is not a plan of its own (TL5)"
+        },
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "title": "Reading"
+          },
+          "check": {
+            "local_date": "2026-10-11"
+          },
+          "why": "The reading is stored at its due date"
+        }
+      ]
     }
   ]
 }
