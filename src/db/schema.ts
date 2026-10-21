@@ -15,6 +15,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { loadFileConfig } from "../config.js";
+import { PLANNER_ICONS, PLANNER_KINDS } from "../types/planner.js";
 
 const embeddingDimension = loadFileConfig().embedding.dimension;
 
@@ -151,3 +152,35 @@ export type PersonDetailRow = typeof personDetail.$inferSelect;
 export type PlanDetailRow = typeof planDetail.$inferSelect;
 export type PlaceDetailRow = typeof placeDetail.$inferSelect;
 export type NodeHistoryRow = typeof nodeHistory.$inferSelect;
+export type PlannerBlockRow = typeof plannerBlock.$inferSelect;
+
+const inList = (values: readonly string[]) => sql.raw(values.map((value) => `'${value}'`).join(", "));
+
+/**
+ * The day planner's timed blocks. They are not graph memory: no embedding, no history, no
+ * edges. `source` names the writer so a rewrite of a range replaces only that writer's blocks.
+ */
+export const plannerBlock = pgTable(
+  "planner_block",
+  {
+    id: uuid("id").primaryKey(),
+    startAt: timestamptz("start_at").notNull(),
+    endAt: timestamptz("end_at").notNull(),
+    title: text("title").notNull(),
+    note: text("note"),
+    kind: text("kind").notNull(),
+    icon: text("icon").notNull(),
+    fixed: boolean("fixed").notNull().default(true),
+    overlapOk: boolean("overlap_ok").notNull().default(false),
+    doneAt: timestamptz("done_at"),
+    source: text("source").notNull(),
+    createdAt: timestamptz("created_at").notNull().defaultNow(),
+    updatedAt: timestamptz("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    check("planner_block_span_check", sql`${table.endAt} > ${table.startAt}`),
+    check("planner_block_kind_check", sql`${table.kind} IN (${inList(PLANNER_KINDS)})`),
+    check("planner_block_icon_check", sql`${table.icon} IN (${inList(PLANNER_ICONS)})`),
+    index("planner_block_start_idx").on(table.startAt),
+  ],
+);

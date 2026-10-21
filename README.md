@@ -114,8 +114,17 @@ Observations may set `ttl_days`; expired nodes are filtered from recall/query/in
 | `POST` | `/edges` | hand-drawn edge: `{ src_id, dst_id, type (UPPER_SNAKE_CASE), properties?, confidence }`; 201 with the edge |
 | `POST` | `/edges/:id/close` | close a current edge plus orphan sweep; returns `{ id, orphans }` |
 | `GET` | `/lint` | read-only report of suspicious live nodes; see Lint |
+| `POST` | `/planner/query` | planner blocks overlapping `{ from, to }`, earliest first |
+| `POST` | `/planner/replace` | one source's whole plan for `[from, to)`: `{ source, from, to, blocks }`, all or nothing; returns the range's blocks |
+| `POST` | `/planner/blocks` | one block: `{ source, start_at, end_at, title, note?, kind, icon, fixed?, overlap_ok? }`; 201 |
+| `PATCH` | `/planner/blocks/:id` | changed fields, or `{ done }` to mark a block done or open; returns the block |
+| `DELETE` | `/planner/blocks/:id` | delete one block; returns `{ id }` |
 
 Unknown request fields are a 422.
+
+## Planner
+
+The day planner's timed blocks live in `planner_block`, apart from the graph: no embedding, no history, no edges, and nothing from ingest. A block has a `kind` (wake, meal, class, exam, study, gym, shower, recruiting, free, lights_out, fixed), an `icon` from a fixed set the client draws, `fixed` (default true; false only for time that can give way, such as free time), `overlap_ok`, `done_at`, and the `source` that wrote it (a Hath agent id or `manual`). Blocks may not overlap unless one of the two says `overlap_ok`; a write that would is a 409 `overlap` that names each clashing pair, and nothing is written. `replace` deletes only its own source's blocks that start in `[from, to)`, so an agent rewrites a day or a week without touching what others or the person added; a block that starts outside the range is a 422 `out_of_range`.
 
 ### `POST /graph`
 

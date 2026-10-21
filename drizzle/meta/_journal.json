@@ -29,6 +29,13 @@
       "when": 1791242410623,
       "tag": "0003_plan_occurrences_on_read",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792599055473,
+      "tag": "0004_planner_blocks",
+      "breakpoints": true
     }
   ]
 }

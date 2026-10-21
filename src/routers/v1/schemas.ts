@@ -2,6 +2,7 @@
 
 import { z, type ZodError, type ZodType } from "zod";
 import { YaadError } from "../../errors.js";
+import { PLANNER_ICONS, PLANNER_KINDS } from "../../types/planner.js";
 
 /** Parse with zod; map failures to `422 invalid_request`. */
 export function parse<T>(schema: ZodType<T>, data: unknown): T {
@@ -166,3 +167,49 @@ export const graphBody = z
     seed_ids: z.array(z.string().uuid()).min(1).optional(),
   })
   .strict();
+
+const instant = z.string().datetime({ offset: true });
+
+const plannerBlockFields = {
+  start_at: instant,
+  end_at: instant,
+  title: z.string().min(1),
+  note: z.string().nullable().optional(),
+  kind: z.enum(PLANNER_KINDS),
+  icon: z.enum(PLANNER_ICONS),
+  fixed: z.boolean().optional(),
+  overlap_ok: z.boolean().optional(),
+};
+
+/** One block of `POST /planner/replace` or `POST /planner/blocks`. */
+export const plannerBlockBody = z.object(plannerBlockFields).strict();
+
+/** `POST /planner/query` — blocks overlapping `[from, to)`. */
+export const plannerQueryBody = z.object({ from: instant, to: instant }).strict();
+
+/**
+ * `POST /planner/replace` — one writer's whole plan for `[from, to)`: its existing blocks
+ * that start in the range are deleted and `blocks` (each starting in the range) written, or
+ * nothing changes.
+ */
+export const plannerReplaceBody = z
+  .object({
+    source: z.string().regex(/^(manual|[a-z][a-z0-9]*(-[a-z0-9]+)*)$/, "source must be manual or a kebab-case agent id"),
+    from: instant,
+    to: instant,
+    blocks: z.array(plannerBlockBody),
+  })
+  .strict();
+
+/** `POST /planner/blocks` — one block; `source` names the writer as on replace. */
+export const plannerCreateBody = z
+  .object({ source: plannerReplaceBody.shape.source, ...plannerBlockFields })
+  .strict();
+
+/** `PATCH /planner/blocks/:id` — changed fields only; `done` marks the block done or open. */
+export const plannerPatchBody = z
+  .object(plannerBlockFields)
+  .partial()
+  .extend({ done: z.boolean().optional() })
+  .strict()
+  .refine((body) => Object.keys(body).length > 0, "at least one field is required");
