@@ -43,6 +43,19 @@ recurrence_horizon_days = 365
 # generate thousands of rows fails loudly instead of filling the table.
 max_instances_per_series = 500
 
+[planner]
+# Least minutes between two planner blocks that are at the same place or whose places are unknown.
+# Raise to force more stretch time between tasks; lower to allow back-to-back blocks.
+stretch_min = 10
+# Minutes added to the travel time between two different places before the next block may start.
+travel_buffer_min = 5
+# Walking speed in meters per minute (80 is 4.8 km/h), used for places with coordinates but no stored travel time.
+walk_m_per_min = 80
+# Straight-line distance times this approximates the walked distance. Raise on a campus with many detours.
+detour_factor = 1.3
+# Shortest travel time between two different places, in minutes.
+min_travel_min = 2
+
 [recall]
 # Minimum cosine similarity for a node to become an anchor. Raise to require a closer match.
 # Never widen this in code when nothing clears it.

@@ -131,13 +131,15 @@ export function toPlanDetail(row: PlanDetailRow): PlanDetail {
   };
 }
 
-export function toPlannerBlock(row: PlannerBlockRow): PlannerBlock {
+export function toPlannerBlock(row: PlannerBlockRow, place: string | null, travelMin: number | null): PlannerBlock {
   return {
     id: row.id,
     start_at: row.startAt.toISOString(),
     end_at: row.endAt.toISOString(),
     title: row.title,
     note: row.note,
+    place,
+    travel_min: travelMin,
     kind: parsePlannerKind(row.kind),
     icon: parsePlannerIcon(row.icon),
     fixed: row.fixed,

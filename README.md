@@ -119,12 +119,15 @@ Observations may set `ttl_days`; expired nodes are filtered from recall/query/in
 | `POST` | `/planner/blocks` | one block: `{ source, start_at, end_at, title, note?, kind, icon, fixed?, overlap_ok? }`; 201 |
 | `PATCH` | `/planner/blocks/:id` | changed fields, or `{ done }` to mark a block done or open; returns the block |
 | `DELETE` | `/planner/blocks/:id` | delete one block; returns `{ id }` |
+| `GET` | `/planner/places` | the planner's places (name, aliases, coordinates) and its stored travel times |
+| `PUT` | `/planner/places` | add or update a place by name: `{ name, aliases?, latitude, longitude }` |
+| `PUT` | `/planner/travel` | store minutes to get from one named place to another: `{ from, to, minutes }`, replacing the distance estimate |
 
 Unknown request fields are a 422.
 
 ## Planner
 
-The day planner's timed blocks live in `planner_block`, apart from the graph: no embedding, no history, no edges, and nothing from ingest. A block has a `kind` (wake, meal, class, exam, study, gym, shower, recruiting, free, lights_out, fixed), an `icon` from a fixed set the client draws, `fixed` (default true; false only for time that can give way, such as free time), `overlap_ok`, `done_at`, and the `source` that wrote it (a Hath agent id or `manual`). Blocks may not overlap unless one of the two says `overlap_ok`; a write that would is a 409 `overlap` that names each clashing pair, and nothing is written. `replace` deletes only its own source's blocks that start in `[from, to)`, so an agent rewrites a day or a week without touching what others or the person added; a block that starts outside the range is a 422 `out_of_range`.
+The day planner's timed blocks live in `planner_block`, apart from the graph: no embedding, no history, no edges, and nothing from ingest. A block has a `kind` (wake, meal, class, exam, study, gym, shower, recruiting, free, lights_out, fixed), an `icon` from a fixed set the client draws, `fixed` (default true; false only for time that can give way, such as free time), `overlap_ok`, `done_at`, and the `source` that wrote it (a Hath agent id or `manual`). Blocks may not overlap unless one of the two says `overlap_ok`; a write that would is a 409 `overlap` that names each clashing pair, and nothing is written. `replace` deletes only its own source's blocks that start in `[from, to)`, so an agent rewrites a day or a week without touching what others or the person added; a block that starts outside the range is a 422 `out_of_range`. A block may name a `place` (by name or alias, any case; an unknown one is a 422 `unknown_place` that lists the known names). The planner keeps travel and stretch time itself so agents do not have to: consecutive blocks must leave `planner.stretch_min` minutes, or, when both have a place and the places differ, the travel plus `planner.travel_buffer_min`, else a 409 `spacing` names the pair and the earliest start (times in the box's `TZ`); `overlap_ok` on either block lifts the check. Travel between two places is the stored time for that direction, else the reverse direction's, else the distance between their coordinates times `planner.detour_factor` at `planner.walk_m_per_min`, never under `planner.min_travel_min`; query results carry each block's `place` and `travel_min` from the block before it.
 
 ### `POST /graph`
 

@@ -36,6 +36,13 @@
       "when": 1792599055473,
       "tag": "0004_planner_blocks",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792640273417,
+      "tag": "0005_planner_places",
+      "breakpoints": true
     }
   ]
 }
