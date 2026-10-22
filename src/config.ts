@@ -42,13 +42,6 @@ const fileSchema = z.object({
     recurrence_horizon_days: z.number().int().positive(),
     max_instances_per_series: z.number().int().positive(),
   }),
-  planner: z.object({
-    stretch_min: z.number().int().min(0),
-    travel_buffer_min: z.number().int().min(0),
-    walk_m_per_min: z.number().positive(),
-    detour_factor: z.number().min(1),
-    min_travel_min: z.number().int().min(0),
-  }),
   recall: z.object({
     anchor_similarity_floor: z.number().min(0).max(2),
     anchor_limit: z.number().int().positive(),
@@ -96,7 +89,6 @@ export type Config = {
   dwar: FileConfig["dwar"];
   ingest: FileConfig["ingest"];
   plan: FileConfig["plan"];
-  planner: FileConfig["planner"];
   recall: FileConfig["recall"];
 };
 
@@ -165,7 +157,6 @@ export function loadConfig(): Config {
     dwar: file.dwar,
     ingest: file.ingest,
     plan: file.plan,
-    planner: file.planner,
     recall: file.recall,
   };
   return cached;

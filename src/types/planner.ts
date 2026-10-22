@@ -44,13 +44,6 @@ export type PlannerBlock = {
   end_at: string;
   title: string;
   note: string | null;
-  /** Name of the place the block happens, or null when it has none. */
-  place: string | null;
-  /**
-   * Minutes of travel the planner counts from the previous block's place to this one, or
-   * null when either block has no place, the places are the same, or no block precedes it in the result.
-   */
-  travel_min: number | null;
   kind: PlannerKind;
   icon: PlannerIcon;
   /** The block never moves or shrinks to make room; false only for time that can give way (free time). */

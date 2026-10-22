@@ -7,11 +7,9 @@ import {
   integer,
   jsonb,
   pgTable,
-  primaryKey,
   real,
   text,
   timestamp,
-  uniqueIndex,
   uuid,
   vector,
 } from "drizzle-orm/pg-core";
@@ -155,40 +153,8 @@ export type PlanDetailRow = typeof planDetail.$inferSelect;
 export type PlaceDetailRow = typeof placeDetail.$inferSelect;
 export type NodeHistoryRow = typeof nodeHistory.$inferSelect;
 export type PlannerBlockRow = typeof plannerBlock.$inferSelect;
-export type PlannerPlaceRow = typeof plannerPlace.$inferSelect;
 
 const inList = (values: readonly string[]) => sql.raw(values.map((value) => `'${value}'`).join(", "));
-
-/**
- * A place the planner knows, by name, with coordinates. Blocks name where they happen so
- * the planner can work out the travel between them. Aliases are other names for it.
- */
-export const plannerPlace = pgTable(
-  "planner_place",
-  {
-    id: uuid("id").primaryKey(),
-    name: text("name").notNull(),
-    aliases: text("aliases").array().notNull().default(sql`'{}'::text[]`),
-    latitude: doublePrecision("latitude").notNull(),
-    longitude: doublePrecision("longitude").notNull(),
-  },
-  (table) => [uniqueIndex("planner_place_name_idx").on(sql`lower(${table.name})`)],
-);
-
-/** A stored travel time from one place to another, in minutes, that replaces the distance estimate. */
-export const plannerTravel = pgTable(
-  "planner_travel",
-  {
-    fromPlace: uuid("from_place")
-      .notNull()
-      .references(() => plannerPlace.id, { onDelete: "cascade" }),
-    toPlace: uuid("to_place")
-      .notNull()
-      .references(() => plannerPlace.id, { onDelete: "cascade" }),
-    minutes: integer("minutes").notNull(),
-  },
-  (table) => [primaryKey({ columns: [table.fromPlace, table.toPlace] }), check("planner_travel_minutes_check", sql`${table.minutes} >= 0`)],
-);
 
 /**
  * The day planner's timed blocks. They are not graph memory: no embedding, no history, no
@@ -202,8 +168,6 @@ export const plannerBlock = pgTable(
     endAt: timestamptz("end_at").notNull(),
     title: text("title").notNull(),
     note: text("note"),
-    /** Where the block happens; null when it has no fixed place. */
-    placeId: uuid("place_id").references(() => plannerPlace.id, { onDelete: "set null" }),
     kind: text("kind").notNull(),
     icon: text("icon").notNull(),
     fixed: boolean("fixed").notNull().default(true),

@@ -7,14 +7,14 @@ const config = testConfig();
 const handle = await openTestDb();
 
 before(async () => {
-  await handle.sql`TRUNCATE planner_block, planner_place CASCADE`;
+  await handle.sql`TRUNCATE planner_block`;
 });
 
 after(async () => {
   await handle.close();
 });
 
-async function call(method: "POST" | "PATCH" | "DELETE" | "PUT" | "GET", url: string, payload?: Record<string, unknown>) {
+async function call(method: "POST" | "PATCH" | "DELETE", url: string, payload?: Record<string, unknown>) {
   const app = await buildApp(config, {
     db: handle.db,
     sql: handle.sql,
@@ -142,67 +142,4 @@ test("an unknown block id is a 404 on patch and delete, and delete removes the b
   assert.equal((await call("DELETE", `/planner/blocks/${created.json().id}`)).statusCode, 200);
   const read = await call("POST", "/planner/query", day);
   assert.deepEqual(read.json().blocks, []);
-});
-
-async function seedPlaces() {
-  await handle.sql`TRUNCATE planner_block, planner_place CASCADE`;
-  await call("PUT", "/planner/places", { name: "Wilson Hall", latitude: 42.72279, longitude: -84.48889 });
-  await call("PUT", "/planner/places", { name: "Rec Center", aliases: ["gym"], latitude: 42.72428, longitude: -84.4934 });
-  await call("PUT", "/planner/places", { name: "Home", aliases: ["apartment"], latitude: 42.7268, longitude: -84.4571 });
-}
-
-test("a block names its place by name or alias, and an unknown place is a 422 listing the known ones", async () => {
-  await seedPlaces();
-  const ok = await call("POST", "/planner/blocks", { source: "manual", ...block("Gym", [15], [16], { kind: "gym", icon: "pulse", place: "GYM" }) });
-  assert.equal(ok.statusCode, 201);
-  assert.equal(ok.json().place, "Rec Center");
-  const unknown = await call("POST", "/planner/blocks", { source: "manual", ...block("Lunch", [12], [13], { place: "Moon" }) });
-  assert.equal(unknown.statusCode, 422);
-  assert.equal(unknown.json().error.type, "unknown_place");
-  assert.match(unknown.json().error.message, /Home, Rec Center, Wilson Hall/);
-});
-
-test("blocks at different places need the trip plus the buffer, and the error says the earliest start", async () => {
-  await seedPlaces();
-  await call("PUT", "/planner/travel", { from: "Wilson Hall", to: "Rec Center", minutes: 14 });
-  await call("POST", "/planner/blocks", { source: "manual", ...block("Class", [13], [14, 20], { kind: "class", icon: "book", place: "Wilson Hall" }) });
-  const tight = await call("POST", "/planner/blocks", { source: "manual", ...block("Gym", [14, 30], [15, 30], { kind: "gym", icon: "pulse", place: "Rec Center" }) });
-  assert.equal(tight.statusCode, 409);
-  assert.equal(tight.json().error.type, "spacing");
-  assert.match(tight.json().error.message, /14 min plus a 5 min buffer/);
-  assert.match(tight.json().error.message, /Wed \d\d:\d\d at the earliest/);
-  const fine = await call("POST", "/planner/blocks", { source: "manual", ...block("Gym", [14, 40], [15, 30], { kind: "gym", icon: "pulse", place: "Rec Center" }) });
-  assert.equal(fine.statusCode, 201);
-  assert.equal(fine.json().travel_min, null);
-  const read = await call("POST", "/planner/query", day);
-  assert.deepEqual(read.json().blocks.map((b: { travel_min: number | null }) => b.travel_min), [null, 14]);
-});
-
-test("blocks at the same place or with no place need the stretch minimum, and overlap_ok lifts it", async () => {
-  await seedPlaces();
-  await call("POST", "/planner/blocks", { source: "manual", ...block("A", [9], [10]) });
-  const tight = await call("POST", "/planner/blocks", { source: "manual", ...block("B", [10, 5], [11]) });
-  assert.equal(tight.statusCode, 409);
-  assert.equal(tight.json().error.type, "spacing");
-  assert.match(tight.json().error.message, /at least 10 min between tasks/);
-  const ok = await call("POST", "/planner/blocks", { source: "manual", ...block("B", [10, 10], [11]) });
-  assert.equal(ok.statusCode, 201);
-  const lifted = await call("POST", "/planner/blocks", { source: "manual", ...block("C", [11, 2], [12], { overlap_ok: true }) });
-  assert.equal(lifted.statusCode, 201);
-});
-
-test("replace checks spacing against the blocks beside the range and a stored time overrides the estimate", async () => {
-  await seedPlaces();
-  await call("POST", "/planner/blocks", { source: "manual", ...block("Evening", [20], [21], { place: "Home" }) });
-  await call("PUT", "/planner/travel", { from: "Wilson Hall", to: "Home", minutes: 38 });
-  const tight = await call("POST", "/planner/replace", {
-    source: "schedule-specialist",
-    from: at(0),
-    to: at(19, 30),
-    blocks: [block("Late class", [18, 30], [19, 30], { kind: "class", icon: "book", place: "Wilson Hall" })],
-  });
-  assert.equal(tight.statusCode, 409);
-  assert.match(tight.json().error.message, /38 min plus a 5 min buffer/);
-  const places = await call("GET", "/planner/places");
-  assert.deepEqual(places.json().travel, [{ from: "Wilson Hall", to: "Home", minutes: 38 }]);
 });

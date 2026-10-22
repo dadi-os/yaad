@@ -175,7 +175,6 @@ const plannerBlockFields = {
   end_at: instant,
   title: z.string().min(1),
   note: z.string().nullable().optional(),
-  place: z.string().min(1).nullable().optional(),
   kind: z.enum(PLANNER_KINDS),
   icon: z.enum(PLANNER_ICONS),
   fixed: z.boolean().optional(),
@@ -184,21 +183,6 @@ const plannerBlockFields = {
 
 /** One block of `POST /planner/replace` or `POST /planner/blocks`. */
 export const plannerBlockBody = z.object(plannerBlockFields).strict();
-
-/** `PUT /planner/places` — a place by name with its coordinates; an existing name (any case) is updated. */
-export const plannerPlaceBody = z
-  .object({
-    name: z.string().trim().min(1),
-    aliases: z.array(z.string().trim().min(1)).optional(),
-    latitude: z.number().min(-90).max(90),
-    longitude: z.number().min(-180).max(180),
-  })
-  .strict();
-
-/** `PUT /planner/travel` — minutes to get from one named place to another, replacing the distance estimate. */
-export const plannerTravelBody = z
-  .object({ from: z.string().min(1), to: z.string().min(1), minutes: z.number().int().min(0) })
-  .strict();
 
 /** `POST /planner/query` — blocks overlapping `[from, to)`. */
 export const plannerQueryBody = z.object({ from: instant, to: instant }).strict();
