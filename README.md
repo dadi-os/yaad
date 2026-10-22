@@ -18,7 +18,7 @@ yaad/
     dwar/         Dwar axios client
     ingest/       extract → validate → apply, RRULE validation and expansion
     recall/       anchor → expand → score → gate
-    routers/v1/   HTTP routes + schemas
+    routers/v1/   HTTP routes + schemas; `GET /events` streams `changed` after every write so Thaali refetches instead of polling
     types/        domain types
   test/           Node test runner suites
   evals/          extraction eval cases from past mistakes + runner
