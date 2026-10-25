@@ -1,6 +1,7 @@
 /** Zod shapes and JSON Schema for Dwar `emit_operations` tool calls. */
 
 import { z } from "zod";
+import { OCCURRENCE_STATES, OUTCOMES, PLAN_KINDS } from "../types/timeline.js";
 import {
   personDetailBody,
   planDetailBody,
@@ -66,6 +67,27 @@ const closeEdgeOp = z
   })
   .strict();
 
+const instant = z.string().datetime({ offset: true });
+
+/**
+ * What happened to one session of a plan, named by the plan and the local date the session was
+ * first scheduled for: moved (with its new start), cancelled, back to scheduled, done or
+ * missed, and when it really ran. Fields left out keep their values; null clears one.
+ */
+const editOccurrenceOp = z
+  .object({
+    op: z.literal("edit_occurrence"),
+    node_id: z.string().uuid(),
+    occurrence_date: z.string().date(),
+    state: z.enum(OCCURRENCE_STATES).optional(),
+    start_at: instant.optional(),
+    end_at: instant.nullable().optional(),
+    outcome: z.enum(OUTCOMES).nullable().optional(),
+    actual_start: instant.nullable().optional(),
+    actual_end: instant.nullable().optional(),
+  })
+  .strict();
+
 const noopOp = z
   .object({
     op: z.literal("noop"),
@@ -73,13 +95,14 @@ const noopOp = z
   })
   .strict();
 
-/** One memory mutation emitted by extraction (create/update/close node or edge, or noop). */
+/** One memory mutation emitted by extraction (create/update/close node or edge, edit one session, or noop). */
 export const operationSchema = z.discriminatedUnion("op", [
   createNodeOp,
   updateNodeOp,
   closeNodeOp,
   createEdgeOp,
   closeEdgeOp,
+  editOccurrenceOp,
   noopOp,
 ]);
 
@@ -93,6 +116,7 @@ export const emitOperationsInput = z
 export type Operation = z.infer<typeof operationSchema>;
 export type CreateNodeOp = z.infer<typeof createNodeOp>;
 export type UpdateNodeOp = z.infer<typeof updateNodeOp>;
+export type EditOccurrenceOp = z.infer<typeof editOccurrenceOp>;
 
 const nullableString = { type: ["string", "null"] } as const;
 
@@ -159,6 +183,11 @@ export const emitOperationsToolSchema = {
                   all_day: { type: "boolean" },
                   status: { type: "string", enum: ["idea", "tentative", "confirmed"] },
                   recurrence: nullableString,
+                  kind: { type: ["string", "null"], enum: [...PLAN_KINDS, null] },
+                  due_at: nullableString,
+                  opens_at: nullableString,
+                  time_zone: nullableString,
+                  hide_from_planner: { type: "boolean" },
                 },
               },
             },
@@ -227,6 +256,22 @@ export const emitOperationsToolSchema = {
               op: { const: "close_edge" },
               edge_id: { type: "string" },
               reason: { type: "string" },
+            },
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["op", "node_id", "occurrence_date"],
+            properties: {
+              op: { const: "edit_occurrence" },
+              node_id: { type: "string" },
+              occurrence_date: { type: "string" },
+              state: { type: "string", enum: [...OCCURRENCE_STATES] },
+              start_at: { type: "string" },
+              end_at: nullableString,
+              outcome: { type: ["string", "null"], enum: [...OUTCOMES, null] },
+              actual_start: nullableString,
+              actual_end: nullableString,
             },
           },
           {

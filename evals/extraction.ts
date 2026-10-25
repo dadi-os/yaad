@@ -3,7 +3,8 @@
  * from real ingests that went wrong (see `extraction-cases.json`) and checks what it
  * emits. It writes nothing; it needs Dwar reachable at its mesh address and `TZ` set to
  * the box's zone. `npm run eval:extraction -- --runs=3` repeats each case to expose
- * flaky choices. Exits 1 when any expectation fails in any run.
+ * flaky choices. A run whose extraction Yaad would reject (a malformed tool call) fails that
+ * run and the rest go on. Exits 1 when any expectation fails in any run.
  */
 
 import { readFileSync } from "node:fs";
@@ -13,6 +14,7 @@ import { z } from "zod";
 import { loadFileConfig } from "../src/config.js";
 import { createDwarClient } from "../src/dwar/client.js";
 import type { CandidateState } from "../src/ingest/candidates.js";
+import { YaadError } from "../src/errors.js";
 import { emitOperations } from "../src/ingest/emit.js";
 import type { Operation } from "../src/ingest/operations.js";
 
@@ -20,7 +22,7 @@ const serviceRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
 const nodeKind = z.enum(["person", "memory", "plan", "place"]);
 
-const opName = z.enum(["create_node", "update_node", "close_node", "create_edge", "close_edge", "noop"]);
+const opName = z.enum(["create_node", "update_node", "close_node", "create_edge", "close_edge", "edit_occurrence", "noop"]);
 
 /**
  * Which emitted operations an expectation is about; `op` is one op or any of several,
@@ -33,6 +35,8 @@ const matcherSchema = z
     node_id: z.string().uuid().optional(),
     title: z.string().optional(),
     text: z.string().optional(),
+    /** Edge type, on `create_edge`. */
+    type: z.string().optional(),
     /** Only operations that set this field (e.g. `occurred_at` on an update). */
     sets: z.string().optional(),
   })
@@ -50,6 +54,15 @@ const checkSchema = z
     ttl_days: z.literal(true).optional(),
     aliases_include: z.string().optional(),
     recurrence_includes: z.string().optional(),
+    /** Local date and time of `detail.due_at`. */
+    due_local_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    due_local_time: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+    /** Case-insensitive regexes over fields the operation carries (an edit's `outcome`, `occurrence_date`). */
+    fields: z.record(z.string()).optional(),
+    /** Case-insensitive regexes over the operation's `detail` (a plan's `kind`, a place's `address`). */
+    detail: z.record(z.string()).optional(),
+    /** Case-insensitive regexes over an edge's `properties` (a location's `room`). */
+    properties: z.record(z.string()).optional(),
   })
   .strict();
 
@@ -182,6 +195,9 @@ function matches(op: Operation, match: Expectation["match"]): boolean {
       return false;
     }
   }
+  if (match.type !== undefined && !(op.op === "create_edge" && op.type === match.type)) {
+    return false;
+  }
   if (match.sets !== undefined && !(match.sets in op || match.sets in detailOf(op))) {
     return false;
   }
@@ -218,6 +234,26 @@ function checkFailure(op: Operation, check: NonNullable<Expectation["check"]>): 
     const aliases = Array.isArray(detail.aliases) ? detail.aliases : [];
     if (!aliases.includes(check.aliases_include)) {
       return `aliases are ${JSON.stringify(aliases)}`;
+    }
+  }
+  const due = typeof detail.due_at === "string" ? localParts(detail.due_at) : null;
+  if (check.due_local_date !== undefined && due?.date !== check.due_local_date) {
+    return `due local date is ${due?.date ?? "unset"}`;
+  }
+  if (check.due_local_time !== undefined && due?.time !== check.due_local_time) {
+    return `due local time is ${due?.time ?? "unset"}`;
+  }
+  const fields = op as Record<string, unknown>;
+  const properties = op.op === "create_edge" ? (op.properties ?? {}) : {};
+  for (const [label, expected, actual] of [
+    ["field", check.fields, fields],
+    ["detail", check.detail, detail],
+    ["property", check.properties, properties],
+  ] as const) {
+    for (const [key, value] of Object.entries(expected ?? {})) {
+      if (actual[key] === undefined || !new RegExp(value, "i").test(String(actual[key]))) {
+        return `${label} ${key} is ${JSON.stringify(actual[key])}`;
+      }
     }
   }
   if (check.recurrence_includes !== undefined) {
@@ -262,18 +298,28 @@ const { cases } = casesSchema.parse(JSON.parse(readFileSync(join(serviceRoot, "e
 let failedRuns = 0;
 for (const testCase of cases) {
   for (let run = 1; run <= runs; run++) {
-    const operations = await emitOperations({
-      dwar,
-      config: { serviceRoot },
-      occurredAt: testCase.occurred_at,
-      text: testCase.text,
-      candidates: expandCandidates(testCase.candidates),
-      recheck: null,
-    });
+    const label = `${testCase.name} (${testCase.finding})${runs > 1 ? ` run ${run}/${runs}` : ""}`;
+    let operations: Operation[];
+    try {
+      operations = await emitOperations({
+        dwar,
+        config: { serviceRoot },
+        occurredAt: testCase.occurred_at,
+        text: testCase.text,
+        candidates: expandCandidates(testCase.candidates),
+        recheck: null,
+      });
+    } catch (err) {
+      if (!(err instanceof YaadError && err.type === "extraction_failed")) {
+        throw err;
+      }
+      failedRuns += 1;
+      console.log(`FAIL ${label}\n  ✗ extraction failed: ${err.message}`);
+      continue;
+    }
     const failures = testCase.expectations.flatMap((expectation) =>
       evaluate(expectation, operations).map((detail) => `  ✗ ${expectation.why}\n      ${detail}`),
     );
-    const label = `${testCase.name} (${testCase.finding})${runs > 1 ? ` run ${run}/${runs}` : ""}`;
     if (failures.length === 0) {
       console.log(`PASS ${label}`);
     } else {

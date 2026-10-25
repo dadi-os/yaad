@@ -7,6 +7,7 @@ import {
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   real,
   text,
   timestamp,
@@ -15,11 +16,14 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { loadFileConfig } from "../config.js";
-import { PLANNER_ICONS, PLANNER_KINDS } from "../types/planner.js";
+import { OCCURRENCE_STATES, OUTCOMES, PLAN_KINDS } from "../types/timeline.js";
 
 const embeddingDimension = loadFileConfig().embedding.dimension;
 
 const timestamptz = (name: string) => timestamp(name, { withTimezone: true, mode: "date" });
+
+/** A SQL IN list of string literals, for CHECK constraints over a fixed set. */
+const inList = (values: readonly string[]) => sql.raw(values.map((value) => `'${value}'`).join(", "));
 
 export const node = pgTable(
   "node",
@@ -104,10 +108,54 @@ export const planDetail = pgTable(
      */
     allDay: boolean("all_day").notNull().default(false),
     status: text("status").notNull(),
+    /** RRULE lines; the series anchors on occurred_at, or on due_at for a plan with no start. */
     recurrence: text("recurrence"),
+    /** What the plan is; the timeline views filter on it (routine kinds stay off the month). */
+    kind: text("kind"),
+    /** A deadline, apart from when the work is scheduled; a deadline-only plan has no occurred_at. */
+    dueAt: timestamptz("due_at"),
+    /** When a task's work opens. */
+    opensAt: timestamptz("opens_at"),
+    /** IANA zone of the place when it is not the box's, so clients can show its local time. */
+    timeZone: text("time_zone"),
+    /** In the timeline but never on the planner grid: an event Ankur is not part of. */
+    hideFromPlanner: boolean("hide_from_planner").notNull().default(false),
   },
   (table) => [
     check("plan_status_check", sql`${table.status} IN ('idea', 'tentative', 'confirmed')`),
+    check("plan_kind_check", sql`${table.kind} IS NULL OR ${table.kind} IN (${inList(PLAN_KINDS)})`),
+  ],
+);
+
+/**
+ * What happened to one session of a plan, a series' meeting or a one-off plan's only session,
+ * named by the local date it was first scheduled for. A row exists only once a session differs
+ * from its plan: moved, cancelled, given an outcome or actual times.
+ */
+export const planOccurrence = pgTable(
+  "plan_occurrence",
+  {
+    planId: uuid("plan_id")
+      .notNull()
+      .references(() => node.id, { onDelete: "cascade" }),
+    occurrenceDate: date("occurrence_date", { mode: "string" }).notNull(),
+    state: text("state").notNull().default("scheduled"),
+    /** The session's times once moved; null while it keeps the plan's. */
+    startAt: timestamptz("start_at"),
+    endAt: timestamptz("end_at"),
+    outcome: text("outcome"),
+    outcomeAt: timestamptz("outcome_at"),
+    actualStart: timestamptz("actual_start"),
+    actualEnd: timestamptz("actual_end"),
+    /** Who last changed the row: a Hath agent id, `manual`, or `ingest`. */
+    source: text("source").notNull(),
+    updatedAt: timestamptz("updated_at").notNull().defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.planId, table.occurrenceDate] }),
+    check("plan_occurrence_state_check", sql`${table.state} IN (${inList(OCCURRENCE_STATES)})`),
+    check("plan_occurrence_outcome_check", sql`${table.outcome} IS NULL OR ${table.outcome} IN (${inList(OUTCOMES)})`),
+    check("plan_occurrence_moved_check", sql`(${table.state} = 'moved') = (${table.startAt} IS NOT NULL)`),
   ],
 );
 
@@ -152,35 +200,4 @@ export type PersonDetailRow = typeof personDetail.$inferSelect;
 export type PlanDetailRow = typeof planDetail.$inferSelect;
 export type PlaceDetailRow = typeof placeDetail.$inferSelect;
 export type NodeHistoryRow = typeof nodeHistory.$inferSelect;
-export type PlannerBlockRow = typeof plannerBlock.$inferSelect;
-
-const inList = (values: readonly string[]) => sql.raw(values.map((value) => `'${value}'`).join(", "));
-
-/**
- * The day planner's timed blocks. They are not graph memory: no embedding, no history, no
- * edges. `source` names the writer so a rewrite of a range replaces only that writer's blocks.
- */
-export const plannerBlock = pgTable(
-  "planner_block",
-  {
-    id: uuid("id").primaryKey(),
-    startAt: timestamptz("start_at").notNull(),
-    endAt: timestamptz("end_at").notNull(),
-    title: text("title").notNull(),
-    note: text("note"),
-    kind: text("kind").notNull(),
-    icon: text("icon").notNull(),
-    fixed: boolean("fixed").notNull().default(true),
-    overlapOk: boolean("overlap_ok").notNull().default(false),
-    doneAt: timestamptz("done_at"),
-    source: text("source").notNull(),
-    createdAt: timestamptz("created_at").notNull().defaultNow(),
-    updatedAt: timestamptz("updated_at").notNull().defaultNow(),
-  },
-  (table) => [
-    check("planner_block_span_check", sql`${table.endAt} > ${table.startAt}`),
-    check("planner_block_kind_check", sql`${table.kind} IN (${inList(PLANNER_KINDS)})`),
-    check("planner_block_icon_check", sql`${table.icon} IN (${inList(PLANNER_ICONS)})`),
-    index("planner_block_start_idx").on(table.startAt),
-  ],
-);
+export type PlanOccurrenceRow = typeof planOccurrence.$inferSelect;

@@ -208,9 +208,10 @@
             "title": "Milestone Two"
           },
           "check": {
-            "local_date": "2026-10-09"
+            "due_local_date": "2026-10-09",
+            "occurred_at_null": true
           },
-          "why": "Milestone Two is a review window: one plan at its close, the open in its body (deadlines rule)"
+          "why": "Milestone Two is a review window: one deadline plan due at its close, the open in opens_at (deadlines rule)"
         },
         {
           "expect": "each",
@@ -386,7 +387,8 @@
           },
           "check": {
             "all_day": true,
-            "local_date": "2026-10-19"
+            "due_local_date": "2026-10-19",
+            "occurred_at_null": true
           },
           "why": "The drop deadline is a dated plan, all-day because no time is given (K1, T4)"
         },
@@ -398,8 +400,9 @@
             "title": "Design 4"
           },
           "check": {
-            "local_date": "2026-10-02",
-            "local_time": "23:55"
+            "due_local_date": "2026-10-02",
+            "due_local_time": "23:55",
+            "occurred_at_null": true
           },
           "why": "Design 4 peer reviews are a plan at their stated time"
         }
@@ -590,7 +593,8 @@
             "title": "HW3"
           },
           "check": {
-            "local_date": "2026-10-14"
+            "due_local_date": "2026-10-14",
+            "occurred_at_null": true
           },
           "why": "Each homework deadline reaches the calendar as a plan"
         },
@@ -1346,9 +1350,13 @@
             "title": "Meiosis"
           },
           "check": {
-            "local_date": "2026-10-18"
+            "due_local_date": "2026-10-18",
+            "occurred_at_null": true,
+            "detail": {
+              "opens_at": "2026-10-12"
+            }
           },
-          "why": "Meiosis and Mitosis is stored at its due date"
+          "why": "Meiosis and Mitosis is due on its due date, with its open date in opens_at"
         },
         {
           "expect": "some",
@@ -1358,7 +1366,8 @@
             "title": "Natural Selection"
           },
           "check": {
-            "local_date": "2026-10-20"
+            "due_local_date": "2026-10-20",
+            "occurred_at_null": true
           },
           "why": "Natural Selection is stored at its due date"
         }
@@ -1426,7 +1435,8 @@
             "title": "Reading"
           },
           "check": {
-            "local_date": "2026-10-11"
+            "due_local_date": "2026-10-11",
+            "occurred_at_null": true
           },
           "why": "The reading is stored at its due date"
         }
@@ -1591,7 +1601,8 @@
           },
           "why": "The no-grade drop deadline is a dated plan he must act by",
           "check": {
-            "local_date": "2026-10-19"
+            "due_local_date": "2026-10-19",
+            "occurred_at_null": true
           }
         }
       ]
@@ -1657,7 +1668,7 @@
       ]
     },
     {
-      "name": "one-meeting-topic-is-no-plan",
+      "name": "one-meeting-topic-is-a-session-note",
       "finding": "audit 2026-10-24",
       "occurred_at": "2026-10-20T09:00:00-04:00",
       "text": "CSE 431 class session on Thursday, Oct 22, 2026 (1:00–2:20 PM) is a graph theory review.",
@@ -1709,13 +1720,13 @@
           "why": "One meeting of a class series was stored as its own plan beside the series (audit pattern 5)"
         },
         {
-          "expect": "none",
+          "expect": "some",
           "match": {
             "op": "create_node",
             "kind": "memory",
-            "title": "Oct 22|weekly topic"
+            "text": "graph theory"
           },
-          "why": "What one meeting covers is not stored per meeting"
+          "why": "What one meeting covered is a session note linked from the series with HAS_NOTE"
         }
       ]
     },
@@ -1930,12 +1941,17 @@
             "id": "f8848eed-a71b-46b7-8378-5927827d11ce",
             "kind": "plan",
             "title": "CSE 431 — HW3 due",
-            "occurred_at": "2026-10-14T23:59:00-04:00",
+            "occurred_at": null,
             "detail": {
               "status": "confirmed",
               "end_at": null,
               "all_day": false,
-              "recurrence": null
+              "recurrence": null,
+              "kind": "task",
+              "due_at": "2026-10-14T23:59:00-04:00",
+              "opens_at": null,
+              "time_zone": null,
+              "hide_from_planner": false
             }
           }
         ],
@@ -1964,10 +1980,16 @@
         {
           "expect": "some",
           "match": {
-            "op": "update_node",
+            "op": "edit_occurrence",
             "node_id": "f8848eed-a71b-46b7-8378-5927827d11ce"
           },
-          "why": "The outcome goes on the item it is about"
+          "check": {
+            "fields": {
+              "occurrence_date": "^2026-10-14$",
+              "outcome": "^done$"
+            }
+          },
+          "why": "The outcome goes on the session it is about, as a done outcome, not in the item's body"
         },
         {
           "expect": "none",
@@ -1977,6 +1999,406 @@
             "title": "submitted"
           },
           "why": "One submission was stored as up to five nodes (audit: 72 outcome memories)"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "update_node",
+            "node_id": "f8848eed-a71b-46b7-8378-5927827d11ce",
+            "text": "submitted"
+          },
+          "why": "An outcome lives in plan_occurrence, not in the plan's body"
+        }
+      ]
+    },
+    {
+      "name": "deadline-only-task",
+      "finding": "planner design 2026-10-25",
+      "occurred_at": "2026-10-25T10:00:00-04:00",
+      "text": "CSE 431 HW5 (Graph Algorithms) was posted on Gradescope today and is due Wednesday, Nov 18, 2026 at 11:59 PM.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "ce51c585-82de-407e-97a4-0dfcb67d79d3",
+            "kind": "plan",
+            "title": "CSE 431: Algorithm Engineering, standard section (Fall 2026)",
+            "occurred_at": "2026-09-01T13:00:00-04:00",
+            "detail": {
+              "status": "confirmed",
+              "end_at": "2026-09-01T14:20:00-04:00",
+              "all_day": false,
+              "recurrence": "RRULE:FREQ=WEEKLY;BYDAY=TU,TH;UNTIL=20261211T235959\nEXDATE:20261027T130000,20261126T130000",
+              "kind": "class",
+              "due_at": null,
+              "opens_at": null,
+              "time_zone": null,
+              "hide_from_planner": false
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "19d3275c-6a5c-4498-bc2a-f079c0319c8d",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "ce51c585-82de-407e-97a4-0dfcb67d79d3",
+            "type": "ENROLLED_IN",
+            "properties": {
+              "status": "enrolled"
+            }
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "title": "HW5"
+          },
+          "check": {
+            "due_local_date": "2026-11-18",
+            "due_local_time": "23:59",
+            "occurred_at_null": true,
+            "detail": {
+              "kind": "^task$"
+            }
+          },
+          "why": "A deadline is a task due at its close with no start, so it shows as due and as needing a time, never as a meeting at 11:59 PM"
+        },
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_edge",
+            "type": "HAS_ITEM"
+          },
+          "why": "The homework is an item of its course"
+        }
+      ]
+    },
+    {
+      "name": "scheduled-task-keeps-due",
+      "finding": "planner design 2026-10-25",
+      "occurred_at": "2026-10-28T20:00:00-04:00",
+      "text": "Ankur will take the IBM Data Specialist online assessment on Saturday, Oct 31, 2026 from 2:20 to 3:50 PM; the assessment link still expires Oct 31 at 11:59 PM.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "4b7e2a10-9c3d-4e5f-8a61-7d2c9b0e1f34",
+            "kind": "plan",
+            "title": "IBM Data Specialist online assessment due",
+            "occurred_at": null,
+            "detail": {
+              "status": "confirmed",
+              "end_at": null,
+              "all_day": false,
+              "recurrence": null,
+              "kind": "task",
+              "due_at": "2026-10-31T23:59:00-04:00",
+              "opens_at": null,
+              "time_zone": null,
+              "hide_from_planner": false
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "6a1d9e2b-3c4f-4a5b-8c7d-9e0f1a2b3c4d",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "4b7e2a10-9c3d-4e5f-8a61-7d2c9b0e1f34",
+            "type": "PARTICIPANT",
+            "properties": {}
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": "update_node",
+            "node_id": "4b7e2a10-9c3d-4e5f-8a61-7d2c9b0e1f34",
+            "sets": "occurred_at"
+          },
+          "check": {
+            "local_date": "2026-10-31",
+            "local_time": "14:20",
+            "has_end_at": true
+          },
+          "why": "Scheduling a task gives the same plan a start and an end"
+        },
+        {
+          "expect": "each",
+          "match": {
+            "op": "update_node",
+            "node_id": "4b7e2a10-9c3d-4e5f-8a61-7d2c9b0e1f34",
+            "sets": "due_at"
+          },
+          "check": {
+            "due_local_date": "2026-10-31",
+            "due_local_time": "23:59"
+          },
+          "why": "The link expiry stays the due; scheduling never clears or moves it"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "plan"
+          },
+          "why": "The sitting is the task itself, not a second plan"
+        }
+      ]
+    },
+    {
+      "name": "office-hours-are-hidden",
+      "finding": "planner design 2026-10-25",
+      "occurred_at": "2026-10-26T09:00:00-04:00",
+      "text": "CSE 431 TA office hours are Tuesdays 4:00–5:00 PM in Engineering Building 3352, from Oct 27 through Dec 8, 2026. Ankur does not plan to go.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "ce51c585-82de-407e-97a4-0dfcb67d79d3",
+            "kind": "plan",
+            "title": "CSE 431: Algorithm Engineering, standard section (Fall 2026)",
+            "occurred_at": "2026-09-01T13:00:00-04:00",
+            "detail": {
+              "status": "confirmed",
+              "end_at": "2026-09-01T14:20:00-04:00",
+              "all_day": false,
+              "recurrence": "RRULE:FREQ=WEEKLY;BYDAY=TU,TH;UNTIL=20261211T235959\nEXDATE:20261027T130000,20261126T130000",
+              "kind": "class",
+              "due_at": null,
+              "opens_at": null,
+              "time_zone": null,
+              "hide_from_planner": false
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "19d3275c-6a5c-4498-bc2a-f079c0319c8d",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "ce51c585-82de-407e-97a4-0dfcb67d79d3",
+            "type": "ENROLLED_IN",
+            "properties": {
+              "status": "enrolled"
+            }
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "each",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "title": "office hours"
+          },
+          "check": {
+            "detail": {
+              "hide_from_planner": "^true$"
+            }
+          },
+          "why": "Office hours he will not attend stay in the timeline but off his planner grid"
+        }
+      ]
+    },
+    {
+      "name": "missed-session-via-edit-occurrence",
+      "finding": "planner design 2026-10-25",
+      "occurred_at": "2026-10-29T22:00:00-04:00",
+      "text": "Nightly review: Ankur missed today's Lower Hypertrophy gym session because his knee was sore.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "9d3c1b2a-7e6f-4a5b-9c8d-0e1f2a3b4c5d",
+            "kind": "plan",
+            "title": "Gym · Lower Hypertrophy",
+            "occurred_at": "2026-10-01T10:15:00-04:00",
+            "detail": {
+              "status": "confirmed",
+              "end_at": "2026-10-01T11:35:00-04:00",
+              "all_day": false,
+              "recurrence": "FREQ=WEEKLY;BYDAY=TH;UNTIL=20261217T235959Z",
+              "kind": "gym",
+              "due_at": null,
+              "opens_at": null,
+              "time_zone": null,
+              "hide_from_planner": false
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "2c4e6a8b-1d3f-4b5a-9c7e-0f2a4c6e8b1d",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "9d3c1b2a-7e6f-4a5b-9c8d-0e1f2a3b4c5d",
+            "type": "PARTICIPANT",
+            "properties": {}
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": "edit_occurrence",
+            "node_id": "9d3c1b2a-7e6f-4a5b-9c8d-0e1f2a3b4c5d"
+          },
+          "check": {
+            "fields": {
+              "occurrence_date": "^2026-10-29$",
+              "outcome": "^missed$"
+            }
+          },
+          "why": "A missed session is a missed outcome on that day's session, not a memory or a body edit"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "plan"
+          },
+          "why": "One session is never its own plan"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "update_node",
+            "node_id": "9d3c1b2a-7e6f-4a5b-9c8d-0e1f2a3b4c5d"
+          },
+          "why": "The series itself did not change"
+        }
+      ]
+    },
+    {
+      "name": "location-with-room",
+      "finding": "planner design 2026-10-25",
+      "occurred_at": "2026-10-25T11:00:00-04:00",
+      "text": "CSE 431 lectures meet in Engineering Building room 1345, 428 S Shaw Ln, East Lansing, MI 48824.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "ce51c585-82de-407e-97a4-0dfcb67d79d3",
+            "kind": "plan",
+            "title": "CSE 431: Algorithm Engineering, standard section (Fall 2026)",
+            "occurred_at": "2026-09-01T13:00:00-04:00",
+            "detail": {
+              "status": "confirmed",
+              "end_at": "2026-09-01T14:20:00-04:00",
+              "all_day": false,
+              "recurrence": "RRULE:FREQ=WEEKLY;BYDAY=TU,TH;UNTIL=20261211T235959\nEXDATE:20261027T130000,20261126T130000",
+              "kind": "class",
+              "due_at": null,
+              "opens_at": null,
+              "time_zone": null,
+              "hide_from_planner": false
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "19d3275c-6a5c-4498-bc2a-f079c0319c8d",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "ce51c585-82de-407e-97a4-0dfcb67d79d3",
+            "type": "ENROLLED_IN",
+            "properties": {
+              "status": "enrolled"
+            }
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "kind": "place",
+            "title": "Engineering Building"
+          },
+          "check": {
+            "detail": {
+              "address": "428 S Shaw Ln"
+            }
+          },
+          "why": "A plan's place carries a full street address, so directions can open"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "place",
+            "title": "1345"
+          },
+          "why": "The room is not its own place"
+        },
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_edge",
+            "type": "AT_LOCATION"
+          },
+          "check": {
+            "properties": {
+              "room": "^1345$"
+            }
+          },
+          "why": "The room goes on the plan's AT_LOCATION edge"
         }
       ]
     }

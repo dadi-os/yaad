@@ -362,3 +362,24 @@ test("update_node that changes a plan schedule changes the occurrences a date ra
     return true;
   });
 });
+
+test("a date range finds a deadline-only plan by its due, and a due-anchored series once per due", async () => {
+  await resetGraph(handle.sql);
+  const homework = await createClass({ kind: "task", due_at: "2026-10-15T03:59:00.000Z" });
+  const rent = await createClass({ kind: "bill", due_at: "2026-10-01T04:00:00.000Z", all_day: true, recurrence: "FREQ=MONTHLY;BYMONTHDAY=1" });
+
+  const october = await query({ occurred_from: "2026-10-01T00:00:00.000Z", occurred_to: "2026-11-15T00:00:00.000Z" });
+  assert.equal(october.statusCode, 200, october.body);
+  const nodes: Array<QueriedNode & { detail: { due_at: string | null } }> = october.json().nodes;
+  assert.deepEqual(
+    nodes.map((n) => [n.id, n.occurred_at, n.detail.due_at]),
+    [
+      [rent, null, "2026-10-01T04:00:00.000Z"],
+      [homework, null, "2026-10-15T03:59:00.000Z"],
+      [rent, null, "2026-11-01T04:00:00.000Z"],
+    ],
+  );
+
+  const before = await query({ occurred_from: "2026-10-16T00:00:00.000Z", occurred_to: "2026-10-30T00:00:00.000Z" });
+  assert.deepEqual(before.json().nodes, []);
+});

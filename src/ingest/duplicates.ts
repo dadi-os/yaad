@@ -5,10 +5,11 @@
  * still duplicates a live node.
  */
 
-import { and, eq, gt, gte, isNull, lte, or, sql } from "drizzle-orm";
+import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { node, planDetail } from "../db/schema.js";
 import { YaadError } from "../errors.js";
+import { parse, planDetailBody } from "../routers/v1/schemas.js";
 import type { Operation } from "./operations.js";
 
 /** Plans this close in time to a created plan are shown to extraction as possibly the same event. */
@@ -41,7 +42,7 @@ const live = () => or(isNull(node.expiresAt), gt(node.expiresAt, new Date()));
 /**
  * findLookalikes returns ids of live nodes that resemble the batch's creates but were not
  * shown to extraction (`shown`): any node of the same kind with the same normalized title,
- * and any dated plan within {@link LOOKALIKE_WINDOW_MS} of a created plan. Extraction is
+ * and any dated plan within {@link LOOKALIKE_WINDOW_MS} of a created plan (by start, else due). Extraction is
  * re-run with these added so it can reuse them instead of creating a second copy.
  */
 export async function findLookalikes(db: Db, operations: Operation[], shown: Set<string>): Promise<string[]> {
@@ -55,8 +56,10 @@ export async function findLookalikes(db: Db, operations: Operation[], shown: Set
     for (const row of sameTitle) {
       found.add(row.id);
     }
-    if (op.kind === "plan" && op.occurred_at) {
-      const at = new Date(op.occurred_at).getTime();
+    const when = timeOf(op);
+    if (op.kind === "plan" && when !== null) {
+      const at = when.getTime();
+      const planWhen = sql`COALESCE(${node.occurredAt}, ${planDetail.dueAt})`;
       const nearby = await db
         .select({ id: node.id })
         .from(node)
@@ -66,8 +69,8 @@ export async function findLookalikes(db: Db, operations: Operation[], shown: Set
             eq(node.kind, "plan"),
             live(),
             isNull(planDetail.recurrence),
-            gte(node.occurredAt, new Date(at - LOOKALIKE_WINDOW_MS)),
-            lte(node.occurredAt, new Date(at + LOOKALIKE_WINDOW_MS)),
+            sql`${planWhen} >= ${new Date(at - LOOKALIKE_WINDOW_MS)}`,
+            sql`${planWhen} <= ${new Date(at + LOOKALIKE_WINDOW_MS)}`,
           ),
         );
       for (const row of nearby) {
@@ -78,7 +81,19 @@ export async function findLookalikes(db: Db, operations: Operation[], shown: Set
   return [...found].filter((id) => !shown.has(id)).sort();
 }
 
-/** True when two plan start times are both unset, or within {@link DUPLICATE_WINDOW_MS}. */
+/** When a created plan happens: its start, else its due; null for anything else undated. */
+function timeOf(op: CreateNodeOperation): Date | null {
+  if (op.occurred_at) {
+    return new Date(op.occurred_at);
+  }
+  if (op.kind !== "plan") {
+    return null;
+  }
+  const { due_at } = parse(planDetailBody, op.detail ?? {});
+  return due_at ? new Date(due_at) : null;
+}
+
+/** True when two plan times (start, else due) are both unset, or within {@link DUPLICATE_WINDOW_MS}. */
 function sameStart(left: Date | null, right: Date | null): boolean {
   if (left === null || right === null) {
     return left === right;
@@ -91,7 +106,7 @@ function sameStart(left: Date | null, right: Date | null): boolean {
  * repeats another create in the batch or a live node: same kind and normalized title, and
  * for plans a start within {@link DUPLICATE_WINDOW_MS}. A live node the same batch closes
  * does not count, so a close-and-replace still works. People and places are left to
- * extraction, since two of them can share a name.
+ * extraction, since two of them can share a name. A plan's time is its start, else its due.
  */
 export async function rejectDuplicates(db: Db, operations: Operation[]): Promise<void> {
   const closing = new Set(
@@ -104,7 +119,7 @@ export async function rejectDuplicates(db: Db, operations: Operation[]): Promise
   const seen: Array<{ op: CreateNodeOperation; title: string; start: Date | null }> = [];
   for (const op of creates) {
     const title = normalizeTitle(op.title);
-    const start = op.occurred_at ? new Date(op.occurred_at) : null;
+    const start = timeOf(op);
     const twin = seen.find(
       (other) =>
         other.op.kind === op.kind &&
@@ -121,11 +136,12 @@ export async function rejectDuplicates(db: Db, operations: Operation[]): Promise
     seen.push({ op, title, start });
 
     const existing = await db
-      .select({ id: node.id, title: node.title, occurredAt: node.occurredAt })
+      .select({ id: node.id, title: node.title, occurredAt: node.occurredAt, dueAt: planDetail.dueAt })
       .from(node)
+      .leftJoin(planDetail, eq(planDetail.nodeId, node.id))
       .where(and(eq(node.kind, op.kind), live(), sql`${normalizedTitleSql} = ${title}`));
     const duplicate = existing.find(
-      (row) => !closing.has(row.id) && (op.kind === "memory" || sameStart(row.occurredAt, start)),
+      (row) => !closing.has(row.id) && (op.kind === "memory" || sameStart(row.occurredAt ?? row.dueAt, start)),
     );
     if (duplicate) {
       throw new YaadError(

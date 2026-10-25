@@ -7,7 +7,7 @@ export function selectAnchors(hits: AnnHit[], floor: number, limit: number): Ann
   return hits.filter((hit) => hit.similarity >= floor).slice(0, limit);
 }
 
-/** Nearest nodes to the query embedding by HNSW search, filtered to the configured anchor limit and similarity floor. */
+/** Nearest nodes to the query embedding by HNSW search, routine plans left out, filtered to the configured anchor limit and similarity floor. */
 export async function findAnchors(opts: {
   sql: Sql;
   config: Config;
@@ -18,6 +18,7 @@ export async function findAnchors(opts: {
     efSearch: opts.config.hnsw.ef_search,
     embedding: opts.embedding,
     limit: opts.config.recall.anchor_limit,
+    routines: false,
   });
   return selectAnchors(hits, opts.config.recall.anchor_similarity_floor, opts.config.recall.anchor_limit);
 }

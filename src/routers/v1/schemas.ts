@@ -2,7 +2,7 @@
 
 import { z, type ZodError, type ZodType } from "zod";
 import { YaadError } from "../../errors.js";
-import { PLANNER_ICONS, PLANNER_KINDS } from "../../types/planner.js";
+import { PLAN_KINDS, TIMELINE_VIEWS } from "../../types/timeline.js";
 
 /** Parse with zod; map failures to `422 invalid_request`. */
 export function parse<T>(schema: ZodType<T>, data: unknown): T {
@@ -32,6 +32,22 @@ export const personDetailBody = z
   })
   .strict();
 
+const instant = z.string().datetime({ offset: true });
+
+/** An IANA zone the runtime knows, such as `America/Chicago`. */
+const timeZone = z
+  .string()
+  .refine((zone) => Intl.supportedValuesOf("timeZone").includes(zone), "time_zone must be an IANA time zone");
+
+/** The fields the timeline computes over besides start, end and rule. */
+const planTimelineFields = {
+  kind: z.enum(PLAN_KINDS).nullable().optional(),
+  due_at: instant.nullable().optional(),
+  opens_at: instant.nullable().optional(),
+  time_zone: timeZone.nullable().optional(),
+  hide_from_planner: z.boolean().optional(),
+};
+
 /**
  * A plan's detail on create. `all_day: true` means a date without a time of day (Yaad
  * anchors it at local midnight); absent or false means a timed plan.
@@ -42,6 +58,7 @@ export const planDetailBody = z
     all_day: z.boolean().optional(),
     status: planStatus,
     recurrence: z.string().nullable().optional(),
+    ...planTimelineFields,
   })
   .strict();
 
@@ -61,6 +78,7 @@ export const patchPlanDetailBody = z
     all_day: z.boolean().optional(),
     status: planStatus.optional(),
     recurrence: z.string().nullable().optional(),
+    ...planTimelineFields,
   })
   .strict();
 
@@ -168,48 +186,17 @@ export const graphBody = z
   })
   .strict();
 
-const instant = z.string().datetime({ offset: true });
+/** `POST /timeline` — sessions in `[from, to)` through one view's filter. */
+export const timelineBody = z
+  .object({ from: instant, to: instant, view: z.enum(TIMELINE_VIEWS) })
+  .strict()
+  .refine((body) => Date.parse(body.from) < Date.parse(body.to), "from must be before to");
 
-const plannerBlockFields = {
-  start_at: instant,
-  end_at: instant,
-  title: z.string().min(1),
-  note: z.string().nullable().optional(),
-  kind: z.enum(PLANNER_KINDS),
-  icon: z.enum(PLANNER_ICONS),
-  fixed: z.boolean().optional(),
-  overlap_ok: z.boolean().optional(),
-};
-
-/** One block of `POST /planner/replace` or `POST /planner/blocks`. */
-export const plannerBlockBody = z.object(plannerBlockFields).strict();
-
-/** `POST /planner/query` — blocks overlapping `[from, to)`. */
-export const plannerQueryBody = z.object({ from: instant, to: instant }).strict();
-
-/**
- * `POST /planner/replace` — one writer's whole plan for `[from, to)`: its existing blocks
- * that start in the range are deleted and `blocks` (each starting in the range) written, or
- * nothing changes.
- */
-export const plannerReplaceBody = z
+/** `PUT /timeline/outcome` — Ankur marks one session completed (`done`) or takes the mark back (null). */
+export const outcomeBody = z
   .object({
-    source: z.string().regex(/^(manual|[a-z][a-z0-9]*(-[a-z0-9]+)*)$/, "source must be manual or a kebab-case agent id"),
-    from: instant,
-    to: instant,
-    blocks: z.array(plannerBlockBody),
+    plan_id: z.string().uuid(),
+    occurrence_date: z.string().date(),
+    outcome: z.literal("done").nullable(),
   })
   .strict();
-
-/** `POST /planner/blocks` — one block; `source` names the writer as on replace. */
-export const plannerCreateBody = z
-  .object({ source: plannerReplaceBody.shape.source, ...plannerBlockFields })
-  .strict();
-
-/** `PATCH /planner/blocks/:id` — changed fields only; `done` marks the block done or open. */
-export const plannerPatchBody = z
-  .object(plannerBlockFields)
-  .partial()
-  .extend({ done: z.boolean().optional() })
-  .strict()
-  .refine((body) => Object.keys(body).length > 0, "at least one field is required");

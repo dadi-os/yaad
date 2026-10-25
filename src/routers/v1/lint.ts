@@ -2,15 +2,16 @@
  * `GET /lint` — a read-only report of live nodes that match patterns past audits found
  * wrong: status snapshots, agent working notes and instructions to agents stored as
  * permanent memory, plans at a placeholder noon, dated hubs, periods stored as plans, two
- * series on the same schedule, duplicates, people missing their first-name alias, and
- * nodes with no current edge.
+ * series on the same schedule, duplicates, people missing their first-name alias, places
+ * plans happen at that have no street address, and nodes with no current edge.
  * It never changes the graph; someone reads the report and fixes what is really wrong.
  */
 
 import { and, asc, eq, gt, isNotNull, isNull, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { getCurrentPersons } from "../../db/read.js";
-import { edge, node, planDetail } from "../../db/schema.js";
+import { alias } from "drizzle-orm/pg-core";
+import { edge, node, placeDetail, planDetail } from "../../db/schema.js";
 import { normalizedTitleSql } from "../../ingest/duplicates.js";
 import type { LintFinding } from "../../types/domain.js";
 
@@ -20,6 +21,8 @@ const STATUS_PATTERN = String.raw`\m(as of|not yet|so far|still needs?|unconfirm
 const WORKING_NOTE_PATTERN = String.raw`/var/lib|\mworktree|\mbranch\M|\mcommit\M|this agent|\mwake\M|credentials? (set up|exist|stored)|\mchaavi\M|site lesson|\mhow-to\M|shadow dom|\mdom\M|\mref [a-z]\d|accessibility tree|browser worker|coding worker|\.(tsx?|py|go|aspx)\M|\mline \d+`;
 /** Wording of a rule for how agents work ("no agent may submit", "Ankur wants agents to"), which belongs in a charter. */
 const AGENT_INSTRUCTION_PATTERN = String.raw`\mno agents? (may|should|can)\M|\magents? (must|should|may) (never|not|always|only)\M|\mwants (the )?(agents?|dadi|specialists?) to\M|\m(specialists?|managers?|workers?) (must|should) (never|always)\M`;
+/** A full street address holds a building number and a street ("428 S Shaw Ln, East Lansing, MI"). */
+const STREET_NUMBER_PATTERN = String.raw`\m\d+[A-Za-z]?\s+[A-Za-z]`;
 /** A plan spanning more than this is usually a period that is a rule (a drop period, an appointment term), not something Ankur does. */
 const LONG_SPAN = "7 days";
 
@@ -150,13 +153,14 @@ export async function registerLint(app: FastifyInstance): Promise<void> {
       });
     }
 
-    const startHour = sql`CASE WHEN ${node.kind} = 'plan' THEN date_trunc('hour', ${node.occurredAt}) END`;
+    const startHour = sql`CASE WHEN ${node.kind} = 'plan' THEN date_trunc('hour', COALESCE(${node.occurredAt}, ${planDetail.dueAt})) END`;
     const groups = await app.db
       .select({
         ids: sql<string[]>`array_agg(${node.id} ORDER BY ${node.createdAt})`,
         title: sql<string>`min(${node.title})`,
       })
       .from(node)
+      .leftJoin(planDetail, eq(planDetail.nodeId, node.id))
       .where(live)
       .groupBy(node.kind, normalizedTitleSql, startHour)
       .having(sql`count(*) > 1`);
@@ -180,6 +184,37 @@ export async function registerLint(app: FastifyInstance): Promise<void> {
           note: `"${first}" is not an alias, so a text that says only "${first}" may not reach this person.`,
         });
       }
+    }
+
+    const venue = alias(node, "venue");
+    const located = await app.db
+      .select({
+        id: venue.id,
+        title: venue.title,
+        plans: sql<string[]>`array_agg(DISTINCT ${node.id})`,
+      })
+      .from(edge)
+      .innerJoin(node, eq(node.id, edge.srcId))
+      .innerJoin(venue, eq(venue.id, edge.dstId))
+      .innerJoin(placeDetail, eq(placeDetail.nodeId, venue.id))
+      .where(
+        and(
+          eq(edge.type, "AT_LOCATION"),
+          isNull(edge.validTo),
+          eq(node.kind, "plan"),
+          live,
+          sql`(${placeDetail.address} IS NULL OR ${placeDetail.address} !~ ${STREET_NUMBER_PATTERN})`,
+        ),
+      )
+      .groupBy(venue.id, venue.title)
+      .orderBy(asc(venue.title));
+    for (const row of located) {
+      findings.push({
+        rule: "place_without_address",
+        node_ids: [row.id, ...row.plans],
+        title: row.title,
+        note: `${row.plans.length} plan(s) happen here, but the place has no full street address, so directions cannot open; set place_detail.address (the room goes on the AT_LOCATION edge).`,
+      });
     }
 
     const floating = await app.db

@@ -1,4 +1,7 @@
-/** Apply Drizzle migrations from the service `drizzle/` folder. */
+/**
+ * Apply Drizzle migrations from the service `drizzle/` folder. The session runs in the box's
+ * zone (`TZ`), so a migration that turns an instant into a local date gets the box's date.
+ */
 
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
@@ -7,7 +10,7 @@ import { loadConfig, type Config } from "../config.js";
 import { createDb } from "./client.js";
 
 export async function migrate(config: Config): Promise<void> {
-  const { client, db } = createDb(config.env.databaseUrl);
+  const { client, db } = createDb(config.env.databaseUrl, config.env.timezone);
   try {
     await runMigrate(db, { migrationsFolder: join(config.serviceRoot, "drizzle") });
   } finally {

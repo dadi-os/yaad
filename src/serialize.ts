@@ -6,7 +6,6 @@ import type {
   PersonDetailRow,
   PlaceDetailRow,
   PlanDetailRow,
-  PlannerBlockRow,
 } from "./db/schema.js";
 import type {
   EdgeRecord,
@@ -20,7 +19,7 @@ import type {
   PlanStatus,
 } from "./types/domain.js";
 import { YaadError } from "./errors.js";
-import { PLANNER_ICONS, PLANNER_KINDS, type PlannerBlock, type PlannerIcon, type PlannerKind } from "./types/planner.js";
+import { PLAN_KINDS } from "./types/timeline.js";
 
 function iso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
@@ -47,20 +46,13 @@ function parseStatus(value: string): PlanStatus {
   throw new YaadError(500, "internal_error", `invalid plan status in database: ${value}`);
 }
 
-function parsePlannerKind(value: string): PlannerKind {
-  const kind = PLANNER_KINDS.find((known) => known === value);
-  if (kind === undefined) {
-    throw new YaadError(500, "internal_error", `invalid planner block kind in database: ${value}`);
+/** A value from a fixed set as stored, or a 500 naming the column when the database holds anything else. */
+export function parseKnown<T extends string>(values: readonly T[], value: string, column: string): T {
+  const known = values.find((candidate) => candidate === value);
+  if (known === undefined) {
+    throw new YaadError(500, "internal_error", `invalid ${column} in database: ${value}`);
   }
-  return kind;
-}
-
-function parsePlannerIcon(value: string): PlannerIcon {
-  const icon = PLANNER_ICONS.find((known) => known === value);
-  if (icon === undefined) {
-    throw new YaadError(500, "internal_error", `invalid planner block icon in database: ${value}`);
-  }
-  return icon;
+  return known;
 }
 
 function parseHistoryField(value: string): NodeHistoryRecord["field"] {
@@ -127,25 +119,12 @@ export function toPlanDetail(row: PlanDetailRow): PlanDetail {
     all_day: row.allDay,
     status: parseStatus(row.status),
     recurrence: row.recurrence,
+    kind: row.kind === null ? null : parseKnown(PLAN_KINDS, row.kind, "plan kind"),
+    due_at: iso(row.dueAt),
+    opens_at: iso(row.opensAt),
+    time_zone: row.timeZone,
+    hide_from_planner: row.hideFromPlanner,
     series_id: null,
-  };
-}
-
-export function toPlannerBlock(row: PlannerBlockRow): PlannerBlock {
-  return {
-    id: row.id,
-    start_at: row.startAt.toISOString(),
-    end_at: row.endAt.toISOString(),
-    title: row.title,
-    note: row.note,
-    kind: parsePlannerKind(row.kind),
-    icon: parsePlannerIcon(row.icon),
-    fixed: row.fixed,
-    overlap_ok: row.overlapOk,
-    done_at: iso(row.doneAt),
-    source: row.source,
-    created_at: row.createdAt.toISOString(),
-    updated_at: row.updatedAt.toISOString(),
   };
 }
 

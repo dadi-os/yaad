@@ -106,6 +106,7 @@ export async function assembleCandidates(opts: {
       efSearch: opts.config.hnsw.ef_search,
       embedding: search.embedding,
       limit: search.limit,
+      routines: true,
     });
     for (const hit of hits) {
       if (hit.similarity >= opts.config.ingest.candidate_similarity_floor) {

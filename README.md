@@ -67,18 +67,18 @@ HTTP errors: `{ "error": { "type": "<code>", "message": "..." } }`. Shared infra
 | --- | --- | --- |
 | `person` | someone Dadi knows | `person_detail` (birthday, aliases) |
 | `memory` | a thing that happened | none |
-| `plan` | an idea, reminder, or dated event | `plan_detail` (end_at, all_day, status, recurrence) |
+| `plan` | an idea, reminder, deadline, or dated event; everything time-bound | `plan_detail` (end_at, all_day, status, recurrence, kind, due_at, opens_at, time_zone, hide_from_planner) |
 | `place` | somewhere you go | `place_detail` (address, latitude, longitude) |
 
-`occurred_at` is the single "when" for every kind. Unknown dates are `NULL`. `expires_at` is null for permanent nodes; observations get a timestamp from `ttl_days`.
+`occurred_at` is the single "when" for every kind, except that a plan's deadline is `plan_detail.due_at`: a deadline-only plan (homework) has `occurred_at` NULL and `due_at` set, and a scheduled task has both. Unknown dates are `NULL`. `expires_at` is null for permanent nodes; observations get a timestamp from `ttl_days`.
 
 ## Places
 
-A place is a real entity that recurs across events. Coordinates are optional. Yaad does not geocode. Convention: a plan links to its place with an `AT_LOCATION` edge (plan `src`, place `dst`).
+A place is a real entity that recurs across events. Coordinates are optional. Yaad does not geocode. Convention: a plan links to its place with an `AT_LOCATION` edge (plan `src`, place `dst`); the place is a building whose `place_detail.address` is a full street address (clients open directions from it), and the room goes on the edge (`{"room": "1345"}`).
 
 ## Recurrence
 
-`plan_detail.recurrence` holds a rule on the plan itself: a bare RRULE (`FREQ=WEEKLY;BYDAY=FR;UNTIL=…`) or `RRULE:` and `EXDATE:` lines for skipped days. The plan's `occurred_at` / `end_at` are its first occurrence. A recurring plan is stored once and validated on write (it needs `occurred_at`, and the rule must parse); its occurrences are never stored. A date-bounded `POST /query` works them out on read and merges them, in time order, with dated nodes before paging: each occurrence carries the plan's id, its own `occurred_at` / `end_at`, and `detail.series_id` = the plan's id (null on everything else). An open-ended range reaches `plan.recurrence_horizon_days` past its start; a range holding more than `plan.max_instances_per_series` occurrences of one plan is `invalid_request`. `recall` sees the plan once. Rules expand in the box's wall-clock time (the required `TZ`, which Nas writes from `/etc/localtime`), so a weekly 10:20 class stays at 10:20 across daylight-saving changes; `UNTIL` and `EXDATE` are local times. Changing the rule, start, or duration changes the next query's occurrences.
+`plan_detail.recurrence` holds a rule on the plan itself: a bare RRULE (`FREQ=WEEKLY;BYDAY=FR;UNTIL=…`) or `RRULE:` and `EXDATE:` lines for skipped days. The plan's `occurred_at` / `end_at` are its first occurrence; a plan with no start (rent due on the 1st) anchors its series on `due_at`, and every time of the plan (end, due, opens) moves with each occurrence. A recurring plan is stored once and validated on write (it needs `occurred_at`, and the rule must parse); its occurrences are never stored. A date-bounded `POST /query` works them out on read and merges them, in time order, with dated nodes before paging: each occurrence carries the plan's id, its own `occurred_at` / `end_at` / `due_at` / `opens_at`, and `detail.series_id` = the plan's id (null on everything else). A date range also matches a plan whose `due_at` falls in it. An open-ended range reaches `plan.recurrence_horizon_days` past its start; a range holding more than `plan.max_instances_per_series` occurrences of one plan is `invalid_request`. `recall` sees the plan once. Rules expand in the box's wall-clock time (the required `TZ`, which Nas writes from `/etc/localtime`), so a weekly 10:20 class stays at 10:20 across daylight-saving changes; `UNTIL` and `EXDATE` are local times. Changing the rule, start, or duration changes the next query's occurrences.
 
 ## Query vs recall
 
@@ -114,17 +114,30 @@ Observations may set `ttl_days`; expired nodes are filtered from recall/query/in
 | `POST` | `/edges` | hand-drawn edge: `{ src_id, dst_id, type (UPPER_SNAKE_CASE), properties?, confidence }`; 201 with the edge |
 | `POST` | `/edges/:id/close` | close a current edge plus orphan sweep; returns `{ id, orphans }` |
 | `GET` | `/lint` | read-only report of suspicious live nodes; see Lint |
-| `POST` | `/planner/query` | planner blocks overlapping `{ from, to }`, earliest first |
-| `POST` | `/planner/replace` | one source's whole plan for `[from, to)`: `{ source, from, to, blocks }`, all or nothing; returns the range's blocks |
-| `POST` | `/planner/blocks` | one block: `{ source, start_at, end_at, title, note?, kind, icon, fixed?, overlap_ok? }`; 201 |
-| `PATCH` | `/planner/blocks/:id` | changed fields, or `{ done }` to mark a block done or open; returns the block |
-| `DELETE` | `/planner/blocks/:id` | delete one block; returns `{ id }` |
+| `POST` | `/timeline` | sessions in `{ from, to }` through one `view` (`planner`, `due`, `month`, `someday`, `tile`); returns `{ items }`; see Timeline |
+| `PUT` | `/timeline/outcome` | Ankur's Completed toggle: `{ plan_id, occurrence_date, outcome: "done" \| null }`, source `manual`; returns `{ plan_id, occurrence_date, outcome, outcome_at }` |
 
 Unknown request fields are a 422.
 
-## Planner
+## Timeline
 
-The day planner's timed blocks live in `planner_block`, apart from the graph: no embedding, no history, no edges, and nothing from ingest. A block has a `kind` (wake, meal, class, exam, study, gym, shower, recruiting, free, lights_out, fixed), an `icon` from a fixed set the client draws, `fixed` (default true; false only for time that can give way, such as free time), `overlap_ok`, `done_at`, and the `source` that wrote it (a Hath agent id or `manual`). Blocks may not overlap unless one of the two says `overlap_ok`; a write that would is a 409 `overlap` that names each clashing pair, and nothing is written. `replace` deletes only its own source's blocks that start in `[from, to)`, so an agent rewrites a day or a week without touching what others or the person added; a block that starts outside the range is a 422 `out_of_range`.
+There is no separate planner: everything time-bound is a plan, agents write plans only through `POST /ingest`, and every client view is a filter over the same plans, session by session. A session is one occurrence of a series or a one-off plan's only one, named by the plan id and its `occurrence_date` (the local date it was first scheduled for: its start's date, else its due's). Plan fields the views compute over: `kind` (commitments `class`, `lab`, `exam`, `task`, `meeting`, `appointment`, `reservation`, `social`, `trip`, `bill`; routines `meal`, `shower`, `gym`, `study`, `focus`), `due_at`, `opens_at`, `time_zone` (the place's IANA zone when it is not the box's), and `hide_from_planner` (in the timeline but never on the grid: office hours he will not attend). Everything else about a plan is a memory on an edge: a session's notes are `HAS_NOTE {"occurrence": "YYYY-MM-DD"}` memories, and a study block links `FOR` the exam or task it prepares.
+
+`plan_occurrence` holds what happened to one session, as a row only while it differs: `state` (`scheduled`, `moved` with its `start_at` / `end_at`, `cancelled`), `outcome` (`done`, `missed`, or null for not marked), `outcome_at`, `actual_start` / `actual_end`, and the `source` that wrote it (an agent id, `manual`, or `ingest`). Agents write it with the `edit_occurrence` ingest op; Ankur's only hand write is `PUT /timeline/outcome` (done or null). `missed` comes only from agents.
+
+`POST /timeline` views (ideas reach only `someday`):
+
+| view | items |
+| --- | --- |
+| `planner` | timed (not all-day) sessions with a start and an end overlapping the range, not hidden; moved times applied, cancelled sessions kept with `state: "cancelled"` |
+| `due` | sessions whose `due_at` falls in the range |
+| `month` | due sessions, all-day and multi-day sessions, and one-off timed sessions of a commitment kind (series and routines left out); not hidden |
+| `someday` | every idea, and tasks with a due or an open but no start, not a bill, not a series, not completed, and not due before `from` |
+| `tile` | sessions and dues of a commitment kind (or no kind), not hidden: the home ribbon |
+
+Each item: `id`, `occurrence_date` (null for an undated idea), `title`, `body`, `kind`, `status`, `start_at` / `end_at` (moves applied), `due_at`, `opens_at`, `all_day`, `time_zone`, `hide_from_planner`, `state`, `outcome`, `outcome_at`, `actual_start` / `actual_end`, `recurrence` (the rule in words, or null), `series` (`{ completed, total }` held so far, cancelled left out, reaching back at most `plan.recurrence_horizon_days`), `place` (`{ id, title, address, room }`), `owner` (the plan's agent id, else its source), and that session's `notes`.
+
+Routine plans (meal, shower, gym, study, focus) never anchor a semantic recall and are left out of `POST /graph`; ingest still sees them as candidates so agents can edit their sessions.
 
 ### `POST /graph`
 
@@ -138,7 +151,7 @@ Body: `{ kind?, name?, occurred_from?, occurred_to?, status?, limit?, offset? }`
 
 `POST /ingest` takes `{ text, occurred_at, participant_ids?, source }`, plus `agent_id` (kebab-case, required) when `source` is `agent`; `source: "ingest"` takes no `agent_id`. Every node the batch creates records that `agent_id`, so an agent's writes can be traced and corrected. Pipeline: embed the text and each of its lines or sentences (up to `ingest.segment_limit`) → assemble candidates in code (nearest live nodes to the whole text and to each segment, every person named by title, alias, or first or last name as a whole word, pinned participants) → Dwar reasoning with `emit_operations`, its `occurred_at` rewritten in the box's local offset → when a create resembles a live node extraction was not shown (same normalized title, or a plan within 12 hours), or a create has no edge in the batch, extraction runs once more with those nodes added and a `recheck` note saying which → validate the batch (structure, then extraction guards: every `close_node` quotes its `evidence` from the text, no create duplicates a live node or another create, as `duplicate_node`, and every created node has an edge, as `unlinked_node`) → apply in one transaction. Concurrent modification is 409.
 
-Plans with `detail.all_day: true` have a date but no time of day: Yaad moves their `occurred_at` and `end_at` to local midnight of their dates (the box's `TZ`), so an all-day plan never carries an invented time. Absent `all_day` means a timed plan.
+Plans with `detail.all_day: true` have a date but no time of day: Yaad moves their `occurred_at`, `end_at` and `due_at` to local midnight of their dates (the box's `TZ`), so an all-day plan never carries an invented time. Absent `all_day` means a timed plan.
 
 ### Operations
 
@@ -149,13 +162,14 @@ Plans with `detail.all_day: true` have a date but no time of day: Yaad moves the
 | `close_node` | `node_id`, `reason`, `evidence` (the utterance words that retract it, quoted exactly) |
 | `create_edge` | `src`, `dst`, `type`, `properties?`, `confidence` |
 | `close_edge` | `edge_id`, `reason` |
+| `edit_occurrence` | `node_id`, `occurrence_date`, `state?`, `start_at?` / `end_at?` (with `state: "moved"`; a move without `end_at` keeps the session's length), `outcome?`, `actual_start?`, `actual_end?`; applied after the batch's node updates, 422 when the plan has no session that day |
 | `noop` | `reason` |
 
 The `emit_operations` tool schema has one `create_node` variant per kind: `memory` offers no `detail`, `plan` requires `detail.status`, and `person`/`place` offer only their own detail keys.
 
 ## Lint
 
-`GET /lint` returns `{ findings: [{ rule, node_ids, title, note }] }` for live nodes that match what past audits found wrong: `status_snapshot` (as-of / not-yet wording on a memory that never expires), `working_note` (paths, branches, wakes, credentials, file names and line numbers, and lessons about how a site or tool behaves), `agent_instruction` (a rule for how agents work, which belongs in a charter), `noon_placeholder` (a timed plan at exactly 12:00 local), `dated_hub` (a plan that owns dated items through `HAS_ITEM` yet carries a date of its own), `long_span` (a one-off plan spanning more than a week, usually a period that is a rule), `duplicate_series` (two recurring plans with the same rule and first meeting, so each meeting shows twice), `duplicate` (any kind with the same normalized title, plans in the same hour), `unaliased_person` (a person whose first name is not an alias), and `floating` (a node with no current edge, which recall reaches only by similarity). It never changes the graph.
+`GET /lint` returns `{ findings: [{ rule, node_ids, title, note }] }` for live nodes that match what past audits found wrong: `status_snapshot` (as-of / not-yet wording on a memory that never expires), `working_note` (paths, branches, wakes, credentials, file names and line numbers, and lessons about how a site or tool behaves), `agent_instruction` (a rule for how agents work, which belongs in a charter), `noon_placeholder` (a timed plan at exactly 12:00 local), `dated_hub` (a plan that owns dated items through `HAS_ITEM` yet carries a date of its own), `long_span` (a one-off plan spanning more than a week, usually a period that is a rule), `duplicate_series` (two recurring plans with the same rule and first meeting, so each meeting shows twice), `duplicate` (any kind with the same normalized title, plans in the same hour), `unaliased_person` (a person whose first name is not an alias), `place_without_address` (a place plans are `AT_LOCATION` whose address is missing or has no building number and street), and `floating` (a node with no current edge, which recall reaches only by similarity). It never changes the graph.
 
 ## Recall
 

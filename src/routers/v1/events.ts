@@ -10,7 +10,7 @@ import type { FastifyInstance } from "fastify";
 const HEARTBEAT_MS = 20_000;
 
 /** POST routes that only read, so they never publish a change. */
-const READ_ONLY_POSTS = new Set(["/history/search", "/recall", "/query", "/graph", "/planner/query"]);
+const READ_ONLY_POSTS = new Set(["/history/search", "/recall", "/query", "/graph", "/timeline"]);
 
 export async function registerEvents(app: FastifyInstance): Promise<void> {
   const streams = new Set<ServerResponse>();

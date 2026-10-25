@@ -1,4 +1,4 @@
-/** Mount all `/v1` HTTP routes (nodes, edges, history, ingest, recall, query, graph, lint, planner, events). */
+/** Mount all `/v1` HTTP routes (nodes, edges, history, ingest, recall, query, graph, lint, timeline, events). */
 
 import type { FastifyInstance } from "fastify";
 import { registerEdges } from "./edges.js";
@@ -8,9 +8,9 @@ import { registerHistory } from "./history.js";
 import { registerIngest } from "./ingest.js";
 import { registerLint } from "./lint.js";
 import { registerNodes } from "./nodes.js";
-import { registerPlanner } from "./planner.js";
 import { registerQuery } from "./query.js";
 import { registerRecall } from "./recall.js";
+import { registerTimeline } from "./timeline.js";
 
 export async function registerV1(app: FastifyInstance): Promise<void> {
   await registerEvents(app);
@@ -22,5 +22,5 @@ export async function registerV1(app: FastifyInstance): Promise<void> {
   await registerQuery(app);
   await registerGraph(app);
   await registerLint(app);
-  await registerPlanner(app);
+  await registerTimeline(app);
 }

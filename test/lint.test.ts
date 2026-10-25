@@ -27,7 +27,7 @@ after(async () => {
   await handle.close();
 });
 
-test("GET /lint flags snapshots, working notes, agent instructions, noon placeholders, dated hubs, long spans, duplicate series, duplicates, unaliased people, and floating nodes", async () => {
+test("GET /lint flags snapshots, working notes, agent instructions, noon placeholders, dated hubs, long spans, duplicate series, duplicates, unaliased people, places without an address, and floating nodes", async () => {
   await resetGraph(handle.sql);
   const memory = (title: string, axis: number, expiresAt: Date | null = null) =>
     insertMemory(handle.db, { title, embedding: axisVector(dim, axis), occurredAt: null, expiresAt });
@@ -91,6 +91,25 @@ test("GET /lint flags snapshots, working notes, agent instructions, noon placeho
     await insertEdge(handle.db, { src: assignment, dst: facet, type: "HAS_FACET" });
   }
 
+  const room = await insertPlace(handle.db, { title: "Engineering Building 1345", embedding: axisVector(dim, 20) });
+  const lecture = await insertPlan(handle.db, {
+    title: "CSE 431 — graph review session",
+    embedding: axisVector(dim, 21),
+    occurredAt: new Date("2026-10-22T17:00:00.000Z"),
+  });
+  await insertEdge(handle.db, { src: lecture, dst: room, type: "AT_LOCATION", properties: { room: "1345" } });
+  const holden = await insertPlace(handle.db, {
+    title: "Holden Hall",
+    embedding: axisVector(dim, 22),
+    address: "234 W Circle Dr, East Lansing, MI 48824",
+  });
+  const lab = await insertPlan(handle.db, {
+    title: "CSE 380 — lab make-up",
+    embedding: axisVector(dim, 23),
+    occurredAt: new Date("2026-10-23T13:10:00.000Z"),
+  });
+  await insertEdge(handle.db, { src: lab, dst: holden, type: "AT_LOCATION" });
+
   const ankur = await insertPerson(handle.db, { title: "Ankur Desai", embedding: axisVector(dim, 9) });
   const sparsh = await insertPerson(handle.db, { title: "Sparsh Yandooru", embedding: axisVector(dim, 10), aliases: ["Sparsh"] });
 
@@ -116,6 +135,7 @@ test("GET /lint flags snapshots, working notes, agent instructions, noon placeho
     [[termA, termB].sort(), [wilsonA, wilsonB].sort()].sort(),
   );
   assert.deepEqual(flagged("unaliased_person"), [[ankur]]);
+  assert.deepEqual(flagged("place_without_address"), [[room, lecture]]);
   assert.deepEqual(
     flagged("floating").flat().sort(),
     [labStatus, note, chai, drop, ankur, sparsh, sourceNote, ibm, instruction, dropPeriod, seriesA, seriesB, wilsonA, wilsonB].sort(),

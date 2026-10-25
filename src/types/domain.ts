@@ -1,5 +1,7 @@
 /** API-facing domain types for the memory graph (nodes, edges, history). */
 
+import type { PlanKind } from "./timeline.js";
+
 /** Graph node kind. */
 export type NodeKind = "person" | "memory" | "plan" | "place";
 
@@ -26,6 +28,15 @@ export type PlanDetail = {
   status: PlanStatus;
   /** RRULE string when this plan is a recurrence template; null on instances. */
   recurrence: string | null;
+  kind: PlanKind | null;
+  /** A deadline, apart from when the work is scheduled; a deadline-only plan has occurred_at null. */
+  due_at: string | null;
+  /** When a task's work opens. */
+  opens_at: string | null;
+  /** IANA zone of the place when it is not the box's (a Chicago dinner); null otherwise. */
+  time_zone: string | null;
+  /** In the timeline but never on the planner grid (office hours he does not attend). */
+  hide_from_planner: boolean;
   /**
    * On an occurrence a date-bounded query expanded from a recurring plan, that plan's id
    * (the record's own id); null on every stored node.
@@ -92,6 +103,7 @@ export type LintRule =
   | "duplicate_series"
   | "duplicate"
   | "unaliased_person"
+  | "place_without_address"
   | "floating";
 
 /** One `GET /lint` finding: the nodes it concerns and what to check. Lint never changes the graph. */

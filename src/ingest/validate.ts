@@ -24,8 +24,9 @@ const MIN_EVIDENCE_CHARS = 8;
 
 /**
  * Validate op batch before apply: unique temp_ids, kind-appropriate details, all-day
- * plans that have a date, TTL only on memory/plan, and edge endpoints that resolve to
- * temp or live nodes.
+ * plans that have a date, TTL only on memory/plan, edge endpoints that resolve to temp or
+ * live nodes, and session edits on a live plan that change something (whether the plan
+ * has a session that day is checked on apply, after the batch's own updates).
  */
 export async function validateOperations(opts: {
   db: Db;
@@ -47,8 +48,8 @@ export async function validateOperations(opts: {
       }
       if (op.kind === "plan") {
         const detail = parse(planDetailBody, op.detail ?? {});
-        if (detail.all_day === true && !op.occurred_at) {
-          throw new YaadError(422, "invalid_request", `create_node ${op.temp_id}: an all-day plan needs occurred_at`);
+        if (detail.all_day === true && !op.occurred_at && !detail.due_at) {
+          throw new YaadError(422, "invalid_request", `create_node ${op.temp_id}: an all-day plan needs occurred_at or due_at`);
         }
       }
       if (op.kind === "place") {
@@ -81,16 +82,32 @@ export async function validateOperations(opts: {
       }
       if (current.kind === "plan") {
         const patch = op.detail !== undefined ? parse(patchPlanDetailBody, op.detail) : {};
-        const allDay = patch.all_day ?? (await getPlanDetail(opts.db, op.node_id)).allDay;
+        const stored = await getPlanDetail(opts.db, op.node_id);
+        const allDay = patch.all_day ?? stored.allDay;
         const occurredAt = op.occurred_at !== undefined ? op.occurred_at : current.occurredAt;
-        if (allDay && !occurredAt) {
-          throw new YaadError(422, "invalid_request", `update_node ${op.node_id}: an all-day plan needs occurred_at`);
+        const dueAt = patch.due_at !== undefined ? patch.due_at : stored.dueAt;
+        if (allDay && !occurredAt && !dueAt) {
+          throw new YaadError(422, "invalid_request", `update_node ${op.node_id}: an all-day plan needs occurred_at or due_at`);
         }
       }
       rejectTtlOnEntity(current.kind, op.ttl_days, `update_node ${op.node_id}`);
     }
     if (op.op === "close_node") {
       await requireCurrent(opts.db, op.node_id, "node");
+    }
+    if (op.op === "edit_occurrence") {
+      const label = `edit_occurrence ${op.node_id} ${op.occurrence_date}`;
+      const current = await requireCurrent(opts.db, op.node_id, "node");
+      if (current.kind !== "plan") {
+        throw new YaadError(422, "invalid_request", `${label}: only a plan has sessions`);
+      }
+      const { op: _op, node_id: _node, occurrence_date: _date, ...change } = op;
+      if (Object.keys(change).length === 0) {
+        throw new YaadError(422, "invalid_request", `${label}: change at least one field`);
+      }
+      if ((op.start_at !== undefined || op.end_at !== undefined) && op.state !== "moved") {
+        throw new YaadError(422, "invalid_request", `${label}: start_at and end_at move a session, so send state "moved" with them`);
+      }
     }
     if (op.op === "close_edge") {
       try {

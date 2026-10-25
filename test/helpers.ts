@@ -6,6 +6,7 @@ import { edge, node, personDetail, placeDetail, planDetail } from "../src/db/sch
 import type { DwarChatResponse, DwarClient } from "../src/dwar/client.js";
 import type { Operation } from "../src/ingest/operations.js";
 import type { PlanStatus } from "../src/types/domain.js";
+import type { PlanKind } from "../src/types/timeline.js";
 
 export function axisVector(dimension: number, axis: number): number[] {
   const values = Array.from({ length: dimension }, () => 0);
@@ -138,6 +139,11 @@ export async function insertPlan(
     status?: PlanStatus;
     allDay?: boolean;
     recurrence?: string | null;
+    kind?: PlanKind | null;
+    dueAt?: Date | null;
+    opensAt?: Date | null;
+    hideFromPlanner?: boolean;
+    agentId?: string;
   },
 ): Promise<string> {
   const id = randomUUID();
@@ -149,7 +155,8 @@ export async function insertPlan(
     body: null,
     embedding: args.embedding,
     occurredAt: args.occurredAt,
-    source: "manual",
+    source: args.agentId !== undefined ? "agent" : "manual",
+    agentId: args.agentId ?? null,
     createdAt: now,
     updatedAt: now,
   });
@@ -159,6 +166,10 @@ export async function insertPlan(
     allDay: args.allDay ?? false,
     status: args.status ?? "confirmed",
     recurrence: args.recurrence ?? null,
+    kind: args.kind ?? null,
+    dueAt: args.dueAt ?? null,
+    opensAt: args.opensAt ?? null,
+    hideFromPlanner: args.hideFromPlanner ?? false,
   });
   return id;
 }
@@ -197,7 +208,7 @@ export async function insertPlace(
 
 export async function insertEdge(
   db: Db,
-  args: { src: string; dst: string; type: string },
+  args: { src: string; dst: string; type: string; properties?: Record<string, unknown> },
 ): Promise<string> {
   const id = randomUUID();
   const now = new Date();
@@ -206,7 +217,7 @@ export async function insertEdge(
     srcId: args.src,
     dstId: args.dst,
     type: args.type,
-    properties: {},
+    properties: args.properties ?? {},
     confidence: 1,
     createdAt: now,
     validFrom: now,

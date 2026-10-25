@@ -25,10 +25,13 @@ function parseRule(rule: string, start: Date, timeZone: string) {
   }
 }
 
-/** Reject a recurring plan with no start (its occurred_at) or a rule that does not parse. */
+/**
+ * Reject a recurring plan with no anchor or a rule that does not parse. The anchor is the
+ * plan's occurred_at, or its due_at when it has no start (rent due on the 1st).
+ */
 export function assertRecurrence(opts: { rule: string; start: Date | null; timeZone: string }): void {
   if (!opts.start) {
-    throw new YaadError(422, "invalid_request", "recurring plan requires occurred_at as the series start");
+    throw new YaadError(422, "invalid_request", "recurring plan requires occurred_at or due_at as the series anchor");
   }
   parseRule(opts.rule, opts.start, opts.timeZone);
 }
@@ -69,6 +72,101 @@ export function occurrencesBetween(opts: {
       endAt: opts.end !== null ? new Date(occurredAt.getTime() + durationMs) : null,
     };
   });
+}
+
+/** The times a plan's sessions are worked out from. */
+export type PlanTiming = {
+  start: Date | null;
+  end: Date | null;
+  due: Date | null;
+  opens: Date | null;
+  rule: string | null;
+};
+
+/** One session of a plan, before what happened to it is applied. */
+export type Session = {
+  /** Local date of the session's anchor (its start, else its due); it names the session. */
+  date: string;
+  start: Date | null;
+  end: Date | null;
+  due: Date | null;
+  opens: Date | null;
+};
+
+/**
+ * A plan's sessions: a one-off plan's only session whatever the window, or each occurrence of
+ * a series that may overlap `from`..`to`. A series anchors on the start, or on the due when the
+ * plan has none, and every time of the plan moves with its occurrence. An undated plan has none.
+ */
+export function planSessions(
+  timing: PlanTiming,
+  from: Date,
+  to: Date,
+  opts: { timeZone: string; maxInstances: number },
+): Session[] {
+  const anchor = timing.start ?? timing.due;
+  if (anchor === null) {
+    return [];
+  }
+  const shift = (value: Date | null, by: number) => (value === null ? null : new Date(value.getTime() + by));
+  if (timing.rule === null) {
+    return [{ date: localDate(anchor, opts.timeZone), ...timing }];
+  }
+  return occurrencesBetween({
+    rule: timing.rule,
+    start: anchor,
+    end: timing.start !== null ? timing.end : null,
+    from,
+    to,
+    maxInstances: opts.maxInstances,
+    timeZone: opts.timeZone,
+  }).map((occurrence) => {
+    const by = occurrence.occurredAt.getTime() - anchor.getTime();
+    return {
+      date: localDate(occurrence.occurredAt, opts.timeZone),
+      start: shift(timing.start, by),
+      end: shift(timing.end, by),
+      due: shift(timing.due, by),
+      opens: shift(timing.opens, by),
+    };
+  });
+}
+
+/** The plan's session on the local `date`, or null when it has none that day. */
+export function sessionOn(
+  timing: PlanTiming,
+  date: string,
+  opts: { timeZone: string; maxInstances: number },
+): Session | null {
+  const day = Date.parse(`${date}T00:00:00Z`);
+  const around = planSessions(timing, new Date(day - 86_400_000), new Date(day + 2 * 86_400_000), opts);
+  return around.find((session) => session.date === date) ?? null;
+}
+
+/** The date of `instant` on the wall clock of `timeZone`, as YYYY-MM-DD. */
+export function localDate(instant: Date, timeZone: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(instant);
+}
+
+const WEEKDAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+
+/** A plan's rule in words for a client: "every Tue and Thu", "every 2 weeks on Fri", or rrule's own text. */
+export function ruleSummary(rule: string, start: Date, timeZone: string): string {
+  const set = parseRule(rule, start, timeZone);
+  if (!(set instanceof rrule.RRuleSet)) {
+    throw new YaadError(500, "internal_error", `recurrence rule did not parse as a set: ${rule}`);
+  }
+  const [first] = set.rrules();
+  if (first === undefined) {
+    return `on ${set.rdates().length} dates`;
+  }
+  const { freq, interval, byweekday } = first.options;
+  if (freq === rrule.RRule.WEEKLY && byweekday.length > 0) {
+    const days = byweekday.map((day) => WEEKDAY_NAMES[day]);
+    const list = days.length > 1 ? `${days.slice(0, -1).join(", ")} and ${days[days.length - 1]}` : days.join("");
+    return interval !== undefined && interval > 1 ? `every ${interval} weeks on ${list}` : `every ${list}`;
+  }
+  return first.toText();
 }
 
 /** `instant` as a floating date whose UTC fields are the wall-clock time in `timeZone`. */

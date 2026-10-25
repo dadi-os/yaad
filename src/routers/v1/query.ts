@@ -1,6 +1,7 @@
 /**
  * `POST /query` — exact/filter lookup over live nodes (kind, name, date, plan status). A date
- * range lists a recurring plan once per occurrence, each carrying the plan's id as series_id.
+ * range lists a recurring plan once per occurrence, each carrying the plan's id as series_id
+ * and its own start, end, due, and open times.
  */
 
 import type { FastifyInstance } from "fastify";
@@ -40,10 +41,17 @@ export async function registerQuery(app: FastifyInstance): Promise<void> {
     for (const { row, occurrence } of matches) {
       if (occurrence) {
         const plan = toPlanDetail(await getPlanDetail(app.db, row.id));
+        const iso = (value: Date | null) => (value ? value.toISOString() : null);
         nodes.push({
           ...toNodeRecord(row),
-          occurred_at: occurrence.occurredAt.toISOString(),
-          detail: { ...plan, end_at: occurrence.endAt ? occurrence.endAt.toISOString() : null, series_id: row.id },
+          occurred_at: iso(occurrence.start),
+          detail: {
+            ...plan,
+            end_at: iso(occurrence.end),
+            due_at: iso(occurrence.due),
+            opens_at: iso(occurrence.opens),
+            series_id: row.id,
+          },
         });
         continue;
       }
