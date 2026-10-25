@@ -69,8 +69,8 @@ export async function findLookalikes(db: Db, operations: Operation[], shown: Set
             eq(node.kind, "plan"),
             live(),
             isNull(planDetail.recurrence),
-            sql`${planWhen} >= ${new Date(at - LOOKALIKE_WINDOW_MS)}`,
-            sql`${planWhen} <= ${new Date(at + LOOKALIKE_WINDOW_MS)}`,
+            sql`${planWhen} >= ${new Date(at - LOOKALIKE_WINDOW_MS).toISOString()}`,
+            sql`${planWhen} <= ${new Date(at + LOOKALIKE_WINDOW_MS).toISOString()}`,
           ),
         );
       for (const row of nearby) {

@@ -201,14 +201,14 @@ async function datedPlans(db: Reader, from: Date, to: Date): Promise<PlanRow[]> 
       and(
         eq(planOccurrence.state, "moved"),
         lt(planOccurrence.startAt, to),
-        sql`COALESCE(${planOccurrence.endAt}, ${planOccurrence.startAt}) >= ${from}`,
+        sql`COALESCE(${planOccurrence.endAt}, ${planOccurrence.startAt}) >= ${from.toISOString()}`,
       ),
     );
   const anchor = sql`COALESCE(${node.occurredAt}, ${planDetail.dueAt})`;
   const spanEnd = sql`COALESCE(${planDetail.endAt}, ${node.occurredAt})`;
   const reaches = or(
-    and(isNotNull(planDetail.recurrence), sql`${anchor} < ${to}`),
-    and(isNull(planDetail.recurrence), lt(node.occurredAt, to), sql`${spanEnd} >= ${from}`),
+    and(isNotNull(planDetail.recurrence), sql`${anchor} < ${to.toISOString()}`),
+    and(isNull(planDetail.recurrence), lt(node.occurredAt, to), sql`${spanEnd} >= ${from.toISOString()}`),
     and(isNull(planDetail.recurrence), gte(planDetail.dueAt, from), lt(planDetail.dueAt, to)),
     ...(movedIn.length > 0 ? [inArray(node.id, movedIn.map((row) => row.planId))] : []),
   );
