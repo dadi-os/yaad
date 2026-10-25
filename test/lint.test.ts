@@ -7,6 +7,7 @@ import {
   insertEdge,
   insertMemory,
   insertPerson,
+  insertPlace,
   insertPlan,
   mockDwar,
   openTestDb,
@@ -26,7 +27,7 @@ after(async () => {
   await handle.close();
 });
 
-test("GET /lint flags snapshots, working notes, noon placeholders, dated hubs, duplicates, unaliased people, and floating nodes", async () => {
+test("GET /lint flags snapshots, working notes, agent instructions, noon placeholders, dated hubs, long spans, duplicate series, duplicates, unaliased people, and floating nodes", async () => {
   await resetGraph(handle.sql);
   const memory = (title: string, axis: number, expiresAt: Date | null = null) =>
     insertMemory(handle.db, { title, embedding: axisVector(dim, axis), occurredAt: null, expiresAt });
@@ -37,6 +38,32 @@ test("GET /lint flags snapshots, working notes, noon placeholders, dated hubs, d
   const termA = await memory("CSE 300 — term: Fall 2026", 3);
   const termB = await memory("CSE 300 - term: Fall 2026 (fall)", 4);
   const chai = await memory("Ankur Desai likes chai", 5);
+  const sourceNote = await memory("Chello — the parser lives in src/parse.ts at line 40", 12);
+  const ibm = await memory("IBM Intern Data Specialist 2027 application (ref 137428)", 13);
+  const instruction = await memory("Ankur wants agents to never place Hold blocks on his planner", 14);
+  const dropPeriod = await insertPlan(handle.db, {
+    title: "MSU Fall 2026 — drop with penalty period",
+    embedding: axisVector(dim, 15),
+    occurredAt: new Date("2026-10-20T04:00:00.000Z"),
+    endAt: new Date("2026-12-18T05:00:00.000Z"),
+    allDay: true,
+  });
+  const seriesA = await insertPlan(handle.db, {
+    title: "CSE 300: Social, Ethical and Professional Issues in Computing (Fall 2026)",
+    embedding: axisVector(dim, 16),
+    occurredAt: new Date("2026-09-03T22:30:00.000Z"),
+    endAt: new Date("2026-09-03T23:20:00.000Z"),
+    recurrence: "FREQ=WEEKLY;BYDAY=TH;UNTIL=20261210T235959Z",
+  });
+  const seriesB = await insertPlan(handle.db, {
+    title: "CSE 300 — lecture (section 002), Wilson Hall C102",
+    embedding: axisVector(dim, 17),
+    occurredAt: new Date("2026-09-03T22:30:00.000Z"),
+    endAt: new Date("2026-09-03T23:20:00.000Z"),
+    recurrence: "FREQ=WEEKLY;BYDAY=TH;UNTIL=20261210T235959Z",
+  });
+  const wilsonA = await insertPlace(handle.db, { title: "Wilson Hall C102", embedding: axisVector(dim, 18) });
+  const wilsonB = await insertPlace(handle.db, { title: "Wilson Hall C102 (lecture room)", embedding: axisVector(dim, 19) });
 
   const noon = await insertPlan(handle.db, {
     title: "IBIO 150 Exam 1",
@@ -75,17 +102,23 @@ test("GET /lint flags snapshots, working notes, noon placeholders, dated hubs, d
     findings.filter((finding) => finding.rule === rule).map((finding) => finding.node_ids);
 
   assert.deepEqual(flagged("status_snapshot"), [[snapshot]]);
-  assert.deepEqual(flagged("working_note"), [[note]]);
+  assert.deepEqual(flagged("working_note").flat().sort(), [note, sourceNote].sort());
+  assert.deepEqual(flagged("agent_instruction"), [[instruction]]);
   assert.deepEqual(flagged("noon_placeholder"), [[noon]]);
   assert.deepEqual(flagged("dated_hub"), [[hub]]);
+  assert.deepEqual(flagged("long_span"), [[dropPeriod]]);
   assert.deepEqual(
-    flagged("duplicate").map((ids) => [...ids].sort()),
-    [[termA, termB].sort()],
+    flagged("duplicate_series").map((ids) => [...ids].sort()),
+    [[seriesA, seriesB].sort()],
+  );
+  assert.deepEqual(
+    flagged("duplicate").map((ids) => [...ids].sort()).sort(),
+    [[termA, termB].sort(), [wilsonA, wilsonB].sort()].sort(),
   );
   assert.deepEqual(flagged("unaliased_person"), [[ankur]]);
   assert.deepEqual(
     flagged("floating").flat().sort(),
-    [labStatus, note, chai, drop, ankur, sparsh].sort(),
+    [labStatus, note, chai, drop, ankur, sparsh, sourceNote, ibm, instruction, dropPeriod, seriesA, seriesB, wilsonA, wilsonB].sort(),
   );
   await app.close();
 });

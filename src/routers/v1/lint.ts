@@ -1,12 +1,13 @@
 /**
  * `GET /lint` — a read-only report of live nodes that match patterns past audits found
- * wrong: status snapshots and agent working notes stored as permanent memory, plans at a
- * placeholder noon, dated hubs, duplicates, people missing their first-name alias, and
+ * wrong: status snapshots, agent working notes and instructions to agents stored as
+ * permanent memory, plans at a placeholder noon, dated hubs, periods stored as plans, two
+ * series on the same schedule, duplicates, people missing their first-name alias, and
  * nodes with no current edge.
  * It never changes the graph; someone reads the report and fixes what is really wrong.
  */
 
-import { and, asc, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, isNotNull, isNull, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { getCurrentPersons } from "../../db/read.js";
 import { edge, node, planDetail } from "../../db/schema.js";
@@ -16,7 +17,11 @@ import type { LintFinding } from "../../types/domain.js";
 /** Status wording that stops being true: "as of", "not yet", "so far", "still needs", "no … found". */
 const STATUS_PATTERN = String.raw`\m(as of|not yet|so far|still needs?|unconfirmed)\M|\mno\M.{0,60}\m(found|posted|yet)\M`;
 /** Wording of an agent's own plumbing and how-to (paths, branches, wakes, stored credentials, site and tool lessons) rather than facts about Ankur's world. */
-const WORKING_NOTE_PATTERN = String.raw`/var/lib|\mworktree|\mbranch\M|\mcommit\M|this agent|\mwake\M|credentials? (set up|exist|stored)|\mchaavi\M|site lesson|\mhow-to\M|shadow dom|\mdom\M|\mref\M|accessibility tree|browser worker|coding worker`;
+const WORKING_NOTE_PATTERN = String.raw`/var/lib|\mworktree|\mbranch\M|\mcommit\M|this agent|\mwake\M|credentials? (set up|exist|stored)|\mchaavi\M|site lesson|\mhow-to\M|shadow dom|\mdom\M|\mref [a-z]\d|accessibility tree|browser worker|coding worker|\.(tsx?|py|go|aspx)\M|\mline \d+`;
+/** Wording of a rule for how agents work ("no agent may submit", "Ankur wants agents to"), which belongs in a charter. */
+const AGENT_INSTRUCTION_PATTERN = String.raw`\mno agents? (may|should|can)\M|\magents? (must|should|may) (never|not|always|only)\M|\mwants (the )?(agents?|dadi|specialists?) to\M|\m(specialists?|managers?|workers?) (must|should) (never|always)\M`;
+/** A plan spanning more than this is usually a period that is a rule (a drop period, an appointment term), not something Ankur does. */
+const LONG_SPAN = "7 days";
 
 /** Register `GET /lint`. */
 export async function registerLint(app: FastifyInstance): Promise<void> {
@@ -75,6 +80,20 @@ export async function registerLint(app: FastifyInstance): Promise<void> {
       });
     }
 
+    const instructions = await app.db
+      .select({ id: node.id, title: node.title })
+      .from(node)
+      .where(and(eq(node.kind, "memory"), live, sql`${text} ~* ${AGENT_INSTRUCTION_PATTERN}`))
+      .orderBy(asc(node.createdAt));
+    for (const row of instructions) {
+      findings.push({
+        rule: "agent_instruction",
+        node_ids: [row.id],
+        title: row.title,
+        note: "Reads as a rule for how agents work; move it into the owning agent's charter and delete it.",
+      });
+    }
+
     const ownsItems = sql`EXISTS (SELECT 1 FROM ${edge} WHERE ${edge.srcId} = ${node.id} AND ${edge.validTo} IS NULL AND ${edge.type} = 'HAS_ITEM')`;
     const hubs = await app.db
       .select({ id: node.id, title: node.title })
@@ -97,6 +116,40 @@ export async function registerLint(app: FastifyInstance): Promise<void> {
       });
     }
 
+    const spans = await app.db
+      .select({ id: node.id, title: node.title })
+      .from(node)
+      .innerJoin(planDetail, eq(planDetail.nodeId, node.id))
+      .where(and(live, isNull(planDetail.recurrence), sql`${planDetail.endAt} - ${node.occurredAt} > ${LONG_SPAN}::interval`))
+      .orderBy(asc(node.occurredAt));
+    for (const row of spans) {
+      findings.push({
+        rule: "long_span",
+        node_ids: [row.id],
+        title: row.title,
+        note: "Spans more than a week, which is usually a period that is a rule; make it a facet of its hub and keep only a deadline Ankur must act by as a plan.",
+      });
+    }
+
+    const series = await app.db
+      .select({
+        ids: sql<string[]>`array_agg(${node.id} ORDER BY ${node.createdAt})`,
+        title: sql<string>`min(${node.title})`,
+      })
+      .from(node)
+      .innerJoin(planDetail, eq(planDetail.nodeId, node.id))
+      .where(and(live, isNotNull(planDetail.recurrence)))
+      .groupBy(planDetail.recurrence, node.occurredAt)
+      .having(sql`count(*) > 1`);
+    for (const group of series) {
+      findings.push({
+        rule: "duplicate_series",
+        node_ids: group.ids,
+        title: group.title,
+        note: "Two recurring plans share a rule and a first meeting, so every meeting shows twice; keep the course hub's series and drop the other's rule.",
+      });
+    }
+
     const startHour = sql`CASE WHEN ${node.kind} = 'plan' THEN date_trunc('hour', ${node.occurredAt}) END`;
     const groups = await app.db
       .select({
@@ -104,7 +157,7 @@ export async function registerLint(app: FastifyInstance): Promise<void> {
         title: sql<string>`min(${node.title})`,
       })
       .from(node)
-      .where(and(inArray(node.kind, ["memory", "plan"]), live))
+      .where(live)
       .groupBy(node.kind, normalizedTitleSql, startHour)
       .having(sql`count(*) > 1`);
     for (const group of groups) {
@@ -112,7 +165,7 @@ export async function registerLint(app: FastifyInstance): Promise<void> {
         rule: "duplicate",
         node_ids: group.ids,
         title: group.title,
-        note: "Same kind and normalized title (plans in the same hour); keep the one with more edges and delete the rest.",
+        note: "Same kind and normalized title (plans in the same hour); keep the one with more edges, move the others' edges to it, and delete them.",
       });
     }
 

@@ -85,8 +85,11 @@ export type NodeHistoryRecord = {
 export type LintRule =
   | "status_snapshot"
   | "working_note"
+  | "agent_instruction"
   | "noon_placeholder"
   | "dated_hub"
+  | "long_span"
+  | "duplicate_series"
   | "duplicate"
   | "unaliased_person"
   | "floating";
