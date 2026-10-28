@@ -3,8 +3,8 @@
  * sessions. `POST /timeline` reads `[from, to)` through one view: `planner` (timed sessions
  * with a start and an end, not hidden, cancelled ones kept and marked), `due` (sessions whose
  * due falls in the range), `month` (due sessions, all-day and multi-day sessions, and one-off
- * timed commitments), `someday` (ideas, and tasks with a due or an open but no time yet, the
- * range's start standing for now) and `tile` (commitments, for the home ribbon). Ideas reach
+ * timed commitments), `someday` (ideas, and tasks still up in the air: no time yet, not a
+ * milestone or a class's coursework, the range's start standing for now) and `tile` (commitments, for the home ribbon). Ideas reach
  * only `someday`. `PUT /timeline/outcome` is the one write a client makes: Ankur marks a
  * session completed, or takes the mark back.
  */
@@ -216,10 +216,29 @@ async function datedPlans(db: Reader, from: Date, to: Date): Promise<PlanRow[]> 
 }
 
 /**
- * Plans for Someday: every idea, and tasks with a due or an open but no time set aside (not a
- * series, not a bill, and not due before `now`).
+ * Plans for Someday ("needs a time"): what is still up in the air. Every idea, and tasks with a
+ * due or an open but no time set aside (not a series, not a bill, not due before `now`), except
+ * a task whose hub files it as a milestone (a date that passes, with nothing to do), coursework
+ * (an assignment or quiz of a class, worked in the study time its course budgets), and a task
+ * that already has its time: a plan works on it (`FOR`), or its hub is itself a one-off timed
+ * plan, the visit or session it is due for.
  */
 async function somedayPlans(db: Reader, now: Date): Promise<PlanRow[]> {
+  const settled = sql`EXISTS (
+    SELECT 1 FROM edge e
+    WHERE e.dst_id = ${node.id} AND e.valid_to IS NULL AND (
+      e.type = 'FOR'
+      OR (e.type = 'HAS_ITEM' AND (
+        e.properties->>'item' = 'milestone'
+        OR (e.properties->>'item' IN ('assignment', 'quiz')
+          AND EXISTS (SELECT 1 FROM plan_detail hub WHERE hub.node_id = e.src_id AND hub.kind = 'class'))
+        OR EXISTS (
+          SELECT 1 FROM node hub JOIN plan_detail hd ON hd.node_id = hub.id
+          WHERE hub.id = e.src_id AND hub.occurred_at IS NOT NULL AND hd.recurrence IS NULL
+        )
+      ))
+    )
+  )`;
   const needsTime = and(
     ne(planDetail.status, "idea"),
     isNull(node.occurredAt),
@@ -227,6 +246,7 @@ async function somedayPlans(db: Reader, now: Date): Promise<PlanRow[]> {
     or(isNotNull(planDetail.dueAt), isNotNull(planDetail.opensAt)),
     or(isNull(planDetail.kind), ne(planDetail.kind, "bill")),
     or(isNull(planDetail.dueAt), gte(planDetail.dueAt, now)),
+    sql`NOT ${settled}`,
   );
   return plansWhere(db, or(eq(planDetail.status, "idea"), needsTime)!).orderBy(asc(node.createdAt));
 }

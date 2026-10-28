@@ -127,6 +127,38 @@ test("each view filters the same plans: planner, due, month, tile and someday", 
   assert.deepEqual(titles(await view("someday", "2026-10-23T04:00:00.000Z", WEEK.to)), ["Try the climbing gym"]);
 });
 
+test("needs a time leaves out milestones, a class's coursework and tasks that already have their time", async () => {
+  await resetGraph(handle.sql);
+  let axis = 0;
+  const plan = (args: Omit<Parameters<typeof insertPlan>[1], "embedding">) =>
+    insertPlan(handle.db, { embedding: axisVector(dim, axis++), ...args });
+  const due = new Date("2026-10-30T03:59:00.000Z");
+
+  const course = await plan({ title: "CSE 300 lecture", occurredAt: new Date("2026-10-14T13:00:00.000Z"), recurrence: "FREQ=WEEKLY;BYDAY=WE", kind: "class" });
+  const quiz = await plan({ title: "CSE 300 — Patents Quiz due", occurredAt: null, dueAt: due, kind: "task" });
+  await insertEdge(handle.db, { src: course, dst: quiz, type: "HAS_ITEM", properties: { item: "quiz" } });
+
+  const term = await insertMemory(handle.db, { title: "Spring 2027 enrollment", embedding: axisVector(dim, axis++) });
+  const opens = await plan({ title: "Spring 2027 enrollment begins", occurredAt: null, dueAt: due, kind: "task" });
+  await insertEdge(handle.db, { src: term, dst: opens, type: "HAS_ITEM", properties: { item: "milestone" } });
+
+  const visit = await plan({ title: "Michigan ID renewal visit", occurredAt: new Date("2026-10-29T14:20:00.000Z"), endAt: new Date("2026-10-29T15:20:00.000Z"), kind: "appointment" });
+  const expires = await plan({ title: "Current Michigan license expires", occurredAt: null, dueAt: due, kind: "task" });
+  await insertEdge(handle.db, { src: visit, dst: expires, type: "HAS_ITEM", properties: { item: "deadline" } });
+
+  const essay = await plan({ title: "Lockheed Martin application due", occurredAt: null, dueAt: due, kind: "task" });
+  const block = await plan({ title: "Write the Lockheed Martin essay", occurredAt: new Date("2026-10-28T18:00:00.000Z"), endAt: new Date("2026-10-28T20:00:00.000Z"), kind: "focus" });
+  await insertEdge(handle.db, { src: block, dst: essay, type: "FOR" });
+
+  const application = await insertMemory(handle.db, { title: "Applied to ZipRecruiter", embedding: axisVector(dim, axis++) });
+  const assessment = await plan({ title: "ZipRecruiter coding assessment due", occurredAt: null, dueAt: due, kind: "task" });
+  await insertEdge(handle.db, { src: application, dst: assessment, type: "HAS_ITEM", properties: { item: "assignment" } });
+  await plan({ title: "Research participation form due", occurredAt: null, dueAt: due, kind: "task" });
+
+  assert.deepEqual(titles(await view("someday", WEEK.from, WEEK.to)), ["Research participation form due", "ZipRecruiter coding assessment due"]);
+  assert.equal((await view("due", "2026-10-29T04:00:00.000Z", "2026-10-31T04:00:00.000Z")).length, 6);
+});
+
 test("Completed marks one session and undoes it, agents move, cancel and miss sessions, and series counts follow", async () => {
   await resetGraph(handle.sql);
   const now = Date.now();
