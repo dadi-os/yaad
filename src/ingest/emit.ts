@@ -52,7 +52,7 @@ export function recheckNote(opts: {
 }
 
 /**
- * Run one reasoning turn that must call `emit_operations` exactly once.
+ * Run one work-lane turn that must call `emit_operations` exactly once.
  * Rejects non-tool_use stops or wrong tool call counts.
  */
 export async function emitOperations(opts: {
@@ -71,7 +71,7 @@ export async function emitOperations(opts: {
     candidates: opts.candidates,
     ...(opts.recheck !== null ? { recheck: opts.recheck } : {}),
   });
-  const response = await opts.dwar.reason({
+  const response = await opts.dwar.work({
     system,
     user,
     tools: [

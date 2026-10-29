@@ -1,4 +1,4 @@
-/** HTTP client for Dwar embed and reasoning chat used by ingest and recall. */
+/** HTTP client for Dwar embed and work-lane chat used by ingest and recall. */
 
 import axios, { type AxiosInstance } from "axios";
 import { z } from "zod";
@@ -42,17 +42,17 @@ export function embeddingText(title: string, body: string | null): string {
 }
 
 /**
- * Dwar surface used by Yaad: batched embeddings and tool-using reasoning chat.
+ * Dwar surface used by Yaad: batched embeddings and tool-using work-lane chat.
  * `caller` is sent as X-Dadi-Caller (`yaad/ingest`, `yaad/recall`, …) so Dwar's
  * inference log attributes each call's tokens to the pipeline that spent them.
  */
 export type DwarClient = {
   embed: (texts: string[], caller: string) => Promise<number[][]>;
   /**
-   * One `/chat/reasoning` call with `tool_choice: "auto"`, so the model can think before
+   * One `/chat/work` call with `tool_choice: "auto"`, so the model can think before
    * its tool call (a forced call skips thinking); callers reject a reply with no tool call.
    */
-  reason: (args: {
+  work: (args: {
     system: string;
     user: string;
     tools: DwarTool[];
@@ -117,11 +117,11 @@ export function createDwarClient(config: DwarConfig): DwarClient {
       }
       return out;
     },
-    async reason(args): Promise<DwarChatResponse> {
+    async work(args): Promise<DwarChatResponse> {
       const data = await withRetry(config, () =>
         http
           .post(
-            "/chat/reasoning",
+            "/chat/work",
             {
               system: args.system,
               messages: [{ role: "user", content: args.user }],

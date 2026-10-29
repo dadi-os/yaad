@@ -5,7 +5,7 @@ Memory for dadi. People, memories, plans, places, and the edges between them. Ya
 ## Dependencies
 
 - Postgres + pgvector (`DATABASE_URL`)
-- Dwar at `http://dwar.dadi` for embeddings and ingest reasoning (every call sends `X-Dadi-Caller`: `yaad/ingest`, `yaad/recall`, `yaad/history`)
+- Dwar at `http://dwar.dadi` for embeddings and ingest extraction on its work lane (every call sends `X-Dadi-Caller`: `yaad/ingest`, `yaad/recall`, `yaad/history`)
 - Nas for mesh DNS, compose/prod networking, and the shared logging contract
 
 ## Layout
@@ -149,7 +149,7 @@ Body: `{ kind?, name?, occurred_from?, occurred_to?, status?, limit?, offset? }`
 
 ## Ingest
 
-`POST /ingest` takes `{ text, occurred_at, participant_ids?, source }`, plus `agent_id` (kebab-case, required) when `source` is `agent`; `source: "ingest"` takes no `agent_id`. Every node the batch creates records that `agent_id`, so an agent's writes can be traced and corrected. Pipeline: embed the text and each of its lines or sentences (up to `ingest.segment_limit`) → assemble candidates in code (nearest live nodes to the whole text and to each segment, every person named by title, alias, or first or last name as a whole word, pinned participants) → Dwar reasoning with `emit_operations`, its `occurred_at` rewritten in the box's local offset → when a create resembles a live node extraction was not shown (same normalized title, or a plan within 12 hours), or a create has no edge in the batch, extraction runs once more with those nodes added and a `recheck` note saying which → validate the batch (structure, then extraction guards: every `close_node` quotes its `evidence` from the text, no create duplicates a live node or another create, as `duplicate_node`, and every created node has an edge, as `unlinked_node`) → apply in one transaction. Concurrent modification is 409.
+`POST /ingest` takes `{ text, occurred_at, participant_ids?, source }`, plus `agent_id` (kebab-case, required) when `source` is `agent`; `source: "ingest"` takes no `agent_id`. Every node the batch creates records that `agent_id`, so an agent's writes can be traced and corrected. Pipeline: embed the text and each of its lines or sentences (up to `ingest.segment_limit`) → assemble candidates in code (nearest live nodes to the whole text and to each segment, every person named by title, alias, or first or last name as a whole word, pinned participants) → Dwar work lane with `emit_operations`, its `occurred_at` rewritten in the box's local offset → when a create resembles a live node extraction was not shown (same normalized title, or a plan within 12 hours), or a create has no edge in the batch, extraction runs once more with those nodes added and a `recheck` note saying which → validate the batch (structure, then extraction guards: every `close_node` quotes its `evidence` from the text, no create duplicates a live node or another create, as `duplicate_node`, and every created node has an edge, as `unlinked_node`) → apply in one transaction. Concurrent modification is 409.
 
 Plans with `detail.all_day: true` have a date but no time of day: Yaad moves their `occurred_at`, `end_at` and `due_at` to local midnight of their dates (the box's `TZ`), so an all-day plan never carries an invented time. Absent `all_day` means a timed plan.
 

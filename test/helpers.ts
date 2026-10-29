@@ -45,7 +45,7 @@ export function mockDwar(opts: {
         return axisVector(opts.dimension, axis);
       });
     },
-    async reason(args): Promise<DwarChatResponse> {
+    async work(args): Promise<DwarChatResponse> {
       opts.reasonUsers?.push(args.user);
       const round = opts.rounds?.[reasonCalls];
       reasonCalls += 1;
