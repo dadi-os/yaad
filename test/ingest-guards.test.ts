@@ -305,6 +305,35 @@ test("candidates include a person the text names by first name only, as a whole 
   assert.ok(!(await candidateIds("Ankur and Shahid met.")).includes(riya));
 });
 
+test("candidates always include what is still open, however far its title is from the text", async () => {
+  await resetGraph(handle.sql);
+  const idea = await insertPlan(handle.db, { title: "Find a doctor", embedding: axisVector(dim, 5), occurredAt: null, status: "idea" });
+  const untimed = await insertPlan(handle.db, {
+    title: "Renew the lease",
+    embedding: axisVector(dim, 6),
+    occurredAt: null,
+    dueAt: new Date("2099-01-01T15:00:00Z"),
+  });
+  const scheduled = await insertPlan(handle.db, {
+    title: "Dentist",
+    embedding: axisVector(dim, 7),
+    occurredAt: new Date("2099-01-02T15:00:00Z"),
+  });
+  const candidates = await assembleCandidates({
+    db: handle.db,
+    sql: handle.sql,
+    config,
+    text: "Found a primary care doctor in Lansing.",
+    embedding: axisVector(dim, 1),
+    segmentEmbeddings: [],
+    participantIds: [],
+    extraIds: [],
+  });
+  const ids = candidates.nodes.map((candidate) => candidate.id);
+  assert.ok(ids.includes(idea) && ids.includes(untimed));
+  assert.ok(!ids.includes(scheduled));
+});
+
 test("history attributes a change to whoever made it, not to the node's creator", async () => {
   await resetGraph(handle.sql);
   const id = await insertMemory(handle.db, { title: "CSE 335 uses pugixml", embedding: axisVector(dim, 0) });

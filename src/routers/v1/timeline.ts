@@ -9,10 +9,10 @@
  * session completed, or takes the mark back.
  */
 
-import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, lt, ne, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
-import type { Db } from "../../db/client.js";
 import { writeOccurrence } from "../../db/occurrence.js";
+import { plansWhere, somedayPlans, type Reader } from "../../db/open-plans.js";
 import { edge, node, placeDetail, planDetail, planOccurrence, type PlanOccurrenceRow } from "../../db/schema.js";
 import { localDate, planSessions, ruleSummary, sessionOn, type PlanTiming, type Session } from "../../ingest/recurrence.js";
 import { parseKnown, toPlanDetail } from "../../serialize.js";
@@ -27,7 +27,6 @@ import {
 } from "../../types/timeline.js";
 import { outcomeBody, parse, timelineBody } from "./schemas.js";
 
-type Reader = Pick<Db, "select" | "selectDistinct">;
 
 /** How sessions expand: the box's zone, the per-range cap, and how far back series counts reach. */
 type Calendar = { timeZone: string; maxInstances: number; horizonDays: number };
@@ -77,15 +76,6 @@ export async function registerTimeline(app: FastifyInstance): Promise<void> {
       outcome_at: row?.outcomeAt?.toISOString() ?? null,
     };
   });
-}
-
-/** Live plans with their detail, narrowed by `where`. */
-function plansWhere(db: Reader, ...where: SQL[]) {
-  return db
-    .select({ node, detail: planDetail })
-    .from(node)
-    .innerJoin(planDetail, eq(planDetail.nodeId, node.id))
-    .where(and(eq(node.kind, "plan"), or(isNull(node.expiresAt), gt(node.expiresAt, new Date())), ...where));
 }
 
 /** The times a plan's sessions are worked out from. */
@@ -213,42 +203,6 @@ async function datedPlans(db: Reader, from: Date, to: Date): Promise<PlanRow[]> 
     ...(movedIn.length > 0 ? [inArray(node.id, movedIn.map((row) => row.planId))] : []),
   );
   return plansWhere(db, ne(planDetail.status, "idea"), reaches!).orderBy(asc(node.createdAt));
-}
-
-/**
- * Plans for Someday ("needs a time"): what is still up in the air. Every idea, and tasks with a
- * due or an open but no time set aside (not a series, not a bill, not due before `now`), except
- * a task whose hub files it as a milestone (a date that passes, with nothing to do), coursework
- * (an assignment or quiz of a class, worked in the study time its course budgets), and a task
- * that already has its time: a plan works on it (`FOR`), or its hub is itself a one-off timed
- * plan, the visit or session it is due for.
- */
-async function somedayPlans(db: Reader, now: Date): Promise<PlanRow[]> {
-  const settled = sql`EXISTS (
-    SELECT 1 FROM edge e
-    WHERE e.dst_id = ${node.id} AND e.valid_to IS NULL AND (
-      e.type = 'FOR'
-      OR (e.type = 'HAS_ITEM' AND (
-        e.properties->>'item' = 'milestone'
-        OR (e.properties->>'item' IN ('assignment', 'quiz')
-          AND EXISTS (SELECT 1 FROM plan_detail hub WHERE hub.node_id = e.src_id AND hub.kind = 'class'))
-        OR EXISTS (
-          SELECT 1 FROM node hub JOIN plan_detail hd ON hd.node_id = hub.id
-          WHERE hub.id = e.src_id AND hub.occurred_at IS NOT NULL AND hd.recurrence IS NULL
-        )
-      ))
-    )
-  )`;
-  const needsTime = and(
-    ne(planDetail.status, "idea"),
-    isNull(node.occurredAt),
-    isNull(planDetail.recurrence),
-    or(isNotNull(planDetail.dueAt), isNotNull(planDetail.opensAt)),
-    or(isNull(planDetail.kind), ne(planDetail.kind, "bill")),
-    or(isNull(planDetail.dueAt), gte(planDetail.dueAt, now)),
-    sql`NOT ${settled}`,
-  );
-  return plansWhere(db, or(eq(planDetail.status, "idea"), needsTime)!).orderBy(asc(node.createdAt));
 }
 
 /** The shown sessions as items, with their places, session notes, and series counts. */

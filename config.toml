@@ -32,6 +32,9 @@ segment_limit = 12
 # ANN candidates per segment, on top of candidate_limit. Raise if items in long utterances
 # still get re-created; lower to keep the prompt small.
 segment_candidate_limit = 5
+# Open plans (every idea, untimed tasks with a due or an open) always shown as candidates, newest
+# first dropped past this cap. Raise if the Needs a time list grows past it.
+open_item_limit = 40
 # Cap on current edges attached to candidates. Raise if the model keeps recreating known relationships.
 edge_context_limit = 50
 

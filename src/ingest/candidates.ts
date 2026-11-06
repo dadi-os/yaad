@@ -4,6 +4,7 @@ import { inArray } from "drizzle-orm";
 import type { Config } from "../config.js";
 import type { Db, Sql } from "../db/client.js";
 import { annSearch } from "../db/ann.js";
+import { somedayPlans } from "../db/open-plans.js";
 import { getCurrentPersons, getIncidentEdgesForIds, getNode, getNodesByIds } from "../db/read.js";
 import {
   personDetail,
@@ -113,6 +114,13 @@ export async function assembleCandidates(opts: {
         byId.set(hit.row.id, hit.row);
       }
     }
+  }
+
+  // What is still open (every idea, untimed tasks with a due or an open) is always shown: an old
+  // idea with a terse title is not near a long email or update in meaning, so similarity alone
+  // never brings it, and the model would create a second plan instead of settling the first.
+  for (const { node: open } of (await somedayPlans(opts.db, new Date())).slice(0, opts.config.ingest.open_item_limit)) {
+    byId.set(open.id, open);
   }
 
   const persons = await getCurrentPersons(opts.db);

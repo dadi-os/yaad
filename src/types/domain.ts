@@ -98,6 +98,7 @@ export type LintRule =
   | "working_note"
   | "agent_instruction"
   | "noon_placeholder"
+  | "dated_plan_title"
   | "dated_hub"
   | "long_span"
   | "duplicate_series"

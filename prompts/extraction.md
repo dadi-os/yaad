@@ -25,7 +25,7 @@ The user message is JSON:
 
 - `occurred_at` is when the utterance was said, with the UTC offset of Ankur's local time zone. It is the anchor for resolving relative dates ("tomorrow", "last Friday", "in two weeks"), and its offset is the one to use for local times in the text (mind daylight saving: a November date may need a different offset than an October one). Never use your own sense of the current date.
 - `text` is usually written by another agent on the user's behalf, often in third person ("Ankur's roommate is…"). Treat it as true, first-hand information from the user.
-- `candidates.nodes` are existing live nodes that are semantically close to the whole text or to any one of its lines or sentences, every person whose name, alias, or first or last name appears in the text, and any participants the caller pinned. Each has its `detail` (birthday/aliases for people; status, end_at, all_day, recurrence, kind, due_at, opens_at, time_zone, hide_from_planner for plans; address/coordinates for places).
+- `candidates.nodes` are existing live nodes that are semantically close to the whole text or to any one of its lines or sentences, every person whose name, alias, or first or last name appears in the text, and any participants the caller pinned. Each has its `detail` (birthday/aliases for people; status, end_at, all_day, recurrence, kind, due_at, opens_at, time_zone, hide_from_planner for plans; address/coordinates for places). Every plan that is still open is always among them, whatever the text says: each idea, and each task that has a due or an open but no time set aside (Ankur's Needs a time list). A terse old title is rarely close to a long update in meaning, so closeness alone never shows them.
 - `candidates.edges` are current edges touching those nodes. Their `src_id` / `dst_id` may point at nodes that are not in `candidates.nodes`; those ids are still live and you may use them as edge endpoints.
 - `recheck`, when present, means this is a second pass and says what your first pass got wrong. Either it created nodes that look like existing ones you had not been shown — those nodes are now in the candidates: reuse or update them, create only what is genuinely new, since Yaad rejects the whole batch if a created plan or memory repeats a live node's title (and, for a plan, its time) — or it created nodes with no edge: link each to its subject, hub, or Ankur, or leave it out. Yaad rejects the whole batch if a created node has no edge.
 
@@ -82,7 +82,7 @@ If you catch yourself writing a memory title of the form "<entity> <verb> <other
 A **hub** is the node that stands for a compound thing. A **facet** is a memory node holding one coherent fact about that thing, linked from the hub.
 
 - **Hub kind.** If the thing lives on a calendar — a class, a recurring meeting, a shift, a practice, a trip with dates — the hub is a `plan`: it *is* the calendar item, with `status: "confirmed"` when it is really happening. Otherwise — a laptop, a car, a pet, a project, a club — the hub is a `memory`.
-- **Hub title** is the thing's own identifier, as specific as the utterance allows: `"CSE 380: Information Management and the Cloud (Fall 2026)"`, `"Ankur Desai's 2019 Honda Civic"`, `"Dadi (Ankur Desai's home server project)"`. It names the thing, not a sentence about a person.
+- **Hub title** is the thing's own short, stable identifier: `"CSE 380"`, `"Ankur Desai's 2019 Honda Civic"`, `"Dadi (Ankur Desai's home server project)"`. It names the thing, not a sentence about a person. **A title never carries the term, a date, a time, a room, or a section** ("CSE 380", never "CSE 380 (Fall 2026)" or "CSE 380 — lab (section 001): Thursdays 9:10 AM, Holden Hall"): the full course name, term, section, and place live in facets, edges, and the plan's time fields, and a plan's description goes in `body`.
 - **Hub edges.** Link the hub to every person it belongs to (`ENROLLED_IN`, `TEACHES`, `OWNS`, `MEMBER_OF`, `WORKS_ON`, `PARTICIPANT`) and to every place it happens at or belongs to (`AT_LOCATION`, hub as `src`, place as `dst`).
 - **Facets.** Each coherent fact about the thing itself is one memory node, linked hub `—HAS_FACET {"facet": "<snake_case name>"}→` facet. Facet titles use the form `"<hub short name> — <facet label>: <value>"`; when the value is several lines read together, the title says it in short and the body holds one line per item. A course's identity is one facet: `"CSE 380 — course identity: CSE 380, Information Management and the Cloud, section LEC1, Fall 2026"`, body `"D2L offering: FS26-CSE-380-LEC1"`. A quiz's rules are one facet: `"CSE 431 Quiz 3 — rules: pen and paper, one double-sided note sheet, no devices"`. Keep identifiers exactly as the source wrote them; they are what the user will search for.
 - **Dated items are plans, not facets.** Anything belonging to the hub that Ankur attends, does, or must meet on its own date — an assignment, a quiz, an exam, a deadline, a milestone — is a `plan` linked hub `—HAS_ITEM {"item": "<assignment | quiz | exam | deadline | milestone>"}→` plan. The item decides whether the plan waits in Needs a time: a `milestone` is a date that passes with nothing for Ankur to do on it (enrollment opens, the term ends, access or a link expires, a stage closes), a `deadline` is something he must do by then (submit a form, take an assessment, book a vaccine), and an `assignment` or `quiz` of a class is worked in that course's study time. One meeting of a recurring hub is never its own plan (§3.7).
@@ -106,13 +106,13 @@ Ankur —PARTICIPANT→ [plan "Ankur Desai's Fall 2026 MSU course enrollment", b
 Right — one hub per course, each a calendar `plan`, each with its own facets:
 
 ```
-Ankur —ENROLLED_IN {"status": "enrolled"}→ [plan "CSE 380: Information Management and the Cloud (Fall 2026)"] —AT_LOCATION→ [place Michigan State University]
+Ankur —ENROLLED_IN {"status": "enrolled"}→ [plan "CSE 380"] —AT_LOCATION→ [place Michigan State University]
   [CSE 380] —HAS_FACET {"facet": "course_code"}→ [memory "CSE 380 — course code: CSE 380"]
   [CSE 380] —HAS_FACET {"facet": "course_name"}→ [memory "CSE 380 — course name: Information Management and the Cloud"]
   [CSE 380] —HAS_FACET {"facet": "section"}→ [memory "CSE 380 — section: LEC1"]
   [CSE 380] —HAS_FACET {"facet": "term"}→ [memory "CSE 380 — term: Fall 2026"]
   [CSE 380] —HAS_FACET {"facet": "d2l_offering"}→ [memory "CSE 380 — D2L offering: FS26-CSE-380-LEC1"]
-Ankur —ENROLLED_IN {"status": "enrolled"}→ [plan "IBIO 150: Integrating Biology: From DNA to Populations (Fall 2026)"] —AT_LOCATION→ [place Michigan State University]
+Ankur —ENROLLED_IN {"status": "enrolled"}→ [plan "IBIO 150"] —AT_LOCATION→ [place Michigan State University]
   … the same five facets for IBIO 150, section 005 …
 ```
 
@@ -235,6 +235,8 @@ Work through the utterance fact by fact. For each fact, run this checklist.
 
 ### 3.1 Resolve every entity to an existing node first
 
+**Settle what is open before you create anything.** Read the candidate plans that are still open: `status: "idea"`, or a `due_at` or `opens_at` with no `occurred_at`. When the text reports one of them done, submitted, applied, booked, found, scheduled, rejected, declined, or dropped, act on that plan (§4.1, §4.3), never on a new plan or a new memory that restates it ("Ankur applied to IBM" beside the idea "Apply to IBM"; "found a primary care doctor" beside "Establish primary care"). When the text gives one a time, put the time on it. Create a plan beside an open one only for something genuinely different.
+
 **Edit before you create.** Creating a node is the last resort, used only when you are confident nothing in the candidates refers to the same thing.
 
 People:
@@ -306,7 +308,9 @@ A node holds one fact the way a reader asks for it. Facts asked about separately
 - Normalize units and spelling: `"6 feet 2 inches"`, `"5 feet 10 inches"`.
 - `body` holds useful nuance the title does not: why, how strongly, exceptions, quotes worth keeping. "Loves sushi despite the shellfish allergy — sticks to salmon and tuna rolls." Leave `body` null when there is nothing to add. Never restate the title.
 - Person titles are just the name: `"Sparsh Yandooru"`. Place titles are the name or address. Plan titles describe the event: `"Dinner with Vedant at Sultan's"`. Hub titles are the thing's identifier and facet titles are `"<hub short name> — <facet label>: <value>"` (§2.2).
-- **Titles never use relative words** — "next", "upcoming", "tonight", "this week", "latest". They are false the day after they are written. Name the thing and, when it helps, its date: `"CSE 431 — Algorithm Design Tools Quiz (Oct 15, 2026)"`.
+- **Plan titles are stable names, not descriptions.** A plan title is what Ankur would call the thing out loud: `"CSE 300 discussion session"`, `"CSE 431 HW3 due"`, `"Dinner at Ciccio Mio"`, `"Michigan license expires"`. It never contains a date, a time or time range, a weekday schedule, a term ("Fall 2026"), a section number, a room or address, or a parenthetical of any of those, and never the facts the plan's own fields hold (`occurred_at`, `end_at`, `due_at`, `recurrence`, the `AT_LOCATION` place). Anything worth keeping beyond the name ("in person, Wells Hall room B-106, bring laptop") goes in `body` as the description. Two sessions of one thing keep the same title; their dates tell them apart.
+- **One real-world event is one plan.** Before creating a plan, compare it with the candidates by what it is, not by exact wording or time: the same class, deadline, appointment, call, or trip with a start only, a start and end, or more detail is the same plan. `update_node` the candidate with the new time or detail; never create a sibling.
+- **Titles never use relative words** — "next", "upcoming", "tonight", "this week", "latest". They are false the day after they are written. Name the thing; its date is `occurred_at` / `due_at`, never part of a plan title (`"CSE 431 Algorithm Design Tools Quiz"`, not `"… Quiz (Oct 15, 2026)"`).
 - **Say exactly what the source says, never more.** Being enrolled in something is not attending or completing it. Being listed in a portal is not participating. Planning to go is not having gone. If the source says "enrolled in the Summer 2024 orientation", the node says enrolled — not "completed the orientation", not "attended". Upgrading the verb invents a fact.
 
 ### 3.7 Dates: `occurred_at` is for things that happen, not facts that are true
@@ -374,10 +378,11 @@ The graph keeps history for every change, so editing in place loses nothing. Pre
 - Learned nickname → `detail.aliases`. **`aliases` replaces the whole list** — send every existing alias from the candidate's `detail.aliases` plus the new one, or you will erase the old ones.
 - Learned an address for a place → `detail.address`.
 - A plan got confirmed → `detail.status: "confirmed"`. A one-off plan moved → new `occurred_at`. It is the same plan. One session of a series moved → `edit_occurrence` (below).
-- An idea got done or got a date — applied, booked, submitted, scheduled → it is no longer an idea. `update_node` it to `detail.status: "confirmed"` with `occurred_at` = when it happened or will happen (all-day when only the day is known), and retitle it to what it became when the old title no longer fits (`"Dryft — Member of Technical Staff Intern (US) application submitted"`). Its facets stay on it. Never leave the idea live beside the memory that says it was done, and close it only when it was dropped or cancelled (§4.3).
+- **A closed door closes its plans.** When the text says Ankur was rejected, declined, withdrew, missed the cutoff, or an event he was going to is cancelled or over for him (a rejection email, "not moving forward", "I'm not going"), close every plan that existed only for it with `close_node` (the application deadline, the assessment, the pre-event, the call, the follow-up) and keep at most one memory in the past tense (`"Ankur Desai was rejected from HackUTD 2026"`). A plan for something that can no longer happen never stays on the calendar.
+- An idea or an untimed task got done or got a date — applied, booked, submitted, found, scheduled → an idea is no longer an idea, and an untimed task is settled by `edit_occurrence` with `outcome: "done"` on its due date (§4.1). `update_node` it to `detail.status: "confirmed"` with `occurred_at` = when it happened or will happen (all-day when only the day is known; when the text gives no date, the day the text is from), and retitle it to what it became when the old title no longer fits (`"Dryft — Member of Technical Staff Intern (US) application submitted"`). Its facets stay on it. Never leave the idea live beside the memory that says it was done, and close it only when it was dropped or cancelled (§4.3).
 - Learned the schedule, room, or instructor for an existing hub (a course already in the candidates) → `update_node` the hub's `occurred_at` / `detail.end_at` / `detail.recurrence` from its own meeting schedule, plus new facet, place, and person nodes linked to that same hub. Never create a second hub for the same course, and never date a hub from one of its items (§3.7).
 - Learned a new fact about an existing hub → `update_node` the facet it belongs with (the identity facet gains the room code), or a new facet when it is a separate fact. A changed value ("section moved to LEC2") → `update_node` the facet that holds it.
-- **What happened to one session is `edit_occurrence`**, never a body edit, a memory, or a change to the series. A session is named by `node_id` and `occurrence_date`, the local date it was scheduled for (its start's date, or its due's date for a deadline). Done, submitted, attended, taken → `outcome: "done"`; missed, skipped, did not go → `outcome: "missed"`; when it really ran → `actual_start` / `actual_end`; cancelled → `state: "cancelled"`; moved → `state: "moved"` with `start_at` (and `end_at`, or it keeps its length). A reason worth keeping ("missed: no car", "knee was sore") is a memory linked plan `—HAS_NOTE {"occurrence": "<date>"}→` memory. The outcome itself is never also a note: a note never restates that the session was done, submitted, attended, or missed, or when, or how much of it ("all six questions submitted"); the edit already says so. A score is one memory per item (`"CSE 431 HW3 — score: 18/20"`), updated in place when it changes. Never a new memory per submission, attempt, or check.
+- **What happened to one session is `edit_occurrence`**, never a body edit, a memory, or a change to the series. A session is named by `node_id` and `occurrence_date`, the local date it was scheduled for (its start's date, or its due's date for a deadline). Done, submitted, attended, taken → `outcome: "done"`; missed, skipped, did not go → `outcome: "missed"`; when it really ran → `actual_start` / `actual_end`; cancelled → `state: "cancelled"`; moved → `state: "moved"` with `start_at` (and `end_at`, or it keeps its length). A reason worth keeping ("missed: no car", "knee was sore") is a memory linked plan `—HAS_NOTE {"occurrence": "<date>"}→` memory. The outcome itself is never also a note: a note never restates that the session was done, submitted, attended, or missed, or when, or how much of it ("all six questions submitted"); the edit already says so. Never a new memory per submission, attempt, or check, and never one for a score on a single quiz, assignment, or exam: the gradebook (D2L, Gradescope) is where those live and agents read it there.
 - Learned a person's real name → new `title` (and alias for the old descriptor if useful).
 
 ### 4.2 A memory changed or was refined
@@ -417,6 +422,8 @@ If the candidates contain two nodes that are clearly the same person or place, d
 **Progress on work an agent is doing for Ankur is not memory either.** Drafted, committed locally, not submitted yet, still needs his review — the agent tracks that itself and reports it to him. Store the work's deadline and requirements; never its progress.
 
 If the utterance holds nothing but working notes or progress, emit a `noop` with the reason `"agent working note"`.
+
+**Records of things done are not memory.** What an agent can read back from the system that holds it, or that only says "this session happened", is not stored: a score or grade on one graded item, when something was submitted, the sets and weights of one workout, a single reading of weight or blood pressure, a confirmation number or access code. What is stored is what stays true and changes what someone does next: a final course grade, a standing policy, a trend that became a goal, a condition, a medication.
 
 **Instructions to agents are not memory.** How an agent should do its job — "no agent may submit coursework", "always ask Ankur before sending", how to lay out his planner, a LinkedIn note template, a routine's steps, who asks whom on Sundays — belongs in that agent's charter, not in Yaad. So do approvals and message trails ("Ankur approved the draft", "career-manager relayed the offer"). Store any fact about Ankur's world that came with it; emit `noop` with the reason `"agent instruction"` for the rest. How he wants his time scheduled is schedule-specialist's to keep; a preference about his life itself (he dislikes seafood) is a memory.
 
@@ -475,7 +482,7 @@ In particular:
 7. No title claims more than the source said (enrolled ≠ attended ≠ completed).
 8. Lasting facts have no `occurred_at`. Events and plans have correctly resolved dates; nothing with only a season/term/month got an invented day, and nothing with only a date got an invented time (it is `all_day`). No hub took an item's date. Every `recurrence` has an `occurred_at`, with local `BYDAY` days.
 9. Every deadline and dated item is a plan linked from its hub with `HAS_ITEM`, titled without relative words; a deadline has `due_at` and no `occurred_at`, a scheduled task keeps its `due_at`, and every plan has the `kind` that fits. No plan is an agent's routine, an open or release date, a late cutoff, one meeting of a series, a period that is a rule, or someone else's availability, and no idea is a preference or rule. A class that meets on certain dates lists them with `RDATE`, and a time in another time zone carries that zone's offset.
-10. Every idea in the candidates that the text says was done or scheduled is updated to a confirmed, dated plan.
+10. Every open plan in the candidates (an idea, or a task with a due or an open and no time) that the text says was done, found, submitted, booked, scheduled, rejected, or dropped is updated, marked done, or closed, and no new plan or memory restates it.
 11. No status snapshot is stored without a date in its title and `ttl_days`, no "not yet" or "there is no" observation is stored at all, and no agent working note or instruction to an agent is stored.
 12. Every `close_node` quotes its evidence from the utterance, and no node was closed only because the utterance left it out.
 13. No edge duplicates a current candidate edge; changed edges are closed and recreated.
@@ -680,12 +687,12 @@ Text: "Ankur Desai is enrolled in these MSU D2L courses for Fall 2026: FS26-CSE-
 
 ```json
 { "operations": [
-  { "op": "create_node", "temp_id": "cse380", "kind": "plan", "title": "CSE 380: Information Management and the Cloud (Fall 2026)", "detail": { "status": "confirmed" } },
+  { "op": "create_node", "temp_id": "cse380", "kind": "plan", "title": "CSE 380", "detail": { "status": "confirmed" } },
   { "op": "create_edge", "src": "fa32da87-278a-4f65-a106-b947c0b7724d", "dst": "cse380", "type": "ENROLLED_IN", "properties": { "status": "enrolled" }, "confidence": 1.0 },
   { "op": "create_edge", "src": "cse380", "dst": "ad5c37ef-a5a0-46cc-a6ac-99b79cfc95ca", "type": "AT_LOCATION", "confidence": 1.0 },
   { "op": "create_node", "temp_id": "cse380_identity", "kind": "memory", "title": "CSE 380 — course identity: CSE 380, Information Management and the Cloud, section LEC1, Fall 2026", "body": "D2L offering: FS26-CSE-380-LEC1" },
   { "op": "create_edge", "src": "cse380", "dst": "cse380_identity", "type": "HAS_FACET", "properties": { "facet": "identity" }, "confidence": 1.0 },
-  { "op": "create_node", "temp_id": "ibio150", "kind": "plan", "title": "IBIO 150: Integrating Biology: From DNA to Populations (Fall 2026)", "detail": { "status": "confirmed" } },
+  { "op": "create_node", "temp_id": "ibio150", "kind": "plan", "title": "IBIO 150", "detail": { "status": "confirmed" } },
   { "op": "create_edge", "src": "fa32da87-278a-4f65-a106-b947c0b7724d", "dst": "ibio150", "type": "ENROLLED_IN", "properties": { "status": "enrolled" }, "confidence": 1.0 },
   { "op": "create_edge", "src": "ibio150", "dst": "ad5c37ef-a5a0-46cc-a6ac-99b79cfc95ca", "type": "AT_LOCATION", "confidence": 1.0 },
   { "op": "create_node", "temp_id": "ibio150_identity", "kind": "memory", "title": "IBIO 150 — course identity: IBIO 150, Integrating Biology: From DNA to Populations, section 005, Fall 2026", "body": "D2L offering: FS26-IBIO-150-005" },
@@ -702,7 +709,7 @@ Each course is its own calendar hub with one identity facet: code, name, section
 
 ### 6.13 Learning a course's schedule, room, and instructor
 
-Candidates: person Ankur Desai (`fa32da87-278a-4f65-a106-b947c0b7724d`), plan "CSE 380: Information Management and the Cloud (Fall 2026)" (`c3e80a1b-5d2f-4e6a-9b17-0f4d8a2c6e35`, `occurred_at` null, `detail.recurrence` null), place Michigan State University (`ad5c37ef-a5a0-46cc-a6ac-99b79cfc95ca`), edges Ankur `—ENROLLED_IN→` CSE 380 and CSE 380 `—AT_LOCATION→` MSU, and the course's facets.
+Candidates: person Ankur Desai (`fa32da87-278a-4f65-a106-b947c0b7724d`), plan "CSE 380" (`c3e80a1b-5d2f-4e6a-9b17-0f4d8a2c6e35`, `occurred_at` null, `detail.recurrence` null), place Michigan State University (`ad5c37ef-a5a0-46cc-a6ac-99b79cfc95ca`), edges Ankur `—ENROLLED_IN→` CSE 380 and CSE 380 `—AT_LOCATION→` MSU, and the course's facets.
 
 Text: "CSE 380 meets Tuesdays and Thursdays 10:20 to 11:40 AM in Wells Hall B115, from August 25 through December 10. It's taught by Dr. Rachel Kim."
 
@@ -751,7 +758,7 @@ The screening had a set time before it happened, so it is a confirmed `plan` wit
 
 ### 6.15 An agent's course status report
 
-Candidates: person Ankur Desai (`fa32da87-278a-4f65-a106-b947c0b7724d`, `aliases: ["Ankur"]`), plan "CSE 335: Object-Oriented Software Design (Fall 2026)" (`277b2685-c30e-4cda-ba9b-10198338e52d`, `occurred_at` null), plan "CSE 335 — Design 5: Advanced UML Class Diagrams due" (`79e44c5c-2b51-4b51-b43f-3bef58562fa2`, `detail.due_at` `2026-10-06T03:55:00Z`), plan "CSE 335 — Design 5 peer reviews due" (`fc5787f1-0d1e-4a52-9b0e-6c2f1d8e7a34`, `detail.due_at` `2026-10-10T03:55:00Z`); edges hub `—HAS_ITEM {"item": "assignment"}→` each of the two plans. Utterance `occurred_at`: `2026-10-01T02:07:00-04:00`.
+Candidates: person Ankur Desai (`fa32da87-278a-4f65-a106-b947c0b7724d`, `aliases: ["Ankur"]`), plan "CSE 335" (`277b2685-c30e-4cda-ba9b-10198338e52d`, `occurred_at` null), plan "CSE 335 — Design 5: Advanced UML Class Diagrams due" (`79e44c5c-2b51-4b51-b43f-3bef58562fa2`, `detail.due_at` `2026-10-06T03:55:00Z`), plan "CSE 335 — Design 5 peer reviews due" (`fc5787f1-0d1e-4a52-9b0e-6c2f1d8e7a34`, `detail.due_at` `2026-10-10T03:55:00Z`); edges hub `—HAS_ITEM {"item": "assignment"}→` each of the two plans. Utterance `occurred_at`: `2026-10-01T02:07:00-04:00`.
 
 Text: "CSE 335 update as of Oct 1: Design 5 (Advanced UML Class Diagrams) is due Mon Oct 5 at 11:55 PM. Design 4 peer reviews are due Fri Oct 2 at 11:55 PM. The last day to drop with no grade reported is Monday, October 19. Projects 1 and 2 are not posted yet. Step 4 is committed on branch feat/step-4 in /var/lib/dadi/code/cse-335."
 
@@ -765,3 +772,22 @@ Text: "CSE 335 update as of Oct 1: Design 5 (Advanced UML Class Diagrams) is due
 ```
 
 Design 5 is already stored at that time, so nothing is created for it. The Design 5 peer reviews are not mentioned, so they are left alone — not closed. The new deadlines are task plans on the course with `HAS_ITEM`, each with a `due_at` and no start; the drop date has no time, so it is all-day, due at local midnight. "Not posted yet" is a status that will change, and the branch and path are the agent's working notes, so neither is stored. "As of Oct 1" dates the report; it is not a fact to keep.
+
+### 6.16 Open plans get settled, not restated
+
+Candidates: person Ankur Desai (`fa32da87-278a-4f65-a106-b947c0b7724d`, `aliases: ["Ankur"]`), plan "Establish Lansing-area primary care" (`4b1c9e20-5d7a-4f63-9a08-1e2c3d4f5a60`, `status: "idea"`, `occurred_at` null), plan "Apply to Dryft" (`8d2f6a13-7c4e-4b95-a1d0-3f5e7c9b2a14`, `status: "idea"`, `occurred_at` null).
+
+Text (from Oct 30, 2026): "Ankur found a primary care doctor in Lansing, Dr. Priya Rao at Sparrow Family Medicine. Dryft rejected his application."
+
+```json
+{ "operations": [
+  { "op": "update_node", "node_id": "4b1c9e20-5d7a-4f63-9a08-1e2c3d4f5a60", "title": "Primary care with Dr. Priya Rao at Sparrow Family Medicine", "occurred_at": "2026-10-30T00:00:00-04:00", "detail": { "status": "confirmed", "all_day": true } },
+  { "op": "create_node", "temp_id": "rao", "kind": "person", "title": "Dr. Priya Rao", "detail": { "aliases": ["Priya"] } },
+  { "op": "create_edge", "src": "rao", "dst": "4b1c9e20-5d7a-4f63-9a08-1e2c3d4f5a60", "type": "PARTICIPANT", "confidence": 1.0 },
+  { "op": "close_node", "node_id": "8d2f6a13-7c4e-4b95-a1d0-3f5e7c9b2a14", "reason": "Dryft rejected the application.", "evidence": "Dryft rejected his application." },
+  { "op": "create_node", "temp_id": "rejected", "kind": "memory", "title": "Dryft rejected Ankur Desai's application" },
+  { "op": "create_edge", "src": "fa32da87-278a-4f65-a106-b947c0b7724d", "dst": "rejected", "type": "ABOUT", "confidence": 1.0 }
+] }
+```
+
+Both ideas were in the candidates although neither is close to the text in meaning, so each is settled where it stands: the first becomes the confirmed plan it turned into (the day of the text, since no date is given), and the second is closed because it can no longer happen. No new plan is created beside either. The rejection survives as one short past-tense memory.

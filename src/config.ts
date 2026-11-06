@@ -36,6 +36,7 @@ const fileSchema = z.object({
     candidate_limit: z.number().int().positive(),
     segment_limit: z.number().int().positive(),
     segment_candidate_limit: z.number().int().positive(),
+    open_item_limit: z.number().int().positive(),
     edge_context_limit: z.number().int().positive(),
   }),
   plan: z.object({

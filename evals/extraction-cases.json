@@ -2401,6 +2401,129 @@
           "why": "The room goes on the plan's AT_LOCATION edge"
         }
       ]
-    }
+    },
+      {
+        "name": "open-idea-with-terse-title-is-settled-by-a-receipt",
+        "finding": "TL3",
+        "occurred_at": "2026-10-21T01:20:00-04:00",
+        "text": "Application receipt from talent@ibm.com, Oct 21, 2026, 1:09 AM ET: thank you for applying to Intern Data Specialist 2027 - AI & Analytics at IBM. The application used a referral from Manisha Mami and was submitted for Ankur by his agent. The next step is a HackerRank coding assessment, which IBM will email within a few days.",
+        "candidates": {
+          "nodes": [
+            {
+              "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+              "kind": "person",
+              "title": "Ankur Desai",
+              "detail": {
+                "birthday": "2005-11-25",
+                "aliases": [
+                  "Ankur"
+                ]
+              }
+            },
+            {
+              "id": "3c5f0b12-8e47-4a6d-9b21-7d1e4f6a8c30",
+              "kind": "plan",
+              "title": "Internal application to IBM through Manisha Mami",
+              "occurred_at": null,
+              "detail": {
+                "end_at": null,
+                "all_day": false,
+                "status": "idea",
+                "recurrence": null,
+                "series_id": null
+              }
+            }
+          ],
+          "edges": []
+        },
+        "expectations": [
+          {
+            "expect": "some",
+            "match": {
+              "op": "update_node",
+              "node_id": "3c5f0b12-8e47-4a6d-9b21-7d1e4f6a8c30",
+              "sets": "occurred_at"
+            },
+            "check": {
+              "local_date": "2026-10-21"
+            },
+            "why": "The open idea is what this receipt settles, so it is dated to when the application was submitted and leaves Needs a time"
+          },
+          {
+            "expect": "none",
+            "match": {
+              "op": "create_node",
+              "kind": "plan",
+              "title": "IBM"
+            },
+            "why": "The application is the idea that was open, never a second plan beside it"
+          },
+          {
+            "expect": "none",
+            "match": {
+              "op": "close_node",
+              "node_id": "3c5f0b12-8e47-4a6d-9b21-7d1e4f6a8c30"
+            },
+            "why": "It was done, not dropped"
+          }
+        ]
+      },
+      {
+        "name": "found-doctor-settles-the-open-primary-care-plan",
+        "finding": "TL3",
+        "occurred_at": "2026-10-30T12:00:00-04:00",
+        "text": "Ankur has a Lansing doctor now: Dr. Priya Rao at Sparrow Family Medicine will be his primary care.",
+        "candidates": {
+          "nodes": [
+            {
+              "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+              "kind": "person",
+              "title": "Ankur Desai",
+              "detail": {
+                "birthday": "2005-11-25",
+                "aliases": [
+                  "Ankur"
+                ]
+              }
+            },
+            {
+              "id": "5a7d2e91-0c3b-4f68-8a14-2b9c6d0e1f47",
+              "kind": "plan",
+              "title": "Establish Lansing-area primary care for Ankur Desai",
+              "occurred_at": null,
+              "detail": {
+                "end_at": null,
+                "all_day": false,
+                "status": "idea",
+                "recurrence": null,
+                "series_id": null
+              }
+            }
+          ],
+          "edges": []
+        },
+        "expectations": [
+          {
+            "expect": "some",
+            "match": {
+              "op": "update_node",
+              "node_id": "5a7d2e91-0c3b-4f68-8a14-2b9c6d0e1f47",
+              "sets": "occurred_at"
+            },
+            "check": {
+              "local_date": "2026-10-30"
+            },
+            "why": "Finding the doctor settles the open plan on the day it was reported"
+          },
+          {
+            "expect": "none",
+            "match": {
+              "op": "create_node",
+              "kind": "plan"
+            },
+            "why": "Nothing new is scheduled; no second primary care plan is created beside the open one"
+          }
+        ]
+      }
   ]
 }

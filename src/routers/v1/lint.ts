@@ -18,9 +18,11 @@ import type { LintFinding } from "../../types/domain.js";
 /** Status wording that stops being true: "as of", "not yet", "so far", "still needs", "no … found". */
 const STATUS_PATTERN = String.raw`\m(as of|not yet|so far|still needs?|unconfirmed)\M|\mno\M.{0,60}\m(found|posted|yet)\M`;
 /** Wording of an agent's own plumbing and how-to (paths, branches, wakes, stored credentials, site and tool lessons) rather than facts about Ankur's world. */
-const WORKING_NOTE_PATTERN = String.raw`/var/lib|\mworktree|\mbranch\M|\mcommit\M|this agent|\mwake\M|credentials? (set up|exist|stored)|\mchaavi\M|site lesson|\mhow-to\M|shadow dom|\mdom\M|\mref [a-z]\d|accessibility tree|browser (task|helper)|terminal (task|helper)|steer_(browser|terminal)|\.(tsx?|py|go|aspx)\M|\mline \d+`;
+const WORKING_NOTE_PATTERN = String.raw`/var/lib|\mworktree|\mbranch\M|\mcommit\M|this agent|\mwake\M(?![ -]word)|credentials? (set up|exist|stored)|\mchaavi\M|site lesson|\mhow-to\M|shadow dom|\mdom\M|\mref [a-z]\d|accessibility tree|browser (task|helper)|terminal (task|helper)|steer_(browser|terminal)|\.(tsx?|py|go|aspx)\M|\mline \d+`;
 /** Wording of a rule for how agents work ("no agent may submit", "Ankur wants agents to"), which belongs in a charter. */
 const AGENT_INSTRUCTION_PATTERN = String.raw`\mno agents? (may|should|can)\M|\magents? (must|should|may) (never|not|always|only)\M|\mwants (the )?(agents?|dadi|specialists?) to\M|\m(specialists?|managers?|helpers?) (must|should) (never|always)\M`;
+/** A term, month-and-day, clock time, or section number in a plan title: facts the plan's own time, place, and description fields hold. */
+const DATED_TITLE_PATTERN = String.raw`\m(fall|spring|summer|winter) 20\d\d\M|\m(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]* \d{1,2}\M|\d{1,2}(:\d\d)? ?(am|pm)\M|\msection \d`;
 /** A full street address holds a building number and a street ("428 S Shaw Ln, East Lansing, MI"). */
 const STREET_NUMBER_PATTERN = String.raw`\m\d+[A-Za-z]?\s+[A-Za-z]`;
 /** A plan spanning more than this is usually a period that is a rule (a drop period, an appointment term), not something Ankur does. */
@@ -80,6 +82,20 @@ export async function registerLint(app: FastifyInstance): Promise<void> {
         node_ids: [row.id],
         title: row.title,
         note: "Starts at exactly noon, the old placeholder for an unstated time; set the real time or make it all_day.",
+      });
+    }
+
+    const datedTitles = await app.db
+      .select({ id: node.id, title: node.title })
+      .from(node)
+      .where(and(eq(node.kind, "plan"), live, sql`${node.title} ~* ${DATED_TITLE_PATTERN}`))
+      .orderBy(asc(node.createdAt));
+    for (const row of datedTitles) {
+      findings.push({
+        rule: "dated_plan_title",
+        node_ids: [row.id],
+        title: row.title,
+        note: "The title carries a term, date, time, or section; rename it to the stable name and keep those in the time fields, the place edge, or the body.",
       });
     }
 

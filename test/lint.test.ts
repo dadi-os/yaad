@@ -124,6 +124,11 @@ test("GET /lint flags snapshots, working notes, agent instructions, noon placeho
   assert.deepEqual(flagged("working_note").flat().sort(), [note, sourceNote].sort());
   assert.deepEqual(flagged("agent_instruction"), [[instruction]]);
   assert.deepEqual(flagged("noon_placeholder"), [[noon]]);
+  const datedTitles = flagged("dated_plan_title").flat();
+  for (const id of [seriesA, seriesB, hub, dropPeriod]) {
+    assert.ok(datedTitles.includes(id), `dated title not flagged: ${id}`);
+  }
+  assert.ok(!datedTitles.includes(noon) && !datedTitles.includes(assignment));
   assert.deepEqual(flagged("dated_hub"), [[hub]]);
   assert.deepEqual(flagged("long_span"), [[dropPeriod]]);
   assert.deepEqual(
