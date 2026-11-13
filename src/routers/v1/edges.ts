@@ -30,7 +30,7 @@ export async function registerEdges(app: FastifyInstance): Promise<void> {
         confidence: body.confidence,
       },
     ];
-    await validateOperations({ db: app.db, operations });
+    await validateOperations({ db: app.db, operations, timeZone: app.config.env.timezone });
     const result = await applyOperations({ db: app.db, dwar: app.dwar, operations, author: MANUAL, config: app.config });
     const created = result.operations.find((op) => op.op === "create_edge");
     if (!created?.id) {
@@ -43,7 +43,7 @@ export async function registerEdges(app: FastifyInstance): Promise<void> {
   app.post("/edges/:id/close", async (request) => {
     const { id } = parse(idParam, request.params);
     const operations: Operation[] = [{ op: "close_edge", edge_id: id, reason: "closed by hand" }];
-    await validateOperations({ db: app.db, operations });
+    await validateOperations({ db: app.db, operations, timeZone: app.config.env.timezone });
     const result = await applyOperations({ db: app.db, dwar: app.dwar, operations, author: MANUAL, config: app.config });
     if (result.orphans.length > 0) {
       request.log.info({ request_id: request.requestId, node_ids: result.orphans }, "orphans swept");

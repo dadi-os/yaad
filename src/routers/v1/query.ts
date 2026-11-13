@@ -1,17 +1,13 @@
-/**
- * `POST /query` — exact/filter lookup over live nodes (kind, name, date, plan status). A date
- * range lists a recurring plan once per occurrence, each carrying the plan's id as series_id
- * and its own start, end, due, and open times.
- */
+/** `POST /query` — exact/filter lookup over live nodes (kind, name, date range, plan status, tasks relevant on a day). */
 
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../../db/client.js";
 import { assertFilterCoherent, filterNodes, hasFilter } from "../../db/filter.js";
-import { getPersonDetail, getPlaceDetail, getPlanDetail } from "../../db/read.js";
+import { getPersonDetail, getPlaceDetail, getPlanDetail, getTaskDetail } from "../../db/read.js";
 import type { NodeRow } from "../../db/schema.js";
 import { YaadError } from "../../errors.js";
-import { toNodeRecord, toPersonDetail, toPlaceDetail, toPlanDetail } from "../../serialize.js";
-import type { PersonDetail, PlaceDetail, PlanDetail } from "../../types/domain.js";
+import { toNodeRecord, toPersonDetail, toPlaceDetail, toPlanDetail, toTaskDetail } from "../../serialize.js";
+import type { PersonDetail, PlaceDetail, PlanDetail, TaskDetail } from "../../types/domain.js";
 import { parse, queryBody } from "./schemas.js";
 
 export async function registerQuery(app: FastifyInstance): Promise<void> {
@@ -33,28 +29,9 @@ export async function registerQuery(app: FastifyInstance): Promise<void> {
 
     const limit = requestedLimit ?? app.config.page.default_size;
     const offset = requestedOffset ?? 0;
-    const matches = await filterNodes(app.db, filter, limit, offset, {
-      timeZone: app.config.env.timezone,
-      plan: app.config.plan,
-    });
+    const matches = await filterNodes(app.db, filter, limit, offset);
     const nodes = [];
-    for (const { row, occurrence } of matches) {
-      if (occurrence) {
-        const plan = toPlanDetail(await getPlanDetail(app.db, row.id));
-        const iso = (value: Date | null) => (value ? value.toISOString() : null);
-        nodes.push({
-          ...toNodeRecord(row),
-          occurred_at: iso(occurrence.start),
-          detail: {
-            ...plan,
-            end_at: iso(occurrence.end),
-            due_at: iso(occurrence.due),
-            opens_at: iso(occurrence.opens),
-            series_id: row.id,
-          },
-        });
-        continue;
-      }
+    for (const row of matches) {
       nodes.push({ ...toNodeRecord(row), detail: await loadDetail(app.db, row) });
     }
     return { nodes, limit, offset };
@@ -64,7 +41,10 @@ export async function registerQuery(app: FastifyInstance): Promise<void> {
 async function loadDetail(
   db: Db,
   row: NodeRow,
-): Promise<PersonDetail | PlanDetail | PlaceDetail | null> {
+): Promise<PersonDetail | PlanDetail | PlaceDetail | TaskDetail | null> {
+  if (row.kind === "task") {
+    return toTaskDetail(await getTaskDetail(db, row.id));
+  }
   if (row.kind === "person") {
     return toPersonDetail(await getPersonDetail(db, row.id));
   }

@@ -27,7 +27,7 @@ after(async () => {
   await handle.close();
 });
 
-test("GET /lint flags snapshots, working notes, agent instructions, noon placeholders, dated hubs, long spans, duplicate series, duplicates, unaliased people, places without an address, and floating nodes", async () => {
+test("GET /lint flags snapshots, working notes, agent instructions, noon placeholders, dated hubs, long spans, duplicates, unaliased people, places without an address, and floating nodes", async () => {
   await resetGraph(handle.sql);
   const memory = (title: string, axis: number, expiresAt: Date | null = null) =>
     insertMemory(handle.db, { title, embedding: axisVector(dim, axis), occurredAt: null, expiresAt });
@@ -53,14 +53,12 @@ test("GET /lint flags snapshots, working notes, agent instructions, noon placeho
     embedding: axisVector(dim, 16),
     occurredAt: new Date("2026-09-03T22:30:00.000Z"),
     endAt: new Date("2026-09-03T23:20:00.000Z"),
-    recurrence: "FREQ=WEEKLY;BYDAY=TH;UNTIL=20261210T235959Z",
   });
   const seriesB = await insertPlan(handle.db, {
     title: "CSE 300 — lecture (section 002), Wilson Hall C102",
     embedding: axisVector(dim, 17),
     occurredAt: new Date("2026-09-03T22:30:00.000Z"),
     endAt: new Date("2026-09-03T23:20:00.000Z"),
-    recurrence: "FREQ=WEEKLY;BYDAY=TH;UNTIL=20261210T235959Z",
   });
   const wilsonA = await insertPlace(handle.db, { title: "Wilson Hall C102", embedding: axisVector(dim, 18) });
   const wilsonB = await insertPlace(handle.db, { title: "Wilson Hall C102 (lecture room)", embedding: axisVector(dim, 19) });
@@ -131,10 +129,6 @@ test("GET /lint flags snapshots, working notes, agent instructions, noon placeho
   assert.ok(!datedTitles.includes(noon) && !datedTitles.includes(assignment));
   assert.deepEqual(flagged("dated_hub"), [[hub]]);
   assert.deepEqual(flagged("long_span"), [[dropPeriod]]);
-  assert.deepEqual(
-    flagged("duplicate_series").map((ids) => [...ids].sort()),
-    [[seriesA, seriesB].sort()],
-  );
   assert.deepEqual(
     flagged("duplicate").map((ids) => [...ids].sort()).sort(),
     [[termA, termB].sort(), [wilsonA, wilsonB].sort()].sort(),

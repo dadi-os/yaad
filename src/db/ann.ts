@@ -3,7 +3,6 @@
 import type { Sql } from "./client.js";
 import type { NodeHistoryRow, NodeRow } from "./schema.js";
 import { YaadError } from "../errors.js";
-import { ROUTINE_KINDS } from "../types/timeline.js";
 import { cosineDistanceToSimilarity, toSqlVector } from "../vectors.js";
 
 export type AnnHit = {
@@ -15,20 +14,14 @@ export type AnnHit = {
 
 type AnnRow = NodeRow & { distance: number };
 
-/**
- * Rank live (non-expired) nodes with an embedding by proximity; sets `hnsw.ef_search` for the
- * txn. Without `routines`, plans of a routine kind (meals, gym, study blocks) are left out:
- * they are the day's scaffolding, not memories to start a recall from.
- */
+/** Rank live (non-expired) nodes with an embedding by proximity; sets `hnsw.ef_search` for the txn. */
 export async function annSearch(opts: {
   sql: Sql;
   efSearch: number;
   embedding: number[];
   limit: number;
-  routines: boolean;
 }): Promise<AnnHit[]> {
   const vec = toSqlVector(opts.embedding);
-  const routineKinds = [...ROUTINE_KINDS];
   const rows = await opts.sql.begin(async (tx) => {
     await tx`SELECT set_config('hnsw.ef_search', ${String(opts.efSearch)}, true)`;
     return tx<AnnRow[]>`
@@ -42,9 +35,6 @@ export async function annSearch(opts: {
       FROM node
       WHERE embedding IS NOT NULL
         AND (expires_at IS NULL OR expires_at > now())
-        AND (${opts.routines} OR NOT EXISTS (
-          SELECT 1 FROM plan_detail WHERE plan_detail.node_id = node.id AND plan_detail.kind = ANY(${routineKinds})
-        ))
       ORDER BY embedding <=> ${vec}::vector
       LIMIT ${opts.limit}
     `;

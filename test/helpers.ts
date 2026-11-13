@@ -2,11 +2,10 @@ import { randomUUID } from "node:crypto";
 import type { Config } from "../src/config.js";
 import { loadConfig } from "../src/config.js";
 import { createDb, type Db, type Sql } from "../src/db/client.js";
-import { edge, node, personDetail, placeDetail, planDetail } from "../src/db/schema.js";
+import { edge, node, personDetail, placeDetail, planDetail, taskDetail } from "../src/db/schema.js";
 import type { DwarChatResponse, DwarClient } from "../src/dwar/client.js";
 import type { Operation } from "../src/ingest/operations.js";
-import type { PlanStatus } from "../src/types/domain.js";
-import type { PlanKind } from "../src/types/timeline.js";
+import type { PlanStatus, Rsvp } from "../src/types/timeline.js";
 
 export function axisVector(dimension: number, axis: number): number[] {
   const values = Array.from({ length: dimension }, () => 0);
@@ -76,7 +75,7 @@ export async function openTestDb(): Promise<{ db: Db; sql: Sql; close: () => Pro
 }
 
 export async function resetGraph(sql: Sql): Promise<void> {
-  await sql`TRUNCATE node, edge, node_history, person_detail, plan_detail, place_detail CASCADE`;
+  await sql`TRUNCATE node, edge, node_history, person_detail, plan_detail, place_detail, task_detail CASCADE`;
 }
 
 export async function insertMemory(
@@ -134,15 +133,11 @@ export async function insertPlan(
   args: {
     title: string;
     embedding: number[];
-    occurredAt: Date | null;
+    occurredAt: Date;
     endAt?: Date | null;
     status?: PlanStatus;
     allDay?: boolean;
-    recurrence?: string | null;
-    kind?: PlanKind | null;
-    dueAt?: Date | null;
-    opensAt?: Date | null;
-    hideFromPlanner?: boolean;
+    rsvp?: Rsvp | null;
     agentId?: string;
   },
 ): Promise<string> {
@@ -165,11 +160,42 @@ export async function insertPlan(
     endAt: args.endAt ?? null,
     allDay: args.allDay ?? false,
     status: args.status ?? "confirmed",
-    recurrence: args.recurrence ?? null,
-    kind: args.kind ?? null,
-    dueAt: args.dueAt ?? null,
-    opensAt: args.opensAt ?? null,
-    hideFromPlanner: args.hideFromPlanner ?? false,
+    rsvp: args.rsvp ?? null,
+  });
+  return id;
+}
+
+/** A stored task whose window is `opensOn` (a local date) until `closesAt`; with neither it is Someday. */
+export async function insertTask(
+  db: Db,
+  args: {
+    title: string;
+    embedding: number[];
+    opensOn?: string | null;
+    closesAt?: Date | null;
+    doneAt?: Date | null;
+    agentId?: string;
+  },
+): Promise<string> {
+  const id = randomUUID();
+  const now = new Date();
+  await db.insert(node).values({
+    id,
+    kind: "task",
+    title: args.title,
+    body: null,
+    embedding: args.embedding,
+    occurredAt: null,
+    source: args.agentId !== undefined ? "agent" : "manual",
+    agentId: args.agentId ?? null,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await db.insert(taskDetail).values({
+    nodeId: id,
+    opensOn: args.opensOn ?? null,
+    closesAt: args.closesAt ?? null,
+    doneAt: args.doneAt ?? null,
   });
   return id;
 }

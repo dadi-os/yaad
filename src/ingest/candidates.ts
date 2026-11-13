@@ -4,24 +4,27 @@ import { inArray } from "drizzle-orm";
 import type { Config } from "../config.js";
 import type { Db, Sql } from "../db/client.js";
 import { annSearch } from "../db/ann.js";
-import { somedayPlans } from "../db/open-plans.js";
+import { openTasks } from "../db/tasks.js";
 import { getCurrentPersons, getIncidentEdgesForIds, getNode, getNodesByIds } from "../db/read.js";
 import {
   personDetail,
   placeDetail,
   planDetail,
+  taskDetail,
   type NodeRow,
   type PersonDetailRow,
   type PlaceDetailRow,
   type PlanDetailRow,
+  type TaskDetailRow,
 } from "../db/schema.js";
 import { YaadError } from "../errors.js";
-import { toEdgeRecord, toNodeRecord, toPersonDetail, toPlaceDetail, toPlanDetail } from "../serialize.js";
-import type { EdgeRecord, NodeRecord, PersonDetail, PlaceDetail, PlanDetail } from "../types/domain.js";
+import { toEdgeRecord, toNodeRecord, toPersonDetail, toPlaceDetail, toPlanDetail, toTaskDetail } from "../serialize.js";
+import type { EdgeRecord, NodeRecord, PersonDetail, PlaceDetail, PlanDetail, TaskDetail } from "../types/domain.js";
+import { SESSION_EDGE } from "../types/timeline.js";
 import { isExpired } from "./expiry.js";
 
 export type CandidateNode = NodeRecord & {
-  detail: PersonDetail | PlanDetail | PlaceDetail | null;
+  detail: PersonDetail | PlanDetail | PlaceDetail | TaskDetail | null;
 };
 
 export type CandidateState = {
@@ -78,7 +81,9 @@ function mentions(text: string, name: string): boolean {
 
 /**
  * Build the candidate graph shown to extraction: live nodes near the whole utterance and
- * near each of its segments, every person named in the text, explicit participant ids,
+ * near each of its segments, every task not done (an old task with a terse title is not near a
+ * long update in meaning, so similarity alone never brings it, and the model would create a second
+ * task instead of settling the first), every person named in the text, explicit participant ids,
  * and `extraIds` (lookalikes found after a first extraction, see findLookalikes).
  */
 export async function assembleCandidates(opts: {
@@ -107,7 +112,6 @@ export async function assembleCandidates(opts: {
       efSearch: opts.config.hnsw.ef_search,
       embedding: search.embedding,
       limit: search.limit,
-      routines: true,
     });
     for (const hit of hits) {
       if (hit.similarity >= opts.config.ingest.candidate_similarity_floor) {
@@ -116,10 +120,7 @@ export async function assembleCandidates(opts: {
     }
   }
 
-  // What is still open (every idea, untimed tasks with a due or an open) is always shown: an old
-  // idea with a terse title is not near a long email or update in meaning, so similarity alone
-  // never brings it, and the model would create a second plan instead of settling the first.
-  for (const { node: open } of (await somedayPlans(opts.db, new Date())).slice(0, opts.config.ingest.open_item_limit)) {
+  for (const { node: open } of (await openTasks(opts.db)).slice(0, opts.config.ingest.open_item_limit)) {
     byId.set(open.id, open);
   }
 
@@ -154,7 +155,7 @@ export async function assembleCandidates(opts: {
 
   const nodes = [...byId.values()];
   const ids = nodes.map((row) => row.id);
-  const incident = await getIncidentEdgesForIds(opts.db, ids);
+  const incident = (await getIncidentEdgesForIds(opts.db, ids)).filter((edge) => edge.type !== SESSION_EDGE);
   const idSet = new Set(ids);
   const between = incident.filter((edge) => idSet.has(edge.srcId) && idSet.has(edge.dstId));
   const rest = incident.filter((edge) => !(idSet.has(edge.srcId) && idSet.has(edge.dstId)));
@@ -176,11 +177,18 @@ export async function assembleCandidates(opts: {
 async function loadDetails(
   db: Db,
   nodes: NodeRow[],
-): Promise<Map<string, PersonDetail | PlanDetail | PlaceDetail>> {
-  const out = new Map<string, PersonDetail | PlanDetail | PlaceDetail>();
+): Promise<Map<string, PersonDetail | PlanDetail | PlaceDetail | TaskDetail>> {
+  const out = new Map<string, PersonDetail | PlanDetail | PlaceDetail | TaskDetail>();
   const personIds = nodes.filter((row) => row.kind === "person").map((row) => row.id);
   const planIds = nodes.filter((row) => row.kind === "plan").map((row) => row.id);
   const placeIds = nodes.filter((row) => row.kind === "place").map((row) => row.id);
+  const taskIds = nodes.filter((row) => row.kind === "task").map((row) => row.id);
+  if (taskIds.length > 0) {
+    const rows: TaskDetailRow[] = await db.select().from(taskDetail).where(inArray(taskDetail.nodeId, taskIds));
+    for (const row of rows) {
+      out.set(row.nodeId, toTaskDetail(row));
+    }
+  }
   if (personIds.length > 0) {
     const rows: PersonDetailRow[] = await db
       .select()

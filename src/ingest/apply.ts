@@ -1,4 +1,4 @@
-/** Apply validated ingest operations in one transaction (embeds, locks, series). */
+/** Apply validated ingest operations in one transaction (embeds, locks, spawned sessions). */
 
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
@@ -7,8 +7,7 @@ import { embeddingText } from "../dwar/client.js";
 import type { Config } from "../config.js";
 import type { Db } from "../db/client.js";
 import { getEdge, getNode, getPlanDetail } from "../db/read.js";
-import { writeOccurrence } from "../db/occurrence.js";
-import { edge, node, personDetail, placeDetail, planDetail } from "../db/schema.js";
+import { edge, node, personDetail, placeDetail, planDetail, taskDetail } from "../db/schema.js";
 import {
   closeEdge,
   deleteNode,
@@ -19,7 +18,6 @@ import {
   type Tx,
 } from "../db/temporal.js";
 import { YaadError } from "../errors.js";
-import { assertRecurrence } from "./recurrence.js";
 import { parse } from "../routers/v1/schemas.js";
 import { historyEmbeddingText, sameInstant } from "../serialize.js";
 import type { NodeAuthor } from "../types/domain.js";
@@ -28,29 +26,34 @@ import {
   patchPersonDetailBody,
   patchPlanDetailBody,
   patchPlaceDetailBody,
+  patchTaskDetailBody,
   personDetailBody,
   placeDetailBody,
   planDetailBody,
+  taskDetailBody,
   type Operation,
 } from "./operations.js";
+import { changeSessions, insertEdge, spawnSessions } from "./sessions.js";
 
-export type AppliedOperation = Operation & { id?: string };
+/** An applied operation, with the id a `create_node` made or the ids a `spawn_plans` made. */
+export type AppliedOperation = Operation & { id?: string; ids?: string[] };
 
 export type ApplyResult = {
   operations: AppliedOperation[];
   counts: Record<Operation["op"], number>;
   /** Maps create_node temp_id → persisted uuid. */
   temp_ids: Record<string, string>;
+  /** Maps spawn_plans temp_id → the ids of the plans it created, in date order. */
+  spawned: Record<string, string[]>;
   /** Nodes deleted because the batch left them with no current edge. */
   orphans: string[];
 };
 
 /**
- * Persist emit_operations results: create/update/close nodes and edges, and edit single
- * sessions after the batch's own node updates. All-day plans are first moved to local
- * midnight of their dates, a recurring plan's rule is validated against its anchor (its
- * occurrences are expanded when read, never stored), and nodes the batch's closes left with
- * no current edge are swept.
+ * Persist emit_operations results: create/update/close nodes and edges, spawn a hub's sessions,
+ * and change them in bulk after the batch's own creates and updates. All-day plans are first
+ * moved to local midnight of their dates, and nodes the batch's closes left with no current
+ * edge are swept.
  */
 export async function applyOperations(opts: {
   db: Db;
@@ -66,6 +69,7 @@ export async function applyOperations(opts: {
   return opts.db.transaction(async (tx) => {
     await lockReferenced(tx, referenced);
     const tempIds = new Map<string, string>();
+    const spawned: Record<string, string[]> = {};
     const applied: AppliedOperation[] = [];
     const closedNodes = new Set<string>();
     const closedEdges = new Set<string>();
@@ -106,24 +110,26 @@ export async function applyOperations(opts: {
           });
         } else if (op.kind === "plan") {
           const detail = parse(planDetailBody, op.detail ?? {});
-          const endAt = detail.end_at ? new Date(detail.end_at) : null;
-          const dueAt = detail.due_at ? new Date(detail.due_at) : null;
-          const recurrence = detail.recurrence ?? null;
           await tx.insert(planDetail).values({
             nodeId: id,
-            endAt,
+            endAt: detail.end_at ? new Date(detail.end_at) : null,
             allDay: detail.all_day ?? false,
             status: detail.status,
-            recurrence,
-            kind: detail.kind ?? null,
-            dueAt,
-            opensAt: detail.opens_at ? new Date(detail.opens_at) : null,
             timeZone: detail.time_zone ?? null,
-            hideFromPlanner: detail.hide_from_planner ?? false,
+            rsvp: detail.rsvp ?? null,
+            outcome: detail.outcome ?? null,
+            outcomeAt: detail.outcome ? at : null,
+            actualStart: detail.actual_start ? new Date(detail.actual_start) : null,
+            actualEnd: detail.actual_end ? new Date(detail.actual_end) : null,
           });
-          if (recurrence) {
-            assertRecurrence({ rule: recurrence, start: occurredAt ?? dueAt, timeZone: opts.config.env.timezone });
-          }
+        } else if (op.kind === "task") {
+          const detail = parse(taskDetailBody, op.detail ?? {});
+          await tx.insert(taskDetail).values({
+            nodeId: id,
+            opensOn: detail.opens_on ?? null,
+            closesAt: detail.closes_at ? new Date(detail.closes_at) : null,
+            doneAt: detail.done_at ? new Date(detail.done_at) : null,
+          });
         } else if (op.kind === "place") {
           const detail = parse(placeDetailBody, op.detail ?? {});
           await tx.insert(placeDetail).values({
@@ -135,6 +141,22 @@ export async function applyOperations(opts: {
         }
         tempIds.set(op.temp_id, id);
         applied.push({ ...op, id });
+      }
+    }
+
+    for (const op of operations) {
+      if (op.op === "spawn_plans") {
+        const ids = await spawnSessions(tx, {
+          op,
+          hubId: resolve(op.hub, tempIds),
+          placeId: op.place === undefined ? null : resolve(op.place, tempIds),
+          author: opts.author,
+          timeZone: opts.config.env.timezone,
+          maxSessions: opts.config.plan.max_sessions_per_spawn,
+          at,
+        });
+        spawned[op.temp_id] = ids;
+        applied.push({ ...op, ids });
       }
     }
 
@@ -156,19 +178,26 @@ export async function applyOperations(opts: {
             await tx
               .update(planDetail)
               .set({
-                ...(detail.end_at !== undefined
-                  ? { endAt: detail.end_at ? new Date(detail.end_at) : null }
-                  : {}),
+                ...(detail.end_at !== undefined ? { endAt: detail.end_at ? new Date(detail.end_at) : null } : {}),
                 ...(detail.all_day !== undefined ? { allDay: detail.all_day } : {}),
                 ...(detail.status !== undefined ? { status: detail.status } : {}),
-                ...(detail.recurrence !== undefined ? { recurrence: detail.recurrence } : {}),
-                ...(detail.kind !== undefined ? { kind: detail.kind } : {}),
-                ...(detail.due_at !== undefined ? { dueAt: detail.due_at ? new Date(detail.due_at) : null } : {}),
-                ...(detail.opens_at !== undefined ? { opensAt: detail.opens_at ? new Date(detail.opens_at) : null } : {}),
                 ...(detail.time_zone !== undefined ? { timeZone: detail.time_zone } : {}),
-                ...(detail.hide_from_planner !== undefined ? { hideFromPlanner: detail.hide_from_planner } : {}),
+                ...(detail.rsvp !== undefined ? { rsvp: detail.rsvp } : {}),
+                ...(detail.outcome !== undefined ? { outcome: detail.outcome, outcomeAt: detail.outcome ? at : null } : {}),
+                ...(detail.actual_start !== undefined ? { actualStart: detail.actual_start ? new Date(detail.actual_start) : null } : {}),
+                ...(detail.actual_end !== undefined ? { actualEnd: detail.actual_end ? new Date(detail.actual_end) : null } : {}),
               })
               .where(eq(planDetail.nodeId, op.node_id));
+          } else if (current.kind === "task") {
+            const detail = parse(patchTaskDetailBody, op.detail);
+            await tx
+              .update(taskDetail)
+              .set({
+                ...(detail.opens_on !== undefined ? { opensOn: detail.opens_on } : {}),
+                ...(detail.closes_at !== undefined ? { closesAt: detail.closes_at ? new Date(detail.closes_at) : null } : {}),
+                ...(detail.done_at !== undefined ? { doneAt: detail.done_at ? new Date(detail.done_at) : null } : {}),
+              })
+              .where(eq(taskDetail.nodeId, op.node_id));
           } else if (current.kind === "place") {
             const detail = parse(patchPlaceDetailBody, op.detail);
             await tx
@@ -226,17 +255,6 @@ export async function applyOperations(opts: {
             .set({ expiresAt, updatedAt: at })
             .where(eq(node.id, op.node_id));
         }
-        if (current.kind === "plan" && changesSchedule(op)) {
-          const detail = await getPlanDetail(tx, op.node_id);
-          if (detail.recurrence) {
-            const updated = await getNode(tx, op.node_id);
-            assertRecurrence({
-              rule: detail.recurrence,
-              start: updated.occurredAt ?? detail.dueAt,
-              timeZone: opts.config.env.timezone,
-            });
-          }
-        }
         applied.push(op);
       }
     }
@@ -248,17 +266,13 @@ export async function applyOperations(opts: {
         if (srcId === dstId) {
           throw new YaadError(422, "invalid_request", "create_edge src must not equal dst");
         }
-        const id = randomUUID();
-        await tx.insert(edge).values({
-          id,
+        const id = await insertEdge(tx, {
           srcId,
           dstId,
           type: op.type,
           properties: op.properties ?? {},
           confidence: op.confidence,
-          createdAt: at,
-          validFrom: at,
-          validTo: null,
+          at,
         });
         applied.push({ ...op, id });
       }
@@ -283,23 +297,9 @@ export async function applyOperations(opts: {
     }
 
     for (const op of operations) {
-      if (op.op === "edit_occurrence") {
-        await writeOccurrence(tx, {
-          planId: op.node_id,
-          date: op.occurrence_date,
-          change: {
-            state: op.state,
-            startAt: op.start_at !== undefined ? new Date(op.start_at) : undefined,
-            endAt: op.end_at === undefined ? undefined : op.end_at === null ? null : new Date(op.end_at),
-            outcome: op.outcome,
-            actualStart: op.actual_start === undefined ? undefined : op.actual_start === null ? null : new Date(op.actual_start),
-            actualEnd: op.actual_end === undefined ? undefined : op.actual_end === null ? null : new Date(op.actual_end),
-          },
-          source: opts.author.agentId ?? opts.author.source,
-          calendar: { timeZone: opts.config.env.timezone, maxInstances: opts.config.plan.max_instances_per_series },
-          at,
-        });
-        applied.push(op);
+      if (op.op === "update_plans") {
+        const ids = await changeSessions(tx, { op, timeZone: opts.config.env.timezone, at });
+        applied.push({ ...op, ids });
       }
     }
 
@@ -318,7 +318,8 @@ export async function applyOperations(opts: {
       close_node: 0,
       create_edge: 0,
       close_edge: 0,
-      edit_occurrence: 0,
+      spawn_plans: 0,
+      update_plans: 0,
       noop: 0,
     };
     for (const op of applied) {
@@ -329,19 +330,10 @@ export async function applyOperations(opts: {
       operations: applied,
       counts,
       temp_ids: Object.fromEntries(tempIds),
+      spawned,
       orphans,
     };
   });
-}
-
-function changesSchedule(op: Extract<Operation, { op: "update_node" }>): boolean {
-  if (op.occurred_at !== undefined) {
-    return true;
-  }
-  if (op.detail === null || typeof op.detail !== "object") {
-    return false;
-  }
-  return "recurrence" in op.detail || "end_at" in op.detail || "all_day" in op.detail || "due_at" in op.detail;
 }
 
 /** Local midnight of `instant`'s date. The process runs in the box's zone (`TZ`), so local is the box's. */
@@ -357,10 +349,10 @@ function midnightIso(iso: string): string {
 }
 
 /**
- * The batch with every all-day plan's occurred_at, end_at and due_at moved to local midnight
- * of their dates, so an all-day plan never carries an invented time of day. An update that
- * turns all_day on also moves the plan's existing start, end and due; one that leaves it on
- * moves whichever of them it sets. Everything else passes through unchanged.
+ * The batch with every all-day plan's occurred_at and end_at moved to local midnight of their
+ * dates, so an all-day plan never carries an invented time of day. An update that turns all_day
+ * on also moves the plan's existing start and end; one that leaves it on moves whichever of
+ * them it sets. Everything else passes through unchanged.
  */
 async function anchorAllDayPlans(db: Db, operations: Operation[]): Promise<Operation[]> {
   const anchored: Operation[] = [];
@@ -374,7 +366,6 @@ async function anchorAllDayPlans(db: Db, operations: Operation[]): Promise<Opera
           detail: {
             ...detail,
             ...(detail.end_at ? { end_at: midnightIso(detail.end_at) } : {}),
-            ...(detail.due_at ? { due_at: midnightIso(detail.due_at) } : {}),
           },
         });
         continue;
@@ -399,21 +390,14 @@ async function anchorAllDayPlans(db: Db, operations: Operation[]): Promise<Opera
               : turningOn && stored.endAt
                 ? stored.endAt.toISOString()
                 : undefined;
-          const dueAt =
-            patch.due_at !== undefined
-              ? patch.due_at
-              : turningOn && stored.dueAt
-                ? stored.dueAt.toISOString()
-                : undefined;
           anchored.push({
             ...op,
             ...(occurredAt !== undefined ? { occurred_at: occurredAt ? midnightIso(occurredAt) : null } : {}),
-            ...(op.detail !== undefined || endAt !== undefined || dueAt !== undefined
+            ...(op.detail !== undefined || endAt !== undefined
               ? {
                   detail: {
                     ...patch,
                     ...(endAt !== undefined ? { end_at: endAt ? midnightIso(endAt) : null } : {}),
-                    ...(dueAt !== undefined ? { due_at: dueAt ? midnightIso(dueAt) : null } : {}),
                   },
                 }
               : {}),
@@ -502,8 +486,18 @@ function referencedIds(operations: Operation[]): { nodes: string[]; edges: strin
     }
   }
   for (const op of operations) {
-    if (op.op === "update_node" || op.op === "close_node" || op.op === "edit_occurrence") {
+    if (op.op === "update_node" || op.op === "close_node") {
       nodes.add(op.node_id);
+    }
+    if (op.op === "update_plans") {
+      nodes.add(op.hub);
+    }
+    if (op.op === "spawn_plans") {
+      for (const id of [op.hub, op.place]) {
+        if (id !== undefined && !temps.has(id)) {
+          nodes.add(id);
+        }
+      }
     }
     if (op.op === "close_edge") {
       edges.add(op.edge_id);

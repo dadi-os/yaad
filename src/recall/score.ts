@@ -55,7 +55,7 @@ export function semanticScore(queryEmbedding: number[], nodeEmbedding: unknown):
 
 /** Kind multiplier from config; throws on unexpected kind strings. */
 export function kindPrior(kind: string, priors: Config["recall"]["kind_priors"]): number {
-  if (kind === "person" || kind === "memory" || kind === "plan" || kind === "place") {
+  if (kind === "person" || kind === "memory" || kind === "plan" || kind === "place" || kind === "task") {
     return priors[kind];
   }
   throw new Error(`invalid node kind: ${kind}`);

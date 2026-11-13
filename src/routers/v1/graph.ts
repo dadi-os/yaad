@@ -1,12 +1,12 @@
 /**
  * `POST /graph` — live subgraph for drawing the memory network.
  * Without `seed_ids` it returns every live node; with `seed_ids` it returns those seeds
- * plus all their live one-hop neighbors. Plans of a routine kind (meals, gym, study blocks)
- * are never drawn: they belong to the planner, not the memory view. Edges are the current
+ * plus all their live one-hop neighbors. Sessions of a course (the targets of `HAS_SESSION`) are
+ * never drawn: they belong to the timeline, not the memory view. Edges are the current
  * edges among the returned nodes, so every edge endpoint is in `nodes`.
  */
 
-import { inArray } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import {
   getEdgesAmong,
@@ -15,32 +15,32 @@ import {
   getLiveNodes,
   getNodesByIds,
 } from "../../db/read.js";
-import { planDetail, type NodeRow } from "../../db/schema.js";
+import { edge, type NodeRow } from "../../db/schema.js";
 import { YaadError } from "../../errors.js";
 import { toEdgeRecord, toNodeRecord } from "../../serialize.js";
-import { ROUTINE_KINDS } from "../../types/timeline.js";
+import { SESSION_EDGE } from "../../types/timeline.js";
 import { graphBody, parse } from "./schemas.js";
 
 export async function registerGraph(app: FastifyInstance): Promise<void> {
   app.post("/graph", async (request) => {
     const body = parse(graphBody, request.body);
-    const routines = new Set(
+    const sessions = new Set(
       (
         await app.db
-          .select({ id: planDetail.nodeId })
-          .from(planDetail)
-          .where(inArray(planDetail.kind, [...ROUTINE_KINDS]))
+          .select({ id: edge.dstId })
+          .from(edge)
+          .where(and(eq(edge.type, SESSION_EDGE), isNull(edge.validTo)))
       ).map((row) => row.id),
     );
     if (body.seed_ids === undefined) {
       const [nodes, edges] = await Promise.all([getLiveNodes(app.db), getLiveEdges(app.db)]);
       return {
-        nodes: nodes.filter((row) => !routines.has(row.id)).map(toNodeRecord),
-        edges: edges.filter((row) => !routines.has(row.srcId) && !routines.has(row.dstId)).map(toEdgeRecord),
+        nodes: nodes.filter((row) => !sessions.has(row.id)).map(toNodeRecord),
+        edges: edges.filter((row) => !sessions.has(row.srcId) && !sessions.has(row.dstId)).map(toEdgeRecord),
       };
     }
 
-    const rows = (await seededNodes(app, [...new Set(body.seed_ids)])).filter((row) => !routines.has(row.id));
+    const rows = (await seededNodes(app, [...new Set(body.seed_ids)])).filter((row) => !sessions.has(row.id));
     const edges = await getEdgesAmong(
       app.db,
       rows.map((row) => row.id),

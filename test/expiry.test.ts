@@ -87,11 +87,11 @@ test("ttl_days on person or place is 422 and writes nothing", async () => {
       },
     ];
     await assert.rejects(
-      () => validateOperations({ db: handle.db, operations }),
+      () => validateOperations({ timeZone: config.env.timezone, db: handle.db, operations }),
       (err: unknown) => {
         assert.ok(err instanceof YaadError);
         assert.equal(err.statusCode, 422);
-        assert.match(err.message, /ttl_days is only valid on memory and plan/);
+        assert.match(err.message, /ttl_days is only valid on memory, plan and task/);
         return true;
       },
     );

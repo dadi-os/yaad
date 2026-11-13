@@ -32,19 +32,16 @@ segment_limit = 12
 # ANN candidates per segment, on top of candidate_limit. Raise if items in long utterances
 # still get re-created; lower to keep the prompt small.
 segment_candidate_limit = 5
-# Open plans (every idea, untimed tasks with a due or an open) always shown as candidates, newest
-# first dropped past this cap. Raise if the Needs a time list grows past it.
+# Tasks not done, always shown as candidates oldest first; past this cap the newest are dropped.
+# Raise if the list of tasks not done grows past it.
 open_item_limit = 40
 # Cap on current edges attached to candidates. Raise if the model keeps recreating known relationships.
 edge_context_limit = 50
 
 [plan]
-# How far ahead recurring plans are materialized into individual rows.
-# Raise to see further out; lower to keep the table smaller.
-recurrence_horizon_days = 365
-# Hard cap on instances generated from one rule. A malformed rule that would
-# generate thousands of rows fails loudly instead of filling the table.
-max_instances_per_series = 500
+# Hard cap on the sessions one spawn_plans op creates. A malformed date list that would
+# create thousands of plans fails loudly instead of filling the table.
+max_sessions_per_spawn = 200
 
 [recall]
 # Minimum cosine similarity for a node to become an anchor. Raise to require a closer match.
@@ -88,3 +85,4 @@ person = 1.0
 memory = 1.0
 plan = 1.0
 place = 1.0
+task = 1.0

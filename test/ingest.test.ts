@@ -124,7 +124,7 @@ test("ingest rejects a batch with an invalid node reference and writes nothing",
     },
   ];
   await assert.rejects(
-    () => validateOperations({ db: handle.db, operations }),
+    () => validateOperations({ timeZone: config.env.timezone, db: handle.db, operations }),
     (err: unknown) => {
       assert.ok(err instanceof YaadError);
       assert.equal(err.statusCode, 422);

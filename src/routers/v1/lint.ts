@@ -1,8 +1,8 @@
 /**
  * `GET /lint` — a read-only report of live nodes that match patterns past audits found
  * wrong: status snapshots, agent working notes and instructions to agents stored as
- * permanent memory, plans at a placeholder noon, dated hubs, periods stored as plans, two
- * series on the same schedule, duplicates, people missing their first-name alias, places
+ * permanent memory, plans at a placeholder noon, dated hubs, periods stored as plans,
+ * duplicates, people missing their first-name alias, places
  * plans happen at that have no street address, and nodes with no current edge.
  * It never changes the graph; someone reads the report and fixes what is really wrong.
  */
@@ -122,7 +122,6 @@ export async function registerLint(app: FastifyInstance): Promise<void> {
         and(
           live,
           isNotNull(node.occurredAt),
-          isNull(planDetail.recurrence),
           ownsItems,
         ),
       );
@@ -139,7 +138,7 @@ export async function registerLint(app: FastifyInstance): Promise<void> {
       .select({ id: node.id, title: node.title })
       .from(node)
       .innerJoin(planDetail, eq(planDetail.nodeId, node.id))
-      .where(and(live, isNull(planDetail.recurrence), sql`${planDetail.endAt} - ${node.occurredAt} > ${LONG_SPAN}::interval`))
+      .where(and(live, sql`${planDetail.endAt} - ${node.occurredAt} > ${LONG_SPAN}::interval`))
       .orderBy(asc(node.occurredAt));
     for (const row of spans) {
       findings.push({
@@ -150,26 +149,7 @@ export async function registerLint(app: FastifyInstance): Promise<void> {
       });
     }
 
-    const series = await app.db
-      .select({
-        ids: sql<string[]>`array_agg(${node.id} ORDER BY ${node.createdAt})`,
-        title: sql<string>`min(${node.title})`,
-      })
-      .from(node)
-      .innerJoin(planDetail, eq(planDetail.nodeId, node.id))
-      .where(and(live, isNotNull(planDetail.recurrence)))
-      .groupBy(planDetail.recurrence, node.occurredAt)
-      .having(sql`count(*) > 1`);
-    for (const group of series) {
-      findings.push({
-        rule: "duplicate_series",
-        node_ids: group.ids,
-        title: group.title,
-        note: "Two recurring plans share a rule and a first meeting, so every meeting shows twice; keep the course hub's series and drop the other's rule.",
-      });
-    }
-
-    const startHour = sql`CASE WHEN ${node.kind} = 'plan' THEN date_trunc('hour', COALESCE(${node.occurredAt}, ${planDetail.dueAt})) END`;
+    const startHour = sql`CASE WHEN ${node.kind} = 'plan' THEN date_trunc('hour', ${node.occurredAt}) END`;
     const groups = await app.db
       .select({
         ids: sql<string[]>`array_agg(${node.id} ORDER BY ${node.createdAt})`,

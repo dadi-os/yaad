@@ -2,14 +2,14 @@
  * Node routes: `GET /nodes/:id` and `GET /nodes/:id/history` read; `POST /nodes`,
  * `PATCH /nodes/:id`, and `DELETE /nodes/:id` are hand edits from a client. `POST` and
  * `PATCH` run as one validated `create_node` / `update_node`, so they embed, write
- * history, anchor all-day plans, and validate a recurring rule exactly like ingest, and a
+ * history, anchor all-day plans, and validate a task's window exactly like ingest, and a
  * create that duplicates a live node is a 422 `duplicate_node`. `DELETE` deletes the
  * node and sweeps the neighbors it leaves with no current edge, logging what it swept.
  * An unknown id is a 404.
  */
 
 import type { FastifyInstance } from "fastify";
-import { getIncidentEdges, getNode, getNodeHistory, getPersonDetail, getPlaceDetail, getPlanDetail } from "../../db/read.js";
+import { getIncidentEdges, getNode, getNodeHistory, getPersonDetail, getPlaceDetail, getPlanDetail, getTaskDetail } from "../../db/read.js";
 import { deleteNode, sweepOrphans } from "../../db/temporal.js";
 import { applyOperations } from "../../ingest/apply.js";
 import { rejectDuplicates } from "../../ingest/duplicates.js";
@@ -22,6 +22,7 @@ import {
   toPersonDetail,
   toPlaceDetail,
   toPlanDetail,
+  toTaskDetail,
 } from "../../serialize.js";
 import { YaadError } from "../../errors.js";
 import type { NodeAuthor } from "../../types/domain.js";
@@ -45,8 +46,8 @@ export async function registerNodes(app: FastifyInstance): Promise<void> {
   app.post("/nodes", async (request, reply) => {
     const body = parse(createNodeBody, request.body);
     const operations: Operation[] = [{ op: "create_node", temp_id: "node", ...body }];
-    await validateOperations({ db: app.db, operations });
-    await rejectDuplicates(app.db, operations);
+    await validateOperations({ db: app.db, operations, timeZone: app.config.env.timezone });
+    await rejectDuplicates(app.db, operations, app.config.env.timezone);
     const result = await applyOperations({ db: app.db, dwar: app.dwar, operations, author: MANUAL, config: app.config });
     const id = result.temp_ids.node;
     if (!id) {
@@ -61,7 +62,7 @@ export async function registerNodes(app: FastifyInstance): Promise<void> {
     const body = parse(patchNodeBody, request.body);
     await getNode(app.db, id);
     const operations: Operation[] = [{ op: "update_node", node_id: id, ...body }];
-    await validateOperations({ db: app.db, operations });
+    await validateOperations({ db: app.db, operations, timeZone: app.config.env.timezone });
     await applyOperations({ db: app.db, dwar: app.dwar, operations, author: MANUAL, config: app.config });
     return nodeResponse(app, id);
   });
@@ -89,6 +90,7 @@ export async function nodeResponse(app: FastifyInstance, id: string) {
     | ReturnType<typeof toPersonDetail>
     | ReturnType<typeof toPlanDetail>
     | ReturnType<typeof toPlaceDetail>
+    | ReturnType<typeof toTaskDetail>
     | null = null;
   if (row.kind === "person") {
     detail = toPersonDetail(await getPersonDetail(app.db, id));
@@ -96,6 +98,8 @@ export async function nodeResponse(app: FastifyInstance, id: string) {
     detail = toPlanDetail(await getPlanDetail(app.db, id));
   } else if (row.kind === "place") {
     detail = toPlaceDetail(await getPlaceDetail(app.db, id));
+  } else if (row.kind === "task") {
+    detail = toTaskDetail(await getTaskDetail(app.db, id));
   }
   return {
     ...toNodeRecord(row),

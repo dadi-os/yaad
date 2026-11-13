@@ -66,8 +66,9 @@ export async function ingest(opts: {
       ? await extract(missed, recheckNote({ lookalikes: missed.length > 0, unlinked }))
       : first;
 
-  await validateOperations({ db: opts.db, operations });
-  await validateExtraction({ db: opts.db, operations, text: opts.text });
+  const timeZone = opts.config.env.timezone;
+  await validateOperations({ db: opts.db, operations, timeZone });
+  await validateExtraction({ db: opts.db, operations, text: opts.text, timeZone });
   return applyOperations({
     db: opts.db,
     dwar: opts.dwar,

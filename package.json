@@ -12,7 +12,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "tsx src/db/migrate.ts",
     "test": "tsx --test --test-concurrency=1 test/**/*.test.ts",
-    "eval:extraction": "tsx evals/extraction.ts"
+    "eval:extraction": "tsx evals/extraction.ts",
+    "migrate:timeline": "tsx scripts/migrate-timeline.ts"
   },
   "dependencies": {
     "@tauri-apps/plugin-os": "^2.3.2",

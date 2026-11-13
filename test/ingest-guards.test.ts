@@ -15,6 +15,7 @@ import {
   insertMemory,
   insertPerson,
   insertPlan,
+  insertTask,
   mockDwar,
   openTestDb,
   resetGraph,
@@ -75,7 +76,7 @@ test("an all-day plan is stored at local midnight of its date and keeps the flag
   assert.equal(detail?.allDay, true);
 });
 
-test("turning all_day on moves the existing start to midnight, and an all-day plan needs a date", async () => {
+test("turning all_day on moves the existing start to midnight, and a plan needs a start", async () => {
   await resetGraph(handle.sql);
   const id = await insertPlan(handle.db, {
     title: "IBIO 150 Exam 1",
@@ -93,22 +94,20 @@ test("turning all_day on moves the existing start to midnight, and an all-day pl
   assert.equal(row?.occurredAt?.toISOString(), "2026-09-30T04:00:00.000Z");
 
   await rejectsWith(
-    () => validateOperations({ db: handle.db, operations: [{ op: "update_node", node_id: id, occurred_at: null }] }),
+    () => validateOperations({ timeZone: config.env.timezone, db: handle.db, operations: [{ op: "update_node", node_id: id, occurred_at: null }] }),
     422,
     "invalid_request",
-    /all-day plan needs occurred_at/,
+    /a plan needs occurred_at/,
   );
   await rejectsWith(
     () =>
-      validateOperations({
+      validateOperations({ timeZone: config.env.timezone,
         db: handle.db,
-        operations: [
-          { op: "create_node", temp_id: "p", kind: "plan", title: "Someday", detail: { status: "idea", all_day: true } },
-        ],
+        operations: [{ op: "create_node", temp_id: "p", kind: "plan", title: "Someday", detail: { status: "confirmed", all_day: true } }],
       }),
     422,
     "invalid_request",
-    /all-day plan needs occurred_at/,
+    /a plan needs occurred_at/,
   );
 });
 
@@ -118,18 +117,18 @@ test("close_node must quote the utterance words that retract the node", async ()
   const close = (evidence: string): Operation[] => [{ op: "close_node", node_id: id, reason: "retracted", evidence }];
 
   await rejectsWith(
-    () => validateExtraction({ db: handle.db, text: "Design 5 is due Monday.", operations: close("Design 5 peer reviews were cancelled") }),
+    () => validateExtraction({ timeZone: config.env.timezone, db: handle.db, text: "Design 5 is due Monday.", operations: close("Design 5 peer reviews were cancelled") }),
     422,
     "invalid_request",
     /evidence must quote/,
   );
   await rejectsWith(
-    () => validateExtraction({ db: handle.db, text: "Forget that, Vedant moved.", operations: close("forget") }),
+    () => validateExtraction({ timeZone: config.env.timezone, db: handle.db, text: "Forget that, Vedant moved.", operations: close("forget") }),
     422,
     "invalid_request",
     /evidence must quote/,
   );
-  await validateExtraction({
+  await validateExtraction({ timeZone: config.env.timezone,
     db: handle.db,
     text: "Forget that — Vedant doesn’t   actually like orange juice.",
     operations: close("Vedant doesn't actually like orange juice"),
@@ -152,7 +151,7 @@ test("a created plan or memory that repeats a live one is rejected unless the ba
 
   await rejectsWith(
     () =>
-      validateExtraction({
+      validateExtraction({ timeZone: config.env.timezone,
         db: handle.db,
         text: "quiz",
         operations: [createQuiz("CSE 300 - Quiz: Source Citations (Kritik) due", "2026-10-03T00:30:00-04:00")],
@@ -163,7 +162,7 @@ test("a created plan or memory that repeats a live one is rejected unless the ba
   );
   await rejectsWith(
     () =>
-      validateExtraction({
+      validateExtraction({ timeZone: config.env.timezone,
         db: handle.db,
         text: "term",
         operations: [{ op: "create_node", temp_id: "term", kind: "memory", title: "CSE 300 — term: Fall 2026" }],
@@ -173,7 +172,7 @@ test("a created plan or memory that repeats a live one is rejected unless the ba
   );
   await rejectsWith(
     () =>
-      validateExtraction({
+      validateExtraction({ timeZone: config.env.timezone,
         db: handle.db,
         text: "two",
         operations: [
@@ -186,12 +185,12 @@ test("a created plan or memory that repeats a live one is rejected unless the ba
     /same batch/,
   );
 
-  await validateExtraction({
+  await validateExtraction({ timeZone: config.env.timezone,
     db: handle.db,
     text: "next week",
     operations: [createQuiz(QUIZ, "2026-10-09T23:59:00-04:00"), linkQuiz],
   });
-  await validateExtraction({
+  await validateExtraction({ timeZone: config.env.timezone,
     db: handle.db,
     text: "Correction: the Source Citations quiz is replaced.",
     operations: [
@@ -215,12 +214,12 @@ test("every created node needs an edge in the batch; ingest re-extracts once nam
     confidence: 1,
   };
   await rejectsWith(
-    () => validateExtraction({ db: handle.db, text: "lesson", operations: [lesson] }),
+    () => validateExtraction({ timeZone: config.env.timezone, db: handle.db, text: "lesson", operations: [lesson] }),
     422,
     "unlinked_node",
     /LinkedIn checkpoints need a phone tap/,
   );
-  await validateExtraction({ db: handle.db, text: "lesson", operations: [lesson, link] });
+  await validateExtraction({ timeZone: config.env.timezone, db: handle.db, text: "lesson", operations: [lesson, link] });
 
   const run = (rounds: Operation[][], users: string[]) =>
     ingest({
@@ -305,14 +304,21 @@ test("candidates include a person the text names by first name only, as a whole 
   assert.ok(!(await candidateIds("Ankur and Shahid met.")).includes(riya));
 });
 
-test("candidates always include what is still open, however far its title is from the text", async () => {
+test("candidates always include every task not done, however far its title is from the text", async () => {
   await resetGraph(handle.sql);
-  const idea = await insertPlan(handle.db, { title: "Find a doctor", embedding: axisVector(dim, 5), occurredAt: null, status: "idea" });
-  const untimed = await insertPlan(handle.db, {
+  const idea = await insertTask(handle.db, { title: "Find a doctor", embedding: axisVector(dim, 5) });
+  const untimed = await insertTask(handle.db, {
     title: "Renew the lease",
     embedding: axisVector(dim, 6),
-    occurredAt: null,
-    dueAt: new Date("2099-01-01T15:00:00Z"),
+    opensOn: "2098-12-01",
+    closesAt: new Date("2099-01-01T15:00:00Z"),
+  });
+  await insertTask(handle.db, {
+    title: "Finished errand",
+    embedding: axisVector(dim, 8),
+    opensOn: "2026-01-01",
+    closesAt: new Date("2026-01-02T15:00:00Z"),
+    doneAt: new Date("2026-01-02T10:00:00Z"),
   });
   const scheduled = await insertPlan(handle.db, {
     title: "Dentist",
@@ -332,6 +338,7 @@ test("candidates always include what is still open, however far its title is fro
   const ids = candidates.nodes.map((candidate) => candidate.id);
   assert.ok(ids.includes(idea) && ids.includes(untimed));
   assert.ok(!ids.includes(scheduled));
+  assert.equal(candidates.nodes.filter((candidate) => candidate.title === "Finished errand").length, 0);
 });
 
 test("history attributes a change to whoever made it, not to the node's creator", async () => {

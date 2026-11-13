@@ -40,8 +40,7 @@ const fileSchema = z.object({
     edge_context_limit: z.number().int().positive(),
   }),
   plan: z.object({
-    recurrence_horizon_days: z.number().int().positive(),
-    max_instances_per_series: z.number().int().positive(),
+    max_sessions_per_spawn: z.number().int().positive(),
   }),
   recall: z.object({
     anchor_similarity_floor: z.number().min(0).max(2),
@@ -66,6 +65,7 @@ const fileSchema = z.object({
       memory: z.number().positive(),
       plan: z.number().positive(),
       place: z.number().positive(),
+      task: z.number().positive(),
     }),
   }),
 });
@@ -76,7 +76,7 @@ export type Config = {
   serviceRoot: string;
   env: {
     databaseUrl: string;
-    /** The box's IANA zone from `TZ`; recurring plans keep their wall-clock time in it across DST. */
+    /** The box's IANA zone from `TZ`; local dates and times (a spawned session's, a task's close day) are read in it. */
     timezone: string;
     dwarBaseUrl: string;
     host: string;

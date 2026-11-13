@@ -43,6 +43,13 @@
       "when": 1792902356617,
       "tag": "0005_timeline_from_plans",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794547326049,
+      "tag": "0006_tasks_and_rsvp",
+      "breakpoints": true
     }
   ]
 }

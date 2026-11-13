@@ -2,7 +2,7 @@
 
 import { z, type ZodError, type ZodType } from "zod";
 import { YaadError } from "../../errors.js";
-import { PLAN_KINDS, TIMELINE_VIEWS } from "../../types/timeline.js";
+import { OUTCOMES, PLAN_STATUSES, RSVPS, TIMELINE_VIEWS } from "../../types/timeline.js";
 
 /** Parse with zod; map failures to `422 invalid_request`. */
 export function parse<T>(schema: ZodType<T>, data: unknown): T {
@@ -23,7 +23,7 @@ export function formatZod(error: ZodError): string {
     .join("; ");
 }
 
-const planStatus = z.enum(["idea", "tentative", "confirmed"]);
+const planStatus = z.enum(PLAN_STATUSES);
 
 export const personDetailBody = z
   .object({
@@ -39,13 +39,13 @@ const timeZone = z
   .string()
   .refine((zone) => Intl.supportedValuesOf("timeZone").includes(zone), "time_zone must be an IANA time zone");
 
-/** The fields the timeline computes over besides start, end and rule. */
-const planTimelineFields = {
-  kind: z.enum(PLAN_KINDS).nullable().optional(),
-  due_at: instant.nullable().optional(),
-  opens_at: instant.nullable().optional(),
+/** What a plan's detail carries besides its end, all-day flag and status. */
+const planOptionalFields = {
   time_zone: timeZone.nullable().optional(),
-  hide_from_planner: z.boolean().optional(),
+  rsvp: z.enum(RSVPS).nullable().optional(),
+  outcome: z.enum(OUTCOMES).nullable().optional(),
+  actual_start: instant.nullable().optional(),
+  actual_end: instant.nullable().optional(),
 };
 
 /**
@@ -54,11 +54,22 @@ const planTimelineFields = {
  */
 export const planDetailBody = z
   .object({
-    end_at: z.string().datetime({ offset: true }).nullable().optional(),
+    end_at: instant.nullable().optional(),
     all_day: z.boolean().optional(),
     status: planStatus,
-    recurrence: z.string().nullable().optional(),
-    ...planTimelineFields,
+    ...planOptionalFields,
+  })
+  .strict();
+
+/**
+ * A task's detail: relevant from `opens_on` until `closes_at`, with neither it is Someday, and a
+ * close needs an open. `done_at` is Ankur's tick.
+ */
+export const taskDetailBody = z
+  .object({
+    opens_on: z.string().date().nullable().optional(),
+    closes_at: instant.nullable().optional(),
+    done_at: instant.nullable().optional(),
   })
   .strict();
 
@@ -74,13 +85,14 @@ export const patchPersonDetailBody = personDetailBody.partial();
 
 export const patchPlanDetailBody = z
   .object({
-    end_at: z.string().datetime({ offset: true }).nullable().optional(),
+    end_at: instant.nullable().optional(),
     all_day: z.boolean().optional(),
     status: planStatus.optional(),
-    recurrence: z.string().nullable().optional(),
-    ...planTimelineFields,
+    ...planOptionalFields,
   })
   .strict();
+
+export const patchTaskDetailBody = taskDetailBody;
 
 export const patchPlaceDetailBody = placeDetailBody.partial();
 
@@ -88,7 +100,7 @@ export const idParam = z.object({ id: z.string().uuid() }).strict();
 
 /**
  * `PATCH /nodes/:id` — a hand edit. `detail` is checked against the node's kind;
- * `ttl_days` (memory and plan only) restarts expiry from now, and null clears it.
+ * `ttl_days` (memory, plan and task) restarts expiry from now, and null clears it.
  */
 export const patchNodeBody = z
   .object({
@@ -104,7 +116,7 @@ export const patchNodeBody = z
 /** `POST /nodes` — a node made by hand; `detail` is checked against `kind` as on ingest. */
 export const createNodeBody = z
   .object({
-    kind: z.enum(["person", "memory", "plan", "place"]),
+    kind: z.enum(["person", "memory", "plan", "place", "task"]),
     title: z.string().min(1),
     body: z.string().nullable().optional(),
     occurred_at: z.string().datetime({ offset: true }).nullable().optional(),
@@ -150,11 +162,12 @@ export const historySearchBody = z
   .strict();
 
 const nodeFilterFields = {
-  kind: z.enum(["person", "memory", "plan", "place"]).optional(),
+  kind: z.enum(["person", "memory", "plan", "place", "task"]).optional(),
   name: z.string().min(1).optional(),
   occurred_from: z.string().datetime({ offset: true }).optional(),
   occurred_to: z.string().datetime({ offset: true }).optional(),
   status: planStatus.optional(),
+  relevant_on: z.string().date().optional(),
 };
 
 export const queryBody = z
@@ -186,17 +199,27 @@ export const graphBody = z
   })
   .strict();
 
-/** `POST /timeline` — sessions in `[from, to)` through one view's filter. */
+/** `POST /timeline` — plans in `[from, to)` through one view's filter. */
 export const timelineBody = z
   .object({ from: instant, to: instant, view: z.enum(TIMELINE_VIEWS) })
   .strict()
   .refine((body) => Date.parse(body.from) < Date.parse(body.to), "from must be before to");
 
-/** `PUT /timeline/outcome` — Ankur marks one session completed (`done`) or takes the mark back (null). */
+/** `PUT /timeline/outcome` — Ankur marks one plan done or missed, or takes the mark back (null). */
 export const outcomeBody = z
-  .object({
-    plan_id: z.string().uuid(),
-    occurrence_date: z.string().date(),
-    outcome: z.literal("done").nullable(),
-  })
+  .object({ plan_id: z.string().uuid(), outcome: z.enum(OUTCOMES).nullable() })
   .strict();
+
+/** `PUT /timeline/rsvp` — Ankur says whether he is going to one plan, or clears the answer (null). */
+export const rsvpBody = z
+  .object({ plan_id: z.string().uuid(), rsvp: z.enum(RSVPS).nullable() })
+  .strict();
+
+/** `POST /tasks` — the tasks one local day shows (`on`), or the ones with no window (`someday`). */
+export const tasksBody = z
+  .object({ on: z.string().date().optional(), someday: z.literal(true).optional() })
+  .strict()
+  .refine((body) => (body.on === undefined) !== (body.someday === undefined), "send exactly one of on or someday");
+
+/** `PUT /tasks/done` — Ankur ticks one task (`done: true`) or takes the tick back. */
+export const taskDoneBody = z.object({ task_id: z.string().uuid(), done: z.boolean() }).strict();

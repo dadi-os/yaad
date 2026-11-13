@@ -194,11 +194,7 @@ test("PATCH /nodes/:id rejects an empty body, detail on a memory, and an unknown
 
 test("DELETE /nodes/:id sweeps neighbors it strands but keeps linked nodes and dated plans", async () => {
   await resetGraph(handle.sql);
-  const hub = await insertPlan(handle.db, {
-    title: "CSE 380",
-    embedding: axisVector(dim, 0),
-    occurredAt: null,
-  });
+  const hub = await insertMemory(handle.db, { title: "CSE 380", embedding: axisVector(dim, 0), occurredAt: null });
   const facet = await insertMemory(handle.db, { title: "CSE 380 uses AWS", embedding: axisVector(dim, 1) });
   const person = await insertPerson(handle.db, { title: "Riya", embedding: axisVector(dim, 2) });
   const friend = await insertPerson(handle.db, { title: "Ankur", embedding: axisVector(dim, 3) });

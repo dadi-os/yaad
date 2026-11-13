@@ -7,7 +7,6 @@ import {
   integer,
   jsonb,
   pgTable,
-  primaryKey,
   real,
   text,
   timestamp,
@@ -16,7 +15,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { loadFileConfig } from "../config.js";
-import { OCCURRENCE_STATES, OUTCOMES, PLAN_KINDS } from "../types/timeline.js";
+import { OUTCOMES, PLAN_STATUSES, RSVPS } from "../types/timeline.js";
 
 const embeddingDimension = loadFileConfig().embedding.dimension;
 
@@ -44,7 +43,7 @@ export const node = pgTable(
     updatedAt: timestamptz("updated_at").notNull().defaultNow(),
   },
   (table) => [
-    check("node_kind_check", sql`${table.kind} IN ('person', 'memory', 'plan', 'place')`),
+    check("node_kind_check", sql`${table.kind} IN ('person', 'memory', 'plan', 'place', 'task')`),
     check("node_source_check", sql`${table.source} IN ('manual', 'agent', 'ingest')`),
     check("node_agent_id_check", sql`${table.agentId} IS NULL OR ${table.source} = 'agent'`),
     index("node_kind_idx").on(table.kind),
@@ -108,55 +107,39 @@ export const planDetail = pgTable(
      */
     allDay: boolean("all_day").notNull().default(false),
     status: text("status").notNull(),
-    /** RRULE lines; the series anchors on occurred_at, or on due_at for a plan with no start. */
-    recurrence: text("recurrence"),
-    /** What the plan is; the timeline views filter on it (routine kinds stay off the month). */
-    kind: text("kind"),
-    /** A deadline, apart from when the work is scheduled; a deadline-only plan has no occurred_at. */
-    dueAt: timestamptz("due_at"),
-    /** When a task's work opens. */
-    opensAt: timestamptz("opens_at"),
     /** IANA zone of the place when it is not the box's, so clients can show its local time. */
     timeZone: text("time_zone"),
-    /** In the timeline but never on the planner grid: an event Ankur is not part of. */
-    hideFromPlanner: boolean("hide_from_planner").notNull().default(false),
+    /** Whether Ankur is going: yes or no; null while he has not said. */
+    rsvp: text("rsvp"),
+    /** How the plan turned out; null while nobody has said. */
+    outcome: text("outcome"),
+    outcomeAt: timestamptz("outcome_at"),
+    /** When the plan really ran, if that differed from its start and end. */
+    actualStart: timestamptz("actual_start"),
+    actualEnd: timestamptz("actual_end"),
   },
   (table) => [
-    check("plan_status_check", sql`${table.status} IN ('idea', 'tentative', 'confirmed')`),
-    check("plan_kind_check", sql`${table.kind} IS NULL OR ${table.kind} IN (${inList(PLAN_KINDS)})`),
+    check("plan_status_check", sql`${table.status} IN (${inList(PLAN_STATUSES)})`),
+    check("plan_rsvp_check", sql`${table.rsvp} IS NULL OR ${table.rsvp} IN (${inList(RSVPS)})`),
+    check("plan_outcome_check", sql`${table.outcome} IS NULL OR ${table.outcome} IN (${inList(OUTCOMES)})`),
   ],
 );
 
 /**
- * What happened to one session of a plan, a series' meeting or a one-off plan's only session,
- * named by the local date it was first scheduled for. A row exists only once a session differs
- * from its plan: moved, cancelled, given an outcome or actual times.
+ * A task: something to do, relevant from `opens_on` until `closes_at`. No window at all means
+ * Someday. A close needs an open, and `done_at` is Ankur's tick.
  */
-export const planOccurrence = pgTable(
-  "plan_occurrence",
+export const taskDetail = pgTable(
+  "task_detail",
   {
-    planId: uuid("plan_id")
-      .notNull()
+    nodeId: uuid("node_id")
+      .primaryKey()
       .references(() => node.id, { onDelete: "cascade" }),
-    occurrenceDate: date("occurrence_date", { mode: "string" }).notNull(),
-    state: text("state").notNull().default("scheduled"),
-    /** The session's times once moved; null while it keeps the plan's. */
-    startAt: timestamptz("start_at"),
-    endAt: timestamptz("end_at"),
-    outcome: text("outcome"),
-    outcomeAt: timestamptz("outcome_at"),
-    actualStart: timestamptz("actual_start"),
-    actualEnd: timestamptz("actual_end"),
-    /** Who last changed the row: a Hath agent id, `manual`, or `ingest`. */
-    source: text("source").notNull(),
-    updatedAt: timestamptz("updated_at").notNull().defaultNow(),
+    opensOn: date("opens_on", { mode: "string" }),
+    closesAt: timestamptz("closes_at"),
+    doneAt: timestamptz("done_at"),
   },
-  (table) => [
-    primaryKey({ columns: [table.planId, table.occurrenceDate] }),
-    check("plan_occurrence_state_check", sql`${table.state} IN (${inList(OCCURRENCE_STATES)})`),
-    check("plan_occurrence_outcome_check", sql`${table.outcome} IS NULL OR ${table.outcome} IN (${inList(OUTCOMES)})`),
-    check("plan_occurrence_moved_check", sql`(${table.state} = 'moved') = (${table.startAt} IS NOT NULL)`),
-  ],
+  (table) => [check("task_window_check", sql`${table.closesAt} IS NULL OR ${table.opensOn} IS NOT NULL`)],
 );
 
 export const placeDetail = pgTable("place_detail", {
@@ -198,6 +181,6 @@ export type NodeRecordRow = Omit<NodeRow, "embedding">;
 export type EdgeRow = typeof edge.$inferSelect;
 export type PersonDetailRow = typeof personDetail.$inferSelect;
 export type PlanDetailRow = typeof planDetail.$inferSelect;
+export type TaskDetailRow = typeof taskDetail.$inferSelect;
 export type PlaceDetailRow = typeof placeDetail.$inferSelect;
 export type NodeHistoryRow = typeof nodeHistory.$inferSelect;
-export type PlanOccurrenceRow = typeof planOccurrence.$inferSelect;

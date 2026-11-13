@@ -5,7 +5,8 @@
  */
 
 import type { Db } from "../db/client.js";
-import { getEdge, getNode, getPlanDetail } from "../db/read.js";
+import { getEdge, getNode, getTaskDetail } from "../db/read.js";
+import { localDate } from "../local-time.js";
 import { YaadError } from "../errors.js";
 import { parse } from "../routers/v1/schemas.js";
 import { rejectDuplicates } from "./duplicates.js";
@@ -13,9 +14,11 @@ import {
   patchPersonDetailBody,
   patchPlaceDetailBody,
   patchPlanDetailBody,
+  patchTaskDetailBody,
   personDetailBody,
   placeDetailBody,
   planDetailBody,
+  taskDetailBody,
   type Operation,
 } from "./operations.js";
 
@@ -23,16 +26,20 @@ import {
 const MIN_EVIDENCE_CHARS = 8;
 
 /**
- * Validate op batch before apply: unique temp_ids, kind-appropriate details, all-day
- * plans that have a date, TTL only on memory/plan, edge endpoints that resolve to temp or
- * live nodes, and session edits on a live plan that change something (whether the plan
- * has a session that day is checked on apply, after the batch's own updates).
+ * Validate op batch before apply: unique temp_ids, kind-appropriate details, plans that have
+ * a start, tasks whose window is well formed (a close needs an open on or before its day), TTL
+ * only on memory/plan, edge endpoints that resolve to temp or live nodes, and spawned or
+ * bulk-edited sessions whose hub, place and times make sense (whether a bulk edit matches any
+ * session is checked on apply, after the batch's own creates). `timeZone` is the box's zone, in
+ * which a task's close day is read.
  */
 export async function validateOperations(opts: {
   db: Db;
   operations: Operation[];
+  timeZone: string;
 }): Promise<void> {
   const tempIds = new Set<string>();
+  const spawnIds = new Set<string>();
 
   for (const op of opts.operations) {
     if (op.op === "create_node") {
@@ -47,9 +54,16 @@ export async function validateOperations(opts: {
         parse(personDetailBody, op.detail ?? {});
       }
       if (op.kind === "plan") {
-        const detail = parse(planDetailBody, op.detail ?? {});
-        if (detail.all_day === true && !op.occurred_at && !detail.due_at) {
-          throw new YaadError(422, "invalid_request", `create_node ${op.temp_id}: an all-day plan needs occurred_at or due_at`);
+        parse(planDetailBody, op.detail ?? {});
+        if (!op.occurred_at) {
+          throw new YaadError(422, "invalid_request", `create_node ${op.temp_id}: a plan needs occurred_at; something with no time is a task`);
+        }
+      }
+      if (op.kind === "task") {
+        const detail = parse(taskDetailBody, op.detail ?? {});
+        assertTaskWindow(detail, `create_node ${op.temp_id}`, opts.timeZone);
+        if (op.occurred_at) {
+          throw new YaadError(422, "invalid_request", `create_node ${op.temp_id}: a task has no occurred_at; its window is opens_on and closes_at`);
         }
       }
       if (op.kind === "place") {
@@ -79,34 +93,62 @@ export async function validateOperations(opts: {
         if (current.kind === "place") {
           parse(patchPlaceDetailBody, op.detail);
         }
-      }
-      if (current.kind === "plan") {
-        const patch = op.detail !== undefined ? parse(patchPlanDetailBody, op.detail) : {};
-        const stored = await getPlanDetail(opts.db, op.node_id);
-        const allDay = patch.all_day ?? stored.allDay;
-        const occurredAt = op.occurred_at !== undefined ? op.occurred_at : current.occurredAt;
-        const dueAt = patch.due_at !== undefined ? patch.due_at : stored.dueAt;
-        if (allDay && !occurredAt && !dueAt) {
-          throw new YaadError(422, "invalid_request", `update_node ${op.node_id}: an all-day plan needs occurred_at or due_at`);
+        if (current.kind === "plan") {
+          parse(patchPlanDetailBody, op.detail);
         }
+        if (current.kind === "task") {
+          const patch = parse(patchTaskDetailBody, op.detail);
+          const stored = await getTaskDetail(opts.db, op.node_id);
+          assertTaskWindow(
+            {
+              opens_on: patch.opens_on !== undefined ? patch.opens_on : stored.opensOn,
+              closes_at: patch.closes_at !== undefined ? patch.closes_at : (stored.closesAt?.toISOString() ?? null),
+            },
+            `update_node ${op.node_id}`,
+            opts.timeZone,
+          );
+        }
+      }
+      if (current.kind === "plan" && op.occurred_at === null) {
+        throw new YaadError(422, "invalid_request", `update_node ${op.node_id}: a plan needs occurred_at`);
       }
       rejectTtlOnEntity(current.kind, op.ttl_days, `update_node ${op.node_id}`);
     }
     if (op.op === "close_node") {
       await requireCurrent(opts.db, op.node_id, "node");
     }
-    if (op.op === "edit_occurrence") {
-      const label = `edit_occurrence ${op.node_id} ${op.occurrence_date}`;
-      const current = await requireCurrent(opts.db, op.node_id, "node");
-      if (current.kind !== "plan") {
-        throw new YaadError(422, "invalid_request", `${label}: only a plan has sessions`);
+    if (op.op === "spawn_plans") {
+      const label = `spawn_plans ${op.temp_id}`;
+      await resolveEndpoint(opts.db, op.hub, tempIds, "hub");
+      if (op.place !== undefined) {
+        await resolveEndpoint(opts.db, op.place, tempIds, "place");
+        if (!tempIds.has(op.place) && (await getNode(opts.db, op.place)).kind !== "place") {
+          throw new YaadError(422, "invalid_request", `${label}: place ${op.place} is not a place node`);
+        }
       }
-      const { op: _op, node_id: _node, occurrence_date: _date, ...change } = op;
-      if (Object.keys(change).length === 0) {
-        throw new YaadError(422, "invalid_request", `${label}: change at least one field`);
+      if (new Set(op.dates).size !== op.dates.length) {
+        throw new YaadError(422, "invalid_request", `${label}: dates must not repeat`);
       }
-      if ((op.start_at !== undefined || op.end_at !== undefined) && op.state !== "moved") {
-        throw new YaadError(422, "invalid_request", `${label}: start_at and end_at move a session, so send state "moved" with them`);
+      if (op.end_time !== undefined && op.end_time <= op.start_time) {
+        throw new YaadError(422, "invalid_request", `${label}: end_time must be after start_time`);
+      }
+      if (op.room !== undefined && op.place === undefined) {
+        throw new YaadError(422, "invalid_request", `${label}: room needs a place`);
+      }
+      if (tempIds.has(op.temp_id) || spawnIds.has(op.temp_id)) {
+        throw new YaadError(422, "invalid_request", `temp_id ${op.temp_id} is defined twice`);
+      }
+      spawnIds.add(op.temp_id);
+    }
+    if (op.op === "update_plans") {
+      const label = `update_plans ${op.hub}`;
+      await requireCurrent(opts.db, op.hub, "node");
+      if (op.to_date !== undefined && op.to_date < op.from_date) {
+        throw new YaadError(422, "invalid_request", `${label}: to_date must not be before from_date`);
+      }
+      const { start_time: start, end_time: end } = op.set;
+      if (start !== undefined && end !== undefined && end !== null && end <= start) {
+        throw new YaadError(422, "invalid_request", `${label}: end_time must be after start_time`);
       }
     }
     if (op.op === "close_edge") {
@@ -124,7 +166,8 @@ export async function validateOperations(opts: {
 
 /**
  * unlinkedCreates returns the batch's `create_node` operations that no `create_edge` in
- * the batch touches. Such a node would float in the graph with nothing leading to it.
+ * the batch touches and no `spawn_plans` names as its hub or place (spawning links them to
+ * every session). Such a node would float in the graph with nothing leading to it.
  */
 export function unlinkedCreates(operations: Operation[]): Extract<Operation, { op: "create_node" }>[] {
   const linked = new Set<string>();
@@ -132,6 +175,12 @@ export function unlinkedCreates(operations: Operation[]): Extract<Operation, { o
     if (op.op === "create_edge") {
       linked.add(op.src);
       linked.add(op.dst);
+    }
+    if (op.op === "spawn_plans") {
+      linked.add(op.hub);
+      if (op.place !== undefined) {
+        linked.add(op.place);
+      }
     }
   }
   return operations.filter(
@@ -149,6 +198,7 @@ export async function validateExtraction(opts: {
   db: Db;
   operations: Operation[];
   text: string;
+  timeZone: string;
 }): Promise<void> {
   const haystack = normalizeQuote(opts.text);
   for (const op of opts.operations) {
@@ -164,7 +214,7 @@ export async function validateExtraction(opts: {
       );
     }
   }
-  await rejectDuplicates(opts.db, opts.operations);
+  await rejectDuplicates(opts.db, opts.operations, opts.timeZone);
   const unlinked = unlinkedCreates(opts.operations);
   if (unlinked.length > 0) {
     throw new YaadError(
@@ -176,7 +226,7 @@ export async function validateExtraction(opts: {
 }
 
 /** Lower-cased text with curly quotes, dashes, and whitespace folded, so a faithful quote matches. */
-function normalizeQuote(text: string): string {
+export function normalizeQuote(text: string): string {
   return text
     .toLowerCase()
     .replace(/[\u2018\u2019]/g, "'")
@@ -198,7 +248,7 @@ function rejectTtlOnEntity(
     throw new YaadError(
       422,
       "invalid_request",
-      `${label}: ttl_days is only valid on memory and plan nodes`,
+      `${label}: ttl_days is only valid on memory, plan and task nodes`,
     );
   }
 }
@@ -229,5 +279,22 @@ async function resolveEndpoint(db: Db, value: string, tempIds: Set<string>, labe
       );
     }
     throw err;
+  }
+}
+
+/** Rejects a task window with a close and no open, or a close on a day before its open day (read in `timeZone`). */
+function assertTaskWindow(
+  detail: { opens_on?: string | null | undefined; closes_at?: string | null | undefined },
+  label: string,
+  timeZone: string,
+): void {
+  if (!detail.closes_at) {
+    return;
+  }
+  if (!detail.opens_on) {
+    throw new YaadError(422, "invalid_request", `${label}: a task that closes needs opens_on`);
+  }
+  if (localDate(new Date(detail.closes_at), timeZone) < detail.opens_on) {
+    throw new YaadError(422, "invalid_request", `${label}: closes_at is before opens_on`);
   }
 }

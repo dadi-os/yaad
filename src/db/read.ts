@@ -8,6 +8,7 @@ import {
   personDetail,
   placeDetail,
   planDetail,
+  taskDetail,
   type EdgeRow,
   type NodeHistoryRow,
   type NodeRecordRow,
@@ -15,6 +16,7 @@ import {
   type PersonDetailRow,
   type PlaceDetailRow,
   type PlanDetailRow,
+  type TaskDetailRow,
 } from "./schema.js";
 import { YaadError } from "../errors.js";
 
@@ -43,6 +45,15 @@ export async function getPlanDetail(db: SelectDb, nodeId: string): Promise<PlanD
   const row = rows[0];
   if (!row) {
     throw new YaadError(500, "internal_error", `plan_detail missing for node ${nodeId}`);
+  }
+  return row;
+}
+
+export async function getTaskDetail(db: SelectDb, nodeId: string): Promise<TaskDetailRow> {
+  const rows = await db.select().from(taskDetail).where(eq(taskDetail.nodeId, nodeId));
+  const row = rows[0];
+  if (!row) {
+    throw new YaadError(500, "internal_error", `task_detail missing for node ${nodeId}`);
   }
   return row;
 }

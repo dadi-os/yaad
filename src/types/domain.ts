@@ -1,9 +1,9 @@
 /** API-facing domain types for the memory graph (nodes, edges, history). */
 
-import type { PlanKind } from "./timeline.js";
+import type { Outcome, PlanStatus, Rsvp } from "./timeline.js";
 
 /** Graph node kind. */
-export type NodeKind = "person" | "memory" | "plan" | "place";
+export type NodeKind = "person" | "memory" | "plan" | "place" | "task";
 
 /** Provenance of a node write. */
 export type NodeSource = "manual" | "agent" | "ingest";
@@ -12,9 +12,6 @@ export type NodeSource = "manual" | "agent" | "ingest";
 export type NodeAuthor =
   | { source: "agent"; agentId: string }
   | { source: "manual" | "ingest"; agentId: null };
-
-/** Lifecycle status for plan nodes. */
-export type PlanStatus = "idea" | "tentative" | "confirmed";
 
 export type PersonDetail = {
   birthday: string | null;
@@ -26,22 +23,22 @@ export type PlanDetail = {
   /** Date without a time of day: occurred_at and end_at sit at local midnight of their dates. */
   all_day: boolean;
   status: PlanStatus;
-  /** RRULE string when this plan is a recurrence template; null on instances. */
-  recurrence: string | null;
-  kind: PlanKind | null;
-  /** A deadline, apart from when the work is scheduled; a deadline-only plan has occurred_at null. */
-  due_at: string | null;
-  /** When a task's work opens. */
-  opens_at: string | null;
   /** IANA zone of the place when it is not the box's (a Chicago dinner); null otherwise. */
   time_zone: string | null;
-  /** In the timeline but never on the planner grid (office hours he does not attend). */
-  hide_from_planner: boolean;
-  /**
-   * On an occurrence a date-bounded query expanded from a recurring plan, that plan's id
-   * (the record's own id); null on every stored node.
-   */
-  series_id: string | null;
+  /** Whether Ankur is going; null until he says. */
+  rsvp: Rsvp | null;
+  outcome: Outcome | null;
+  outcome_at: string | null;
+  /** When the plan really ran, if that differed from its start and end. */
+  actual_start: string | null;
+  actual_end: string | null;
+};
+
+/** A task's window: relevant from `opens_on` until `closes_at`; with neither it is Someday. */
+export type TaskDetail = {
+  opens_on: string | null;
+  closes_at: string | null;
+  done_at: string | null;
 };
 
 export type PlaceDetail = {
@@ -101,7 +98,6 @@ export type LintRule =
   | "dated_plan_title"
   | "dated_hub"
   | "long_span"
-  | "duplicate_series"
   | "duplicate"
   | "unaliased_person"
   | "place_without_address"

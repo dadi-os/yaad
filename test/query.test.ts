@@ -1,12 +1,13 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { buildApp } from "../src/app.js";
-import { YaadError } from "../src/errors.js";
 import { applyOperations } from "../src/ingest/apply.js";
 import {
   axisVector,
+  insertMemory,
   insertPerson,
   insertPlan,
+  insertTask,
   mockDwar,
   openTestDb,
   resetGraph,
@@ -82,27 +83,33 @@ test("query instantaneous: null end_at only matches when occurred_at is in range
 
 test("query undated: excluded with date bound, included without", async () => {
   await resetGraph(handle.sql);
-  const id = await insertPlan(handle.db, {
-    title: "someday trip",
-    embedding: axisVector(dim, 0),
-    occurredAt: null,
-    status: "idea",
-  });
+  const id = await insertMemory(handle.db, { title: "someday trip", embedding: axisVector(dim, 0), occurredAt: null });
 
   const bounded = await query({
-    kind: "plan",
+    kind: "memory",
     occurred_from: "2026-11-05T00:00:00.000Z",
     occurred_to: "2026-11-06T00:00:00.000Z",
   });
   assert.equal(bounded.statusCode, 200);
   assert.equal(bounded.json().nodes.length, 0);
 
-  const open = await query({ kind: "plan", status: "idea" });
+  const open = await query({ kind: "memory" });
   assert.equal(open.statusCode, 200);
   assert.deepEqual(
     open.json().nodes.map((n: { id: string }) => n.id),
     [id],
   );
+});
+
+test("query relevant_on lists the tasks not done whose open day has come, and rejects a non-task kind", async () => {
+  await resetGraph(handle.sql);
+  const open = await insertTask(handle.db, { title: "HW 3", embedding: axisVector(dim, 0), opensOn: "2026-11-10", closesAt: new Date("2026-11-14T04:59:00.000Z") });
+  await insertTask(handle.db, { title: "HW 4", embedding: axisVector(dim, 1), opensOn: "2026-11-13", closesAt: new Date("2026-11-20T04:59:00.000Z") });
+  await insertTask(handle.db, { title: "HW 2", embedding: axisVector(dim, 2), opensOn: "2026-11-01", closesAt: new Date("2026-11-05T04:59:00.000Z"), doneAt: new Date("2026-11-04T20:00:00.000Z") });
+  const res = await query({ relevant_on: "2026-11-12" });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.json().nodes.map((n: { id: string }) => n.id), [open]);
+  assert.equal((await query({ relevant_on: "2026-11-12", kind: "plan" })).statusCode, 422);
 });
 
 test("query name: exact title and alias hit case-insensitively; substring does not", async () => {
@@ -150,102 +157,6 @@ test("query status with conflicting kind is 422", async () => {
   await resetGraph(handle.sql);
   const res = await query({ kind: "person", status: "confirmed" });
   assert.equal(res.statusCode, 422);
-});
-
-async function createClass(detail: Record<string, unknown>, occurredAt?: string): Promise<string> {
-  const result = await applyOperations({
-    db: handle.db,
-    dwar: mockDwar({ dimension: dim }),
-    author: { source: "ingest", agentId: null },
-    config,
-    operations: [
-      {
-        op: "create_node",
-        temp_id: "class",
-        kind: "plan",
-        title: "CS 101",
-        ...(occurredAt !== undefined ? { occurred_at: occurredAt } : {}),
-        detail: { status: "confirmed", ...detail },
-      },
-    ],
-  });
-  const id = result.temp_ids.class;
-  assert.ok(id);
-  return id;
-}
-
-type QueriedNode = { id: string; occurred_at: string; detail: { end_at: string | null; series_id: string | null } };
-
-test("a recurring plan is stored once and a date range lists each occurrence", async () => {
-  await resetGraph(handle.sql);
-  const templateId = await createClass(
-    { recurrence: "FREQ=WEEKLY;BYDAY=MO;COUNT=4", end_at: "2026-09-07T16:30:00.000Z" },
-    "2026-09-07T15:00:00.000Z",
-  );
-
-  const plans = await handle.sql`SELECT count(*)::int AS n FROM plan_detail`;
-  assert.equal(plans[0]?.n, 1);
-
-  const bounded = await query({
-    occurred_from: "2026-09-07T00:00:00.000Z",
-    occurred_to: "2026-09-30T23:59:59.000Z",
-    kind: "plan",
-  });
-  assert.equal(bounded.statusCode, 200);
-  const nodes: QueriedNode[] = bounded.json().nodes;
-  assert.deepEqual(
-    nodes.map((n) => n.occurred_at),
-    ["2026-09-07T15:00:00.000Z", "2026-09-14T15:00:00.000Z", "2026-09-21T15:00:00.000Z", "2026-09-28T15:00:00.000Z"],
-  );
-  assert.ok(nodes.every((n) => n.id === templateId && n.detail.series_id === templateId));
-  assert.equal(nodes[1]?.detail.end_at, "2026-09-14T16:30:00.000Z");
-
-  const midClass = await query({
-    occurred_from: "2026-09-14T16:00:00.000Z",
-    occurred_to: "2026-09-20T00:00:00.000Z",
-  });
-  assert.deepEqual(
-    midClass.json().nodes.map((n: QueriedNode) => n.occurred_at),
-    ["2026-09-14T15:00:00.000Z"],
-  );
-
-  const undated = await query({ kind: "plan" });
-  const listed: QueriedNode[] = undated.json().nodes;
-  assert.equal(listed.length, 1);
-  assert.equal(listed[0]?.detail.series_id, null);
-});
-
-test("a date range holding more occurrences than max_instances_per_series is 422", async () => {
-  await resetGraph(handle.sql);
-  await createClass({ recurrence: "FREQ=DAILY" }, "2026-09-05T15:00:00.000Z");
-  const app = await buildApp(
-    { ...config, plan: { recurrence_horizon_days: 365, max_instances_per_series: 3 } },
-    { db: handle.db, sql: handle.sql, dwar: mockDwar({ dimension: dim }) },
-  );
-  const res = await app.inject({
-    method: "POST",
-    url: "/query",
-    payload: { occurred_from: "2026-09-05T00:00:00.000Z", occurred_to: "2026-09-15T00:00:00.000Z" },
-  });
-  await app.close();
-  assert.equal(res.statusCode, 422);
-  assert.match(res.json().error.message, /narrow the date range/);
-});
-
-test("a recurring plan with an invalid rule or no start is rejected and writes nothing", async () => {
-  await resetGraph(handle.sql);
-  for (const attempt of [
-    () => createClass({ recurrence: "FREQ=NEVER" }, "2026-09-05T15:00:00.000Z"),
-    () => createClass({ recurrence: "FREQ=WEEKLY;BYDAY=MO" }),
-  ]) {
-    await assert.rejects(attempt, (err: unknown) => {
-      assert.ok(err instanceof YaadError);
-      assert.equal(err.statusCode, 422);
-      return true;
-    });
-  }
-  const nodes = await handle.sql`SELECT count(*)::int AS n FROM node`;
-  assert.equal(nodes[0]?.n, 0);
 });
 
 test("place ingest with AT_LOCATION edge; GET /nodes/:id shows the edge", async () => {
@@ -297,89 +208,4 @@ test("place ingest with AT_LOCATION edge; GET /nodes/:id shows the edge", async 
   assert.equal(body.edges.outgoing[0].type, "AT_LOCATION");
   assert.equal(body.edges.outgoing[0].dst_id, result.temp_ids.cafe);
   await app.close();
-});
-
-test("recurrence keeps local wall-clock time across a daylight-saving change", async () => {
-  await resetGraph(handle.sql);
-  await createClass(
-    { recurrence: "FREQ=WEEKLY;BYDAY=TU;COUNT=2", end_at: "2026-10-27T11:40:00-04:00" },
-    "2026-10-27T10:20:00-04:00",
-  );
-  const res = await query({ occurred_from: "2026-10-26T00:00:00.000Z", occurred_to: "2026-11-10T00:00:00.000Z" });
-  const nodes: QueriedNode[] = res.json().nodes;
-  assert.deepEqual(
-    nodes.map((n) => n.occurred_at),
-    ["2026-10-27T14:20:00.000Z", "2026-11-03T15:20:00.000Z"],
-  );
-  assert.deepEqual(
-    nodes.map((n) => n.detail.end_at),
-    ["2026-10-27T15:40:00.000Z", "2026-11-03T16:40:00.000Z"],
-  );
-});
-
-test("update_node that changes a plan schedule changes the occurrences a date range lists", async () => {
-  await resetGraph(handle.sql);
-  const templateId = await createClass({});
-
-  async function update(detail: Record<string, unknown>, occurredAt?: string) {
-    await applyOperations({
-      db: handle.db,
-      dwar: mockDwar({ dimension: dim }),
-      author: { source: "ingest", agentId: null },
-      config,
-      operations: [
-        {
-          op: "update_node",
-          node_id: templateId,
-          ...(occurredAt !== undefined ? { occurred_at: occurredAt } : {}),
-          detail,
-        },
-      ],
-    });
-  }
-  async function listed(): Promise<QueriedNode[]> {
-    const res = await query({ occurred_from: "2026-08-30T00:00:00.000Z", occurred_to: "2026-09-30T00:00:00.000Z" });
-    return res.json().nodes;
-  }
-
-  await update(
-    { recurrence: "FREQ=WEEKLY;BYDAY=MO,WE;COUNT=4", end_at: "2026-08-31T16:20:00-04:00" },
-    "2026-08-31T15:00:00-04:00",
-  );
-  assert.equal((await listed()).length, 4);
-
-  await update({ recurrence: "FREQ=WEEKLY;BYDAY=MO,WE;COUNT=2" });
-  assert.equal((await listed()).length, 2);
-
-  await update({ recurrence: null });
-  const single = await listed();
-  assert.equal(single.length, 1);
-  assert.equal(single[0]?.detail.series_id, null);
-
-  await assert.rejects(() => update({ recurrence: "FREQ=NEVER" }), (err: unknown) => {
-    assert.ok(err instanceof YaadError);
-    assert.equal(err.statusCode, 422);
-    return true;
-  });
-});
-
-test("a date range finds a deadline-only plan by its due, and a due-anchored series once per due", async () => {
-  await resetGraph(handle.sql);
-  const homework = await createClass({ kind: "task", due_at: "2026-10-15T03:59:00.000Z" });
-  const rent = await createClass({ kind: "bill", due_at: "2026-10-01T04:00:00.000Z", all_day: true, recurrence: "FREQ=MONTHLY;BYMONTHDAY=1" });
-
-  const october = await query({ occurred_from: "2026-10-01T00:00:00.000Z", occurred_to: "2026-11-15T00:00:00.000Z" });
-  assert.equal(october.statusCode, 200, october.body);
-  const nodes: Array<QueriedNode & { detail: { due_at: string | null } }> = october.json().nodes;
-  assert.deepEqual(
-    nodes.map((n) => [n.id, n.occurred_at, n.detail.due_at]),
-    [
-      [rent, null, "2026-10-01T04:00:00.000Z"],
-      [homework, null, "2026-10-15T03:59:00.000Z"],
-      [rent, null, "2026-11-01T04:00:00.000Z"],
-    ],
-  );
-
-  const before = await query({ occurred_from: "2026-10-16T00:00:00.000Z", occurred_to: "2026-10-30T00:00:00.000Z" });
-  assert.deepEqual(before.json().nodes, []);
 });

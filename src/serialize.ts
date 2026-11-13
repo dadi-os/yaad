@@ -6,6 +6,7 @@ import type {
   PersonDetailRow,
   PlaceDetailRow,
   PlanDetailRow,
+  TaskDetailRow,
 } from "./db/schema.js";
 import type {
   EdgeRecord,
@@ -16,17 +17,17 @@ import type {
   PersonDetail,
   PlaceDetail,
   PlanDetail,
-  PlanStatus,
+  TaskDetail,
 } from "./types/domain.js";
 import { YaadError } from "./errors.js";
-import { PLAN_KINDS } from "./types/timeline.js";
+import { OUTCOMES, PLAN_STATUSES, RSVPS } from "./types/timeline.js";
 
 function iso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
 }
 
 function parseKind(value: string): NodeKind {
-  if (value === "person" || value === "memory" || value === "plan" || value === "place") {
+  if (value === "person" || value === "memory" || value === "plan" || value === "place" || value === "task") {
     return value;
   }
   throw new YaadError(500, "internal_error", `invalid node kind in database: ${value}`);
@@ -37,13 +38,6 @@ function parseSource(value: string): NodeSource {
     return value;
   }
   throw new YaadError(500, "internal_error", `invalid node source in database: ${value}`);
-}
-
-function parseStatus(value: string): PlanStatus {
-  if (value === "idea" || value === "tentative" || value === "confirmed") {
-    return value;
-  }
-  throw new YaadError(500, "internal_error", `invalid plan status in database: ${value}`);
 }
 
 /** A value from a fixed set as stored, or a 500 naming the column when the database holds anything else. */
@@ -117,14 +111,21 @@ export function toPlanDetail(row: PlanDetailRow): PlanDetail {
   return {
     end_at: iso(row.endAt),
     all_day: row.allDay,
-    status: parseStatus(row.status),
-    recurrence: row.recurrence,
-    kind: row.kind === null ? null : parseKnown(PLAN_KINDS, row.kind, "plan kind"),
-    due_at: iso(row.dueAt),
-    opens_at: iso(row.opensAt),
+    status: parseKnown(PLAN_STATUSES, row.status, "plan status"),
     time_zone: row.timeZone,
-    hide_from_planner: row.hideFromPlanner,
-    series_id: null,
+    rsvp: row.rsvp === null ? null : parseKnown(RSVPS, row.rsvp, "plan rsvp"),
+    outcome: row.outcome === null ? null : parseKnown(OUTCOMES, row.outcome, "plan outcome"),
+    outcome_at: iso(row.outcomeAt),
+    actual_start: iso(row.actualStart),
+    actual_end: iso(row.actualEnd),
+  };
+}
+
+export function toTaskDetail(row: TaskDetailRow): TaskDetail {
+  return {
+    opens_on: row.opensOn,
+    closes_at: iso(row.closesAt),
+    done_at: iso(row.doneAt),
   };
 }
 

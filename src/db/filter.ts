@@ -1,19 +1,17 @@
 /**
- * Exact node filters shared by `POST /query` and filter-anchored `POST /recall`.
- * A date-bounded filter returns dated nodes plus every occurrence of a recurring plan
- * inside the range, expanded from its rule (occurrences are never stored), and treats a
- * null plan end_at as an instantaneous event at occurred_at. A plan's due_at dates it too:
- * a deadline-only plan (no occurred_at) matches on its due, and a scheduled task also
- * matches a range holding its due.
+ * Exact node filters shared by `POST /query` and filter-anchored `POST /recall`. A date-bounded
+ * filter returns nodes whose time falls in the range, treating a plan with no end as an instant
+ * at its start. `relevant_on` returns the tasks not done whose open day has come by that local
+ * day, whether still open or past due.
  */
 
-import { and, asc, eq, gt, isNotNull, isNull, or, sql, type SQL } from "drizzle-orm";
-import type { Config } from "../config.js";
+import { and, asc, eq, gt, isNull, or, sql, type SQL } from "drizzle-orm";
 import { YaadError } from "../errors.js";
-import { planSessions, type Session } from "../ingest/recurrence.js";
-import type { NodeKind, PlanStatus } from "../types/domain.js";
+import type { NodeKind } from "../types/domain.js";
+import type { PlanStatus } from "../types/timeline.js";
 import type { Db } from "./client.js";
-import { node, personDetail, planDetail, type NodeRow } from "./schema.js";
+import { node, personDetail, planDetail, taskDetail, type NodeRow } from "./schema.js";
+import { relevantOn } from "./tasks.js";
 
 /** Exact criteria over live nodes; unset fields do not constrain. */
 export type NodeFilter = {
@@ -23,6 +21,8 @@ export type NodeFilter = {
   occurred_from?: string | undefined;
   occurred_to?: string | undefined;
   status?: PlanStatus | undefined;
+  /** A local date: the tasks relevant that day. */
+  relevant_on?: string | undefined;
 };
 
 /** True when at least one filter field is set. */
@@ -32,58 +32,40 @@ export function hasFilter(filter: NodeFilter): boolean {
     filter.name !== undefined ||
     filter.occurred_from !== undefined ||
     filter.occurred_to !== undefined ||
-    filter.status !== undefined
+    filter.status !== undefined ||
+    filter.relevant_on !== undefined
   );
 }
 
-/** Reject a plan status filter combined with a non-plan kind. */
+/** Reject a plan status filter combined with a non-plan kind, and `relevant_on` combined with a non-task kind. */
 export function assertFilterCoherent(filter: NodeFilter): void {
   if (filter.status !== undefined && filter.kind !== undefined && filter.kind !== "plan") {
     throw new YaadError(422, "invalid_request", "status filter requires kind to be plan or unset");
   }
+  if (filter.relevant_on !== undefined && filter.kind !== undefined && filter.kind !== "task") {
+    throw new YaadError(422, "invalid_request", "relevant_on requires kind to be task or unset");
+  }
 }
 
-/** A node a filter matched; a recurring plan appears once per occurrence in a date range. */
-export type FilteredNode = {
-  row: NodeRow;
-  /** The session this recurring plan stands for; null for every other match. */
-  occurrence: Session | null;
-};
-
-/** How recurring plans expand: the box's zone, the open-ended range, and the per-range cap. */
-export type SeriesExpansion = {
-  timeZone: string;
-  plan: Config["plan"];
-};
-
-/**
- * Live nodes matching every set filter, ordered by occurred_at (a plan's due_at when it has
- * none) then created_at. A
- * date-bounded filter merges each recurring plan's occurrences in the range with the dated
- * nodes before paging; an open end reaches `plan.recurrence_horizon_days` past the start.
- */
-export async function filterNodes(
-  db: Db,
-  filter: NodeFilter,
-  limit: number,
-  offset: number,
-  series: SeriesExpansion,
-): Promise<FilteredNode[]> {
-  const conditions = [];
-  const dateBounded = filter.occurred_from !== undefined || filter.occurred_to !== undefined;
-  const needsPersonJoin =
-    filter.name !== undefined && (filter.kind === undefined || filter.kind === "person");
-
-  conditions.push(or(isNull(node.expiresAt), gt(node.expiresAt, new Date()))!);
+/** Live nodes matching every set filter, ordered by occurred_at then created_at. */
+export async function filterNodes(db: Db, filter: NodeFilter, limit: number, offset: number): Promise<NodeRow[]> {
+  const needsPersonJoin = filter.name !== undefined && (filter.kind === undefined || filter.kind === "person");
+  const conditions: SQL[] = [or(isNull(node.expiresAt), gt(node.expiresAt, new Date()))!];
 
   if (filter.kind !== undefined) {
     conditions.push(eq(node.kind, filter.kind));
   } else if (filter.status !== undefined) {
     conditions.push(eq(node.kind, "plan"));
+  } else if (filter.relevant_on !== undefined) {
+    conditions.push(eq(node.kind, "task"));
   }
 
   if (filter.status !== undefined) {
     conditions.push(eq(planDetail.status, filter.status));
+  }
+
+  if (filter.relevant_on !== undefined) {
+    conditions.push(relevantOn(filter.relevant_on));
   }
 
   if (filter.name !== undefined) {
@@ -99,86 +81,30 @@ export async function filterNodes(
     }
   }
 
-  const select = (where: SQL[]) => {
-    let query = db
-      .select({
-        node,
-        endAt: planDetail.endAt,
-        dueAt: planDetail.dueAt,
-        opensAt: planDetail.opensAt,
-        recurrence: planDetail.recurrence,
-      })
-      .from(node)
-      .leftJoin(planDetail, eq(planDetail.nodeId, node.id))
-      .$dynamic();
-    if (needsPersonJoin) {
-      query = query.leftJoin(personDetail, eq(personDetail.nodeId, node.id));
+  if (filter.occurred_from !== undefined || filter.occurred_to !== undefined) {
+    const spanEnd = sql`COALESCE(${planDetail.endAt}, ${node.occurredAt})`;
+    conditions.push(sql`${node.occurredAt} IS NOT NULL`);
+    if (filter.occurred_to !== undefined) {
+      conditions.push(sql`${node.occurredAt} <= ${filter.occurred_to}`);
     }
-    return query
-      .where(and(...where))
-      .orderBy(asc(sql`COALESCE(${node.occurredAt}, ${planDetail.dueAt})`), asc(node.createdAt));
-  };
-
-  if (!dateBounded) {
-    const rows = await select(conditions).limit(limit).offset(offset);
-    return rows.map((row) => ({ row: row.node, occurrence: null }));
-  }
-
-  const anchor = sql`COALESCE(${node.occurredAt}, ${planDetail.dueAt})`;
-  const dated = [...conditions, isNull(planDetail.recurrence)];
-  const spanEnd = sql`COALESCE(${planDetail.endAt}, ${node.occurredAt})`;
-  const spanMatch = [isNotNull(node.occurredAt)];
-  const dueMatch = [isNotNull(planDetail.dueAt)];
-  if (filter.occurred_to !== undefined) {
-    spanMatch.push(sql`${node.occurredAt} <= ${filter.occurred_to}`);
-    dueMatch.push(sql`${planDetail.dueAt} <= ${filter.occurred_to}`);
-  }
-  if (filter.occurred_from !== undefined) {
-    spanMatch.push(sql`${spanEnd} >= ${filter.occurred_from}`);
-    dueMatch.push(sql`${planDetail.dueAt} >= ${filter.occurred_from}`);
-  }
-  dated.push(or(and(...spanMatch), and(...dueMatch))!);
-  const datedRows = await select(dated).limit(offset + limit);
-
-  const recurring = [...conditions, sql`${anchor} IS NOT NULL`, isNotNull(planDetail.recurrence)];
-  if (filter.occurred_to !== undefined) {
-    recurring.push(sql`${anchor} <= ${filter.occurred_to}`);
-  }
-  const templates = await select(recurring);
-
-  const horizonMs = series.plan.recurrence_horizon_days * 86_400_000;
-  const timed: Array<{ match: FilteredNode; at: number }> = [];
-  for (const { node: row, dueAt } of datedRows) {
-    const at = row.occurredAt ?? dueAt;
-    if (!at) {
-      throw new YaadError(500, "internal_error", `dated node ${row.id} has no occurred_at or due_at`);
-    }
-    timed.push({ match: { row, occurrence: null }, at: at.getTime() });
-  }
-  for (const template of templates) {
-    const start = template.node.occurredAt ?? template.dueAt;
-    if (!start || !template.recurrence) {
-      throw new YaadError(500, "internal_error", `recurring plan ${template.node.id} lost its anchor or rule`);
-    }
-    const from = filter.occurred_from !== undefined ? new Date(filter.occurred_from) : start;
-    const to = filter.occurred_to !== undefined ? new Date(filter.occurred_to) : new Date(from.getTime() + horizonMs);
-    const sessions = planSessions(
-      { start: template.node.occurredAt, end: template.endAt, due: template.dueAt, opens: template.opensAt, rule: template.recurrence },
-      from,
-      to,
-      { timeZone: series.timeZone, maxInstances: series.plan.max_instances_per_series },
-    );
-    for (const occurrence of sessions) {
-      const at = occurrence.start ?? occurrence.due;
-      if (!at) {
-        throw new YaadError(500, "internal_error", `recurring plan ${template.node.id} expanded to an undated session`);
-      }
-      timed.push({ match: { row: template.node, occurrence }, at: at.getTime() });
+    if (filter.occurred_from !== undefined) {
+      conditions.push(sql`${spanEnd} >= ${filter.occurred_from}`);
     }
   }
 
-  return timed
-    .sort((a, b) => a.at - b.at || a.match.row.createdAt.getTime() - b.match.row.createdAt.getTime())
-    .slice(offset, offset + limit)
-    .map((item) => item.match);
+  let query = db
+    .select({ node })
+    .from(node)
+    .leftJoin(planDetail, eq(planDetail.nodeId, node.id))
+    .leftJoin(taskDetail, eq(taskDetail.nodeId, node.id))
+    .$dynamic();
+  if (needsPersonJoin) {
+    query = query.leftJoin(personDetail, eq(personDetail.nodeId, node.id));
+  }
+  const rows = await query
+    .where(and(...conditions))
+    .orderBy(asc(node.occurredAt), asc(taskDetail.closesAt), asc(node.createdAt))
+    .limit(limit)
+    .offset(offset);
+  return rows.map((row) => row.node);
 }
