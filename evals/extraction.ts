@@ -1,5 +1,5 @@
 /**
- * Extraction eval: runs the current `prompts/extraction.md` through Dwar on cases taken
+ * Extraction eval: runs the current extraction prompt (`prompts/memory.md` and `prompts/extraction.md`) through Dwar on cases taken
  * from real ingests that went wrong (see `extraction-cases.json`) and checks what it
  * emits. It writes nothing; it needs Dwar reachable at its mesh address and `TZ` set to
  * the box's zone. `npm run eval:extraction -- --runs=3` repeats each case to expose
@@ -45,6 +45,7 @@ const matcherSchema = z
   .object({
     op: z.union([opName, z.array(opName).min(1)]),
     kind: nodeKind.optional(),
+    /** The node an operation changes, or a `noop` lists in `node_ids`. */
     node_id: z.string().uuid().optional(),
     /** The course a `spawn_plans` or `update_plans` is about. */
     hub: z.string().optional(),
@@ -241,7 +242,7 @@ function matches(op: Operation, match: Expectation["match"]): boolean {
   if (match.kind !== undefined && !(op.op === "create_node" && op.kind === match.kind)) {
     return false;
   }
-  if (match.node_id !== undefined && !("node_id" in op && op.node_id === match.node_id)) {
+  if (match.node_id !== undefined && !("node_id" in op ? op.node_id === match.node_id : op.op === "noop" && op.node_ids?.includes(match.node_id) === true)) {
     return false;
   }
   if (match.hub !== undefined && !("hub" in op && op.hub === match.hub)) {

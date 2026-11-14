@@ -126,6 +126,7 @@ export function toTaskDetail(row: TaskDetailRow): TaskDetail {
     opens_on: row.opensOn,
     closes_at: iso(row.closesAt),
     done_at: iso(row.doneAt),
+    verified_at: iso(row.verifiedAt),
   };
 }
 

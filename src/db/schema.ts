@@ -138,6 +138,7 @@ export const taskDetail = pgTable(
     opensOn: date("opens_on", { mode: "string" }),
     closesAt: timestamptz("closes_at"),
     doneAt: timestamptz("done_at"),
+    verifiedAt: timestamptz("verified_at"),
   },
   (table) => [check("task_window_check", sql`${table.closesAt} IS NULL OR ${table.opensOn} IS NOT NULL`)],
 );

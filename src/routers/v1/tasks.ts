@@ -2,7 +2,7 @@
  * Task routes. `POST /tasks` reads the tasks one local day shows (`on`: those not done whose open
  * day has come, open or past due, plus those done that day or whose window held it) or the ones
  * with no window (`someday`), from stored dates alone. `PUT /tasks/done` is Ankur's tick: it
- * sets `done_at` to now, or clears it.
+ * sets `done_at` to now, or clears it, and either way stamps `verified_at`.
  */
 
 import { eq } from "drizzle-orm";
@@ -26,8 +26,9 @@ export async function registerTasks(app: FastifyInstance): Promise<void> {
     if (row.kind !== "task") {
       throw new YaadError(422, "invalid_request", `node ${body.task_id} is not a task`);
     }
-    const doneAt = body.done ? new Date() : null;
-    await app.db.update(taskDetail).set({ doneAt }).where(eq(taskDetail.nodeId, body.task_id));
+    const now = new Date();
+    const doneAt = body.done ? now : null;
+    await app.db.update(taskDetail).set({ doneAt, verifiedAt: now }).where(eq(taskDetail.nodeId, body.task_id));
     return { task_id: body.task_id, done_at: doneAt?.toISOString() ?? null };
   });
 }

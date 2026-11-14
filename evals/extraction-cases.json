@@ -4373,6 +4373,67 @@
           "why": "Nothing new to store"
         }
       ]
+    },
+    {
+      "name": "restated-task-verifies-with-noop",
+      "finding": "memory doctrine 2026-11-13 (a restated task is verified, not stale)",
+      "occurred_at": "2026-11-13T09:00:00-05:00",
+      "text": "CSE 300 HW4 is due Wed Nov 18, 2026 at 11:59 PM ET on Gradescope.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "c3000000-0000-4000-8000-000000000a07",
+            "kind": "task",
+            "title": "CSE 300 — HW4",
+            "body": "Submit on Gradescope.",
+            "detail": {
+              "opens_on": "2026-11-11",
+              "closes_at": "2026-11-18T23:59:00-05:00",
+              "done_at": null,
+              "verified_at": "2026-11-05T09:00:00-05:00"
+            }
+          }
+        ],
+        "edges": []
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": "noop",
+            "node_id": "c3000000-0000-4000-8000-000000000a07"
+          },
+          "why": "Restating a stored task as it is verifies it: the noop names the task so Yaad records it as checked today"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node"
+          },
+          "why": "The task is already stored"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": [
+              "update_node",
+              "close_node"
+            ]
+          },
+          "why": "Nothing about the task changed"
+        }
+      ]
     }
   ]
 }

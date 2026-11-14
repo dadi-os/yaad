@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { eq } from "drizzle-orm";
 import { buildApp } from "../src/app.js";
-import { taskDetail } from "../src/db/schema.js";
+import { node, nodeHistory, taskDetail } from "../src/db/schema.js";
 import { applyOperations } from "../src/ingest/apply.js";
 import type { Operation } from "../src/ingest/operations.js";
 import { validateOperations } from "../src/ingest/validate.js";
@@ -143,4 +143,73 @@ test("recall filtered by relevant_on anchors on the tasks relevant that day", as
   await app.close();
   assert.equal(res.statusCode, 200, res.body);
   assert.deepEqual(res.json().nodes.map((n: { id: string }) => n.id), [open]);
+  const [recalled] = res.json().nodes;
+  assert.equal(recalled.detail.verified_at, null);
+  assert.ok(recalled.created_at && recalled.updated_at);
+});
+
+/** The task's `verified_at` and the node's `updated_at`, read straight from the tables. */
+async function stamps(id: string) {
+  const [detail] = await handle.db.select().from(taskDetail).where(eq(taskDetail.nodeId, id));
+  const [row] = await handle.db.select().from(node).where(eq(node.id, id));
+  return { verifiedAt: detail?.verifiedAt ?? null, updatedAt: row?.updatedAt ?? null };
+}
+
+test("a task is verified when ingest creates it and when it is updated, with or without detail", async () => {
+  await resetGraph(handle.sql);
+  const course = await insertMemory(handle.db, { title: "CSE 431", embedding: axisVector(dim, 0) });
+  const before = Date.now();
+  const created = await writes([
+    { op: "create_node", temp_id: "hw", kind: "task", title: "HW5", detail: { opens_on: "2026-11-11", closes_at: "2026-11-18T23:59:00-05:00" } },
+    { op: "create_edge", src: course, dst: "hw", type: "HAS_ITEM", confidence: 1 },
+  ]);
+  const id = created.temp_ids.hw ?? "";
+  const made = await stamps(id);
+  assert.ok(made.verifiedAt && made.verifiedAt.getTime() >= before - 1000);
+
+  const old = new Date("2026-01-01T00:00:00.000Z");
+  await handle.db.update(taskDetail).set({ verifiedAt: old }).where(eq(taskDetail.nodeId, id));
+  await writes([{ op: "update_node", node_id: id, detail: { closes_at: "2026-11-19T23:59:00-05:00" } }]);
+  const moved = await stamps(id);
+  assert.ok(moved.verifiedAt && moved.verifiedAt.getTime() > old.getTime());
+
+  await handle.db.update(taskDetail).set({ verifiedAt: old }).where(eq(taskDetail.nodeId, id));
+  await writes([{ op: "update_node", node_id: id, body: "Submit on Gradescope." }]);
+  assert.ok((await stamps(id)).verifiedAt!.getTime() > old.getTime());
+});
+
+test("a noop that lists a task verifies it and changes nothing else: no history row, updated_at unchanged", async () => {
+  await resetGraph(handle.sql);
+  const id = await insertTask(handle.db, { title: "Quiz 4", embedding: axisVector(dim, 0), opensOn: "2026-11-19", closesAt: new Date("2026-11-20T04:59:00.000Z") });
+  const before = await stamps(id);
+  assert.equal(before.verifiedAt, null);
+  const history = await handle.db.select().from(nodeHistory).where(eq(nodeHistory.nodeId, id));
+
+  const result = await writes([{ op: "noop", reason: "Quiz 4 restated as stored", node_ids: [id] }]);
+  assert.equal(result.counts.noop, 1);
+  const after = await stamps(id);
+  assert.ok(after.verifiedAt);
+  assert.equal(after.updatedAt?.getTime(), before.updatedAt?.getTime());
+  assert.equal((await handle.db.select().from(nodeHistory).where(eq(nodeHistory.nodeId, id))).length, history.length);
+
+  const memory = await insertMemory(handle.db, { title: "A fact", embedding: axisVector(dim, 1) });
+  await assert.rejects(
+    () => validateOperations({ timeZone: config.env.timezone, db: handle.db, operations: [{ op: "noop", reason: "restated", node_ids: [memory] }] }),
+    (err: unknown) => (err as { statusCode?: number }).statusCode === 422,
+  );
+});
+
+test("ticking a task stamps verified_at, and task views carry verified_at, created_at and updated_at", async () => {
+  await resetGraph(handle.sql);
+  const id = await insertTask(handle.db, { title: "HW", embedding: axisVector(dim, 0), opensOn: "2026-11-10", closesAt: new Date("2099-01-01T04:59:00.000Z") });
+  const [unverified] = await tasksOn({ on: "2026-11-12" });
+  assert.equal(unverified?.verified_at, null);
+  assert.ok(unverified?.created_at && unverified.updated_at);
+
+  await call("PUT", "/tasks/done", { task_id: id, done: true });
+  assert.ok((await stamps(id)).verifiedAt);
+  await handle.db.update(taskDetail).set({ verifiedAt: null }).where(eq(taskDetail.nodeId, id));
+  await call("PUT", "/tasks/done", { task_id: id, done: false });
+  const [reopened] = await tasksOn({ on: "2026-11-12" });
+  assert.ok(reopened?.verified_at);
 });

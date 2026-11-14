@@ -11,6 +11,10 @@ export type TaskItem = {
   opens_on: string | null;
   closes_at: string | null;
   done_at: string | null;
+  /** When the task was last created, changed, ticked, or restated true; stale means check the source. Null for rows that predate it. */
+  verified_at: string | null;
+  created_at: string;
+  updated_at: string;
   /** True when the task closed before now and is not done. */
   past_due: boolean;
   hub: TimelineHub | null;

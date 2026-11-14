@@ -9,9 +9,14 @@ import { formatZod } from "../routers/v1/schemas.js";
 import type { CandidateState } from "./candidates.js";
 import { emitOperationsInput, emitOperationsToolSchema, type Operation } from "./operations.js";
 
-/** Load `prompts/extraction.md` from the service root. */
+/**
+ * The extraction system prompt: the shared `prompts/memory.md` doctrine, then the write-path
+ * rules in `prompts/extraction.md`, both from the service root.
+ */
 export function loadExtractionPrompt(serviceRoot: string): string {
-  return readFileSync(join(serviceRoot, "prompts/extraction.md"), "utf8");
+  const doctrine = readFileSync(join(serviceRoot, "prompts/memory.md"), "utf8");
+  const extraction = readFileSync(join(serviceRoot, "prompts/extraction.md"), "utf8");
+  return `${doctrine}\n---\n\n${extraction}`;
 }
 
 /**

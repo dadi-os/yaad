@@ -23,7 +23,7 @@ yaad/
   test/           Node test runner suites
   evals/          extraction eval cases from past mistakes + runner
   drizzle/        migrations
-  prompts/        extraction prompt
+  prompts/        memory doctrine (shared) and extraction prompt
   config.toml
 ```
 
@@ -46,7 +46,7 @@ docker compose run --rm yaad npm test
 
 Source is bind-mounted; edits restart in place. Start the full stack when Yaad needs Dwar.
 
-Extraction evals run the current `prompts/extraction.md` through Dwar on cases taken from real ingests that went wrong, and write nothing. They need Dwar reachable at its mesh address and the box's `TZ`: `TZ=America/New_York npm run eval:extraction -- --runs=3` (`--case=<name>,<name>` runs only those). A run fails when an expectation fails or when Yaad would reject or re-extract the batch (the structural checks that need no database). Run them before shipping a prompt change, and add a case to `evals/extraction-cases.json` for every new kind of mistake an audit finds.
+Extraction evals run the current extraction prompt (`prompts/memory.md` then `prompts/extraction.md`) through Dwar on cases taken from real ingests that went wrong, and write nothing. They need Dwar reachable at its mesh address and the box's `TZ`: `TZ=America/New_York npm run eval:extraction -- --runs=3` (`--case=<name>,<name>` runs only those). A run fails when an expectation fails or when Yaad would reject or re-extract the batch (the structural checks that need no database). Run them before shipping a prompt change, and add a case to `evals/extraction-cases.json` for every new kind of mistake an audit finds.
 
 ## CI / CD
 
@@ -68,12 +68,12 @@ HTTP errors: `{ "error": { "type": "<code>", "message": "..." } }`. Shared infra
 | `person` | someone Dadi knows | `person_detail` (birthday, aliases) |
 | `memory` | a thing that happened | none |
 | `plan` | something with a real time: an event Ankur attends, one session of a class | `plan_detail` (end_at, all_day, status, time_zone, rsvp, outcome, outcome_at, actual_start, actual_end) |
-| `task` | something to do, relevant from an open day until a close | `task_detail` (opens_on, closes_at, done_at) |
+| `task` | something to do, relevant from an open day until a close | `task_detail` (opens_on, closes_at, done_at, verified_at) |
 | `place` | somewhere you go | `place_detail` (address, latitude, longitude) |
 
 `occurred_at` is the single "when" for every kind that has one: a plan's start (required), a memory's date. A task has none; its window is `task_detail`. Unknown dates are `NULL`. `expires_at` is null for permanent nodes; observations get a timestamp from `ttl_days`.
 
-A plan's `status` says whether it is happening (`tentative`, `confirmed`, `cancelled`); its `rsvp` says whether Ankur is going (`yes`, `no`, or null until he says). A task is relevant from `opens_on` (a local date) until `closes_at`; with neither it is Someday, and a close needs an open on or before its day. `done_at` is Ankur's tick. Ingest decides every date; nothing in code or config derives a missing one.
+A plan's `status` says whether it is happening (`tentative`, `confirmed`, `cancelled`); its `rsvp` says whether Ankur is going (`yes`, `no`, or null until he says). A task is relevant from `opens_on` (a local date) until `closes_at`; with neither it is Someday, and a close needs an open on or before its day. `done_at` is Ankur's tick. `verified_at` is the task's freshness: set when it is created, updated (any `update_node` on it), ticked or unticked, or listed in a `noop`'s `node_ids` (extraction's way to say the text restated it as stored; nothing else changes, no history row, `updated_at` untouched). Null for tasks that predate it. A task last verified before today is stale when the answer matters: check the source. Ingest decides every date; nothing in code or config derives a missing one.
 
 ## Places
 
@@ -82,6 +82,10 @@ A place is a real entity that recurs across events. Coordinates are optional. Ya
 ## Sessions
 
 Recurrence is not stored. A class that meets twice a week is one plain plan per meeting, each linked to its course (a memory) by `HAS_SESSION`, to its place by `AT_LOCATION` with the room on the edge, and to nothing else. The `spawn_plans` ingest op stamps them out from one template (title, local start and end times, status, rsvp, place, room) and a list of dates, so the model never writes each plan; sessions carry no embedding, so semantic recall finds the course and not every meeting. `update_plans` changes every session of a course from a local date on (move the time, change the room, cancel the rest of the term, say no). A session moves, is cancelled, gets an outcome, or a note (`HAS_NOTE`) by editing that plan; ingest never sees sessions as candidates, so it changes one with `update_plans` on its course and date. Recall's graph walk, ingest candidates, and `POST /graph` skip `HAS_SESSION` edges. A course's pattern ("meets Tue and Thu 10:20 in room 1345") is a memory on the course; nothing computes from it.
+
+## Memory doctrine
+
+`prompts/memory.md` is the one statement of what memory is and is not, the node kinds, plan versus task by clock time, task windows (`opens_on`, `closes_at`) decided from the text, `rsvp`, `status`, venue-is-where, the correction rule, and freshness. `loadExtractionPrompt` composes it before `prompts/extraction.md`, which holds only the write path's own rules (candidates, edges, operations, worked examples). Recall has no prompt: it is retrieval code (embedding, anchors, walk, score), so its LLM is the calling agent, and the contract that agent reads is the `recall_memory` and `ingest_memory` tool text in Hath, which reuses the doctrine's sentences verbatim. Change a doctrine sentence in `memory.md` and carry the same sentence to those tool descriptions and Hath's system prompt.
 
 ## Query vs recall
 
@@ -121,7 +125,7 @@ Observations may set `ttl_days`; expired nodes are filtered from recall/query/in
 | `PUT` | `/timeline/outcome` | Ankur marks a plan: `{ plan_id, outcome: "done" \| "missed" \| null }`; returns `{ plan_id, outcome, outcome_at }` |
 | `PUT` | `/timeline/rsvp` | Ankur's answer: `{ plan_id, rsvp: "yes" \| "no" \| null }`; returns `{ plan_id, rsvp }` |
 | `POST` | `/tasks` | `{ on: "YYYY-MM-DD" }` or `{ someday: true }`; returns `{ items }`; see Tasks |
-| `PUT` | `/tasks/done` | Ankur's tick: `{ task_id, done: boolean }`; returns `{ task_id, done_at }` |
+| `PUT` | `/tasks/done` | Ankur's tick: `{ task_id, done: boolean }`; returns `{ task_id, done_at }` and stamps `verified_at` |
 
 Unknown request fields are a 422.
 
@@ -141,7 +145,7 @@ Cancelled and declined plans are kept in every view, marked by `status` and `rsv
 
 ## Tasks
 
-`POST /tasks` with `on` returns, for that local day, the tasks not done whose open day has come (open, or past due when `closes_at` has passed: `past_due: true`), plus the tasks done that day or whose window held it, sorted by close time then title. With `someday: true` it returns tasks not done that have no window. Each item: `id`, `title`, `body`, `opens_on`, `closes_at`, `done_at`, `past_due`, `hub` (the course the task hangs off through `HAS_ITEM`, or null), `owner`. Everything is computed from stored dates; nothing is ranked or capped. `recall` and `query` take `relevant_on` (a local date) to anchor on the tasks not done whose open day has come by then.
+`POST /tasks` with `on` returns, for that local day, the tasks not done whose open day has come (open, or past due when `closes_at` has passed: `past_due: true`), plus the tasks done that day or whose window held it, sorted by close time then title. With `someday: true` it returns tasks not done that have no window. Each item: `id`, `title`, `body`, `opens_on`, `closes_at`, `done_at`, `verified_at`, `created_at`, `updated_at`, `past_due`, `hub` (the course the task hangs off through `HAS_ITEM`, or null), `owner`. Everything is computed from stored dates; nothing is ranked or capped. `recall` and `query` take `relevant_on` (a local date) to anchor on the tasks not done whose open day has come by then.
 
 ### `POST /graph`
 
@@ -168,7 +172,7 @@ Plans with `detail.all_day: true` have a date but no time of day: Yaad moves the
 | `close_edge` | `edge_id`, `reason` |
 | `spawn_plans` | `temp_id`, `hub` (course id or temp_id), `title`, `body?`, `dates` (local dates), `start_time`, `end_time?` (local HH:MM), `time_zone?`, `status`, `rsvp?`, `place?`, `room?`; creates one plan per date, at most `plan.max_sessions_per_spawn`; a session that duplicates a live plan is `duplicate_node`; the result's `spawned` maps `temp_id` to the new ids |
 | `update_plans` | `hub`, `from_date`, `to_date?`, `set` (`body?`, `status?`, `rsvp?`, `outcome?`, `start_time?`, `end_time?`, `room?`); changes every session of the course in the range (one session when `to_date` = `from_date`), 422 when none match |
-| `noop` | `reason` |
+| `noop` | `reason`, optional `node_ids` (open tasks the text restates exactly as stored; each gets `verified_at` touched) |
 
 The `emit_operations` tool schema has one `create_node` variant per kind: `memory` offers no `detail`, `plan` requires `detail.status` and an `occurred_at`, `task` offers `detail.opens_on` / `closes_at` / `done_at`, and `person`/`place` offer only their own detail keys.
 
@@ -187,4 +191,4 @@ The `emit_operations` tool schema has one `create_node` variant per kind: `memor
 | filter matches in `/query` order, capped at `limit` | filters without `query` |
 | up to 4 live plans and tasks whose title contains a word of the query (four letters or more, not generic, not a person's name or alias), nearest in time to now first, then ANN hits above `recall.anchor_similarity_floor`, together capped at `recall.anchor_limit` | `query` only |
 
-`hops` (0 to `recall.hop_cap`) walks exactly that deep. Omitted, the walk is gated (hop cap, marginal yield, token budget) when there is a `query` and skipped otherwise, so `{ from: [id], hops: 1 }` is a node with its neighbors. With a `query`, nodes rank by score and `coverage` / `sufficient` are set; without one, nodes order by hop then `occurred_at` and `score`, `coverage`, `sufficient` are null. A walk from a `query` does not expand out of a node with more than 100 live edges (Ankur, a school): it is returned when reached, but its neighbors are not; an explicit `from` is always walked. `edges` are the current edges among the returned nodes. `debug: true` adds per-node score breakdown. Weights live in `[recall.weights]` in config.toml.
+`hops` (0 to `recall.hop_cap`) walks exactly that deep. Omitted, the walk is gated (hop cap, marginal yield, token budget) when there is a `query` and skipped otherwise, so `{ from: [id], hops: 1 }` is a node with its neighbors. With a `query`, nodes rank by score and `coverage` / `sufficient` are set; without one, nodes order by hop then `occurred_at` and `score`, `coverage`, `sufficient` are null. A walk from a `query` does not expand out of a node with more than 100 live edges (Ankur, a school): it is returned when reached, but its neighbors are not; an explicit `from` is always walked. `edges` are the current edges among the returned nodes. `debug: true` adds per-node score breakdown. Weights live in `[recall.weights]` in config.toml. Every returned node carries `created_at` and `updated_at`, and a task's `detail` carries `verified_at`, so a reader can tell a task last checked today from one last checked weeks ago.

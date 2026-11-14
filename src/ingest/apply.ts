@@ -1,7 +1,7 @@
 /** Apply validated ingest operations in one transaction (embeds, locks, spawned sessions). */
 
 import { randomUUID } from "node:crypto";
-import { and, eq, isNull, or } from "drizzle-orm";
+import { and, eq, inArray, isNull, or } from "drizzle-orm";
 import type { DwarClient } from "../dwar/client.js";
 import { embeddingText } from "../dwar/client.js";
 import type { Config } from "../config.js";
@@ -131,6 +131,7 @@ export async function applyOperations(opts: {
             opensOn: detail.opens_on ?? null,
             closesAt: detail.closes_at ? new Date(detail.closes_at) : null,
             doneAt: detail.done_at ? new Date(detail.done_at) : null,
+            verifiedAt: at,
           });
         } else if (op.kind === "place") {
           const detail = parse(placeDetailBody, op.detail ?? {});
@@ -198,6 +199,7 @@ export async function applyOperations(opts: {
                 ...(detail.opens_on !== undefined ? { opensOn: detail.opens_on } : {}),
                 ...(detail.closes_at !== undefined ? { closesAt: detail.closes_at ? new Date(detail.closes_at) : null } : {}),
                 ...(detail.done_at !== undefined ? { doneAt: detail.done_at ? new Date(detail.done_at) : null } : {}),
+                verifiedAt: at,
               })
               .where(eq(taskDetail.nodeId, op.node_id));
           } else if (current.kind === "place") {
@@ -211,6 +213,9 @@ export async function applyOperations(opts: {
               })
               .where(eq(placeDetail.nodeId, op.node_id));
           }
+        }
+        if (current.kind === "task" && op.detail === undefined) {
+          await tx.update(taskDetail).set({ verifiedAt: at }).where(eq(taskDetail.nodeId, op.node_id));
         }
         const nextTitle = op.title ?? current.title;
         const nextBody = op.body !== undefined ? op.body : current.body;
@@ -311,6 +316,9 @@ export async function applyOperations(opts: {
 
     for (const op of operations) {
       if (op.op === "noop") {
+        if (op.node_ids !== undefined) {
+          await tx.update(taskDetail).set({ verifiedAt: at }).where(inArray(taskDetail.nodeId, op.node_ids));
+        }
         applied.push(op);
       }
     }
@@ -495,6 +503,11 @@ function referencedIds(operations: Operation[]): { nodes: string[]; edges: strin
   for (const op of operations) {
     if (op.op === "update_node" || op.op === "close_node") {
       nodes.add(op.node_id);
+    }
+    if (op.op === "noop") {
+      for (const id of op.node_ids ?? []) {
+        nodes.add(id);
+      }
     }
     if (op.op === "update_plans") {
       nodes.add(op.hub);

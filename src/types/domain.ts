@@ -34,11 +34,13 @@ export type PlanDetail = {
   actual_end: string | null;
 };
 
-/** A task's window: relevant from `opens_on` until `closes_at`; with neither it is Someday. */
+/** A task's window: relevant from `opens_on` until `closes_at`; with neither it is Someday. `verified_at` is its freshness. */
 export type TaskDetail = {
   opens_on: string | null;
   closes_at: string | null;
   done_at: string | null;
+  /** When the task was last created, changed, ticked, or restated true by an ingest; null for rows that predate it. */
+  verified_at: string | null;
 };
 
 export type PlaceDetail = {

@@ -132,6 +132,8 @@ const noopOp = z
   .object({
     op: z.literal("noop"),
     reason: z.string().min(1),
+    /** Open tasks the text restates exactly as stored: each gets `verified_at` touched and nothing else. */
+    node_ids: z.array(z.string().uuid()).min(1).optional(),
   })
   .strict();
 
@@ -368,6 +370,7 @@ export const emitOperationsToolSchema = {
             properties: {
               op: { const: "noop" },
               reason: { type: "string" },
+              node_ids: { type: "array", items: { type: "string" } },
             },
           },
         ],

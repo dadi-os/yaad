@@ -117,6 +117,14 @@ export async function validateOperations(opts: {
     if (op.op === "close_node") {
       await requireCurrent(opts.db, op.node_id, "node");
     }
+    if (op.op === "noop") {
+      for (const id of op.node_ids ?? []) {
+        const current = await requireCurrent(opts.db, id, "node");
+        if (current.kind !== "task") {
+          throw new YaadError(422, "invalid_request", `noop node_ids: ${id} is not a task`);
+        }
+      }
+    }
     if (op.op === "spawn_plans") {
       const label = `spawn_plans ${op.temp_id}`;
       await resolveEndpoint(opts.db, op.hub, tempIds, "hub");
