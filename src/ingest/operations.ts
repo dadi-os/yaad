@@ -1,7 +1,7 @@
 /** Zod shapes and JSON Schema for Dwar `emit_operations` tool calls. */
 
 import { z } from "zod";
-import { OUTCOMES, PLAN_STATUSES, RSVPS } from "../types/timeline.js";
+import { OUTCOMES, RSVPS } from "../types/timeline.js";
 import {
   personDetailBody,
   planDetailBody,
@@ -75,7 +75,7 @@ const localTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "a local time as
 
 /**
  * Stamps out one plan per date from a template: the same title, body, local start and end times,
- * status, RSVP and place on every date. Each plan is a plain stored plan with no rule, linked
+ * RSVP and place on every date. Each plan is a plain stored plan with no rule, linked
  * to `hub` (a course) by `HAS_SESSION` and to `place` by `AT_LOCATION` with `room`. `hub` and
  * `place` are node ids or temp_ids of nodes created earlier in the batch; `temp_id` names the
  * group so the result can return the new ids.
@@ -91,7 +91,6 @@ const spawnPlansOp = z
     start_time: localTime,
     end_time: localTime.optional(),
     time_zone: z.string().min(1).optional(),
-    status: z.enum(PLAN_STATUSES),
     rsvp: z.enum(RSVPS).optional(),
     place: z.string().min(1).optional(),
     room: z.string().min(1).optional(),
@@ -102,19 +101,20 @@ const spawnPlansOp = z
 const sessionChange = z
   .object({
     body: z.string().nullable().optional(),
-    status: z.enum(PLAN_STATUSES).optional(),
     rsvp: z.enum(RSVPS).nullable().optional(),
     outcome: z.enum(OUTCOMES).nullable().optional(),
     start_time: localTime.optional(),
     end_time: localTime.nullable().optional(),
     room: z.string().min(1).nullable().optional(),
+    close: z.literal(true).optional(),
   })
   .strict()
-  .refine((change) => Object.keys(change).length > 0, "change at least one field");
+  .refine((change) => Object.keys(change).length > 0, "change at least one field")
+  .refine((change) => change.close === undefined || Object.keys(change).length === 1, "close stands alone");
 
 /**
  * Changes every session of `hub` (a course) on or after `from_date`, up to `to_date` when given:
- * the way to move a class's time, change its room, or cancel the rest of the term in one op, and,
+ * the way to move a class's time, change its room, or close the rest of the term in one op (`close`), and,
  * with `to_date` equal to `from_date`, to change or mark one session, which extraction never sees as
  * a candidate. Dates are local. A change that matches no session is an error.
  */
@@ -221,11 +221,9 @@ export const emitOperationsToolSchema = {
               detail: {
                 type: "object",
                 additionalProperties: false,
-                required: ["status"],
                 properties: {
                   end_at: nullableString,
                   all_day: { type: "boolean" },
-                  status: { type: "string", enum: [...PLAN_STATUSES] },
                   time_zone: nullableString,
                   rsvp: { type: ["string", "null"], enum: [...RSVPS, null] },
                   outcome: { type: ["string", "null"], enum: [...OUTCOMES, null] },
@@ -322,7 +320,7 @@ export const emitOperationsToolSchema = {
           {
             type: "object",
             additionalProperties: false,
-            required: ["op", "temp_id", "hub", "title", "dates", "start_time", "status"],
+            required: ["op", "temp_id", "hub", "title", "dates", "start_time"],
             properties: {
               op: { const: "spawn_plans" },
               temp_id: { type: "string" },
@@ -333,7 +331,6 @@ export const emitOperationsToolSchema = {
               start_time: { type: "string" },
               end_time: { type: "string" },
               time_zone: { type: "string" },
-              status: { type: "string", enum: [...PLAN_STATUSES] },
               rsvp: { type: "string", enum: [...RSVPS] },
               place: { type: "string" },
               room: { type: "string" },
@@ -353,12 +350,12 @@ export const emitOperationsToolSchema = {
                 additionalProperties: false,
                 properties: {
                   body: nullableString,
-                  status: { type: "string", enum: [...PLAN_STATUSES] },
                   rsvp: { type: ["string", "null"], enum: [...RSVPS, null] },
                   outcome: { type: ["string", "null"], enum: [...OUTCOMES, null] },
                   start_time: { type: "string" },
                   end_time: nullableString,
                   room: nullableString,
+                  close: { const: true },
                 },
               },
             },

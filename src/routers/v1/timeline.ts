@@ -2,8 +2,8 @@
  * Timeline routes: every plan is a stored row, and each view is a filter over them. `POST
  * /timeline` reads `[from, to)` through one view: `planner` (timed plans with a start and an end,
  * for the day and week grid), `month` (all-day and multi-day plans, and plans that are not a
- * session of a course) and `tile` (every plan, for the home ribbon). Cancelled and declined
- * plans are kept and marked, never hidden. `PUT /timeline/outcome` and `PUT /timeline/rsvp` are
+ * session of a course) and `tile` (every plan, for the home ribbon). Declined plans
+ * are kept and marked, never hidden; a plan called off is closed and gone. `PUT /timeline/outcome` and `PUT /timeline/rsvp` are
  * the writes Ankur makes by hand on a plan.
  */
 
@@ -153,7 +153,6 @@ async function toItems(db: Db, shown: PlanRow[], hubs: Awaited<ReturnType<typeof
       id: plan.id,
       title: plan.title,
       body: plan.body,
-      status: plain.status,
       rsvp: plain.rsvp,
       start_at: plan.occurredAt.toISOString(),
       end_at: plain.end_at,

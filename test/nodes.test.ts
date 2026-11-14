@@ -144,24 +144,24 @@ test("POST /history/search finds a correction by meaning", async () => {
   await app.close();
 });
 
-test("PATCH /nodes/:id edits a plan's title and status and records history", async () => {
+test("PATCH /nodes/:id edits a plan's title and rsvp and records history", async () => {
   await resetGraph(handle.sql);
   const id = await insertPlan(handle.db, {
     title: "lunch with Riya",
     embedding: axisVector(dim, 0),
     occurredAt: new Date("2026-10-03T17:00:00.000Z"),
-    status: "tentative",
+    rsvp: null,
   });
   const app = await buildApp(config, { db: handle.db, sql: handle.sql, dwar: mockDwar({ dimension: dim }) });
 
   const res = await app.inject({
     method: "PATCH",
     url: `/nodes/${id}`,
-    payload: { title: "lunch with Riya at Sultan's", detail: { status: "confirmed" } },
+    payload: { title: "lunch with Riya at Sultan's", detail: { rsvp: "yes" } },
   });
   assert.equal(res.statusCode, 200);
   assert.equal(res.json().title, "lunch with Riya at Sultan's");
-  assert.equal(res.json().detail.status, "confirmed");
+  assert.equal(res.json().detail.rsvp, "yes");
   const history = await handle.db.select().from(nodeHistory).where(eq(nodeHistory.nodeId, id));
   assert.deepEqual(history.map((row) => row.field), ["title"]);
   await app.close();
@@ -179,7 +179,7 @@ test("PATCH /nodes/:id rejects an empty body, detail on a memory, and an unknown
   const detail = await app.inject({
     method: "PATCH",
     url: `/nodes/${memory}`,
-    payload: { detail: { status: "confirmed" } },
+    payload: { detail: {} },
   });
   assert.equal(detail.statusCode, 422);
 
@@ -251,7 +251,7 @@ test("POST /nodes creates a node by hand, anchors an all-day plan, and rejects a
     kind: "plan",
     title: "CSE 335 — Design 5 peer reviews due",
     occurred_at: "2026-10-09T23:55:00-04:00",
-    detail: { status: "confirmed" },
+    detail: {},
   };
 
   const created = await app.inject({ method: "POST", url: "/nodes", payload });
@@ -270,7 +270,7 @@ test("POST /nodes creates a node by hand, anchors an all-day plan, and rejects a
       kind: "plan",
       title: "CSE 335 — last day to drop",
       occurred_at: "2026-10-19T09:00:00-04:00",
-      detail: { status: "confirmed", all_day: true },
+      detail: { all_day: true },
     },
   });
   assert.equal(allDay.statusCode, 201, allDay.body);

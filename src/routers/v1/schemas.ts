@@ -2,7 +2,7 @@
 
 import { z, type ZodError, type ZodType } from "zod";
 import { YaadError } from "../../errors.js";
-import { OUTCOMES, PLAN_STATUSES, RSVPS, TIMELINE_VIEWS } from "../../types/timeline.js";
+import { OUTCOMES, RSVPS, TIMELINE_VIEWS } from "../../types/timeline.js";
 
 /** Parse with zod; map failures to `422 invalid_request`. */
 export function parse<T>(schema: ZodType<T>, data: unknown): T {
@@ -23,8 +23,6 @@ export function formatZod(error: ZodError): string {
     .join("; ");
 }
 
-const planStatus = z.enum(PLAN_STATUSES);
-
 export const personDetailBody = z
   .object({
     birthday: z.string().date().nullable().optional(),
@@ -39,7 +37,7 @@ const timeZone = z
   .string()
   .refine((zone) => Intl.supportedValuesOf("timeZone").includes(zone), "time_zone must be an IANA time zone");
 
-/** What a plan's detail carries besides its end, all-day flag and status. */
+/** What a plan's detail carries besides its end, all-day flag. */
 const planOptionalFields = {
   time_zone: timeZone.nullable().optional(),
   rsvp: z.enum(RSVPS).nullable().optional(),
@@ -56,7 +54,6 @@ export const planDetailBody = z
   .object({
     end_at: instant.nullable().optional(),
     all_day: z.boolean().optional(),
-    status: planStatus,
     ...planOptionalFields,
   })
   .strict();
@@ -87,7 +84,6 @@ export const patchPlanDetailBody = z
   .object({
     end_at: instant.nullable().optional(),
     all_day: z.boolean().optional(),
-    status: planStatus.optional(),
     ...planOptionalFields,
   })
   .strict();
@@ -168,7 +164,6 @@ const nodeFilterFields = {
   name: z.string().min(1).optional(),
   occurred_from: z.string().datetime({ offset: true }).optional(),
   occurred_to: z.string().datetime({ offset: true }).optional(),
-  status: planStatus.optional(),
   relevant_on: z.string().date().optional(),
 };
 

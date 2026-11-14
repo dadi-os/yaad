@@ -2334,7 +2334,6 @@
             "detail": {
               "end_at": "2026-11-20T16:00:00-05:00",
               "all_day": false,
-              "status": "confirmed",
               "time_zone": null,
               "rsvp": null,
               "outcome": null,
@@ -2376,15 +2375,6 @@
             "node_id": "7a1c0000-0000-4000-8000-000000000001"
           },
           "why": "A declined plan stays on the timeline; it still happens"
-        },
-        {
-          "expect": "none",
-          "match": {
-            "op": "update_node",
-            "node_id": "7a1c0000-0000-4000-8000-000000000001",
-            "sets": "status"
-          },
-          "why": "The talk is not cancelled; only Ankur is not going"
         }
       ]
     },
@@ -2842,7 +2832,6 @@
             "detail": {
               "end_at": "2026-10-29T18:15:00-04:00",
               "all_day": false,
-              "status": "confirmed",
               "time_zone": null,
               "rsvp": null,
               "outcome": null,
@@ -2892,15 +2881,6 @@
             "node_id": "9d3c1b2a-7e6f-4a5b-9c8d-0e1f2a3b4c5d"
           },
           "why": "The plan happened on the calendar; it is marked, not deleted"
-        },
-        {
-          "expect": "none",
-          "match": {
-            "op": "update_node",
-            "node_id": "9d3c1b2a-7e6f-4a5b-9c8d-0e1f2a3b4c5d",
-            "sets": "status"
-          },
-          "why": "It was not cancelled; he missed it"
         }
       ]
     },
@@ -3236,8 +3216,8 @@
       ]
     },
     {
-      "name": "rejection-cancels-the-event-and-closes-its-task",
-      "finding": "§4.1 a closed door; spec status cancelled",
+      "name": "rejection-closes-the-event-and-its-task",
+      "finding": "§4.1 a closed door; plan status removed (called off = closed)",
       "occurred_at": "2026-11-12T11:00:00-05:00",
       "text": "Wedge Health emailed: they are not moving forward with Ankur's application, so the Fri Nov 20 onsite interview is cancelled.",
       "candidates": {
@@ -3272,7 +3252,6 @@
             "detail": {
               "end_at": "2026-11-20T16:00:00-05:00",
               "all_day": false,
-              "status": "confirmed",
               "time_zone": null,
               "rsvp": null,
               "outcome": null,
@@ -3324,16 +3303,10 @@
         {
           "expect": "some",
           "match": {
-            "op": "update_node",
-            "node_id": "3ed9e000-0000-4000-8000-000000000001",
-            "sets": "status"
+            "op": "close_node",
+            "node_id": "3ed9e000-0000-4000-8000-000000000001"
           },
-          "check": {
-            "detail": {
-              "status": "^cancelled$"
-            }
-          },
-          "why": "The called-off interview stays on the timeline as cancelled"
+          "why": "The called-off interview is closed, not marked"
         },
         {
           "expect": "some",
@@ -4334,7 +4307,6 @@
             "detail": {
               "end_at": "2026-11-16T18:00:00-05:00",
               "all_day": false,
-              "status": "confirmed",
               "time_zone": null,
               "rsvp": "no",
               "outcome": null,
@@ -4877,6 +4849,634 @@
             "sets": "done_at"
           },
           "why": "Without his own words nothing sets done_at"
+        }
+      ]
+    },
+    {
+      "name": "invite-with-a-time-is-a-plan-rsvp-unset",
+      "finding": "plan status removed (invite = plan, rsvp unset)",
+      "occurred_at": "2026-11-17T12:00:00-05:00",
+      "text": "Sparsh invited Ankur to dinner at Sultan's on Saturday, Nov 21 at 7:00 PM.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "5b4a0000-0000-4000-8000-000000000001",
+            "kind": "person",
+            "title": "Sparsh Yandooru",
+            "detail": {
+              "birthday": null,
+              "aliases": []
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "5b4a0000-0000-4000-8000-0000000000e1",
+            "src_id": "5b4a0000-0000-4000-8000-000000000001",
+            "dst_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "type": "FRIEND_OF",
+            "properties": {}
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "kind": "plan"
+          },
+          "check": {
+            "local_date": "2026-11-21",
+            "local_time": "19:00"
+          },
+          "why": "An invite with a time is a plan at that time"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "plan",
+            "sets": "rsvp"
+          },
+          "why": "He has not answered, so rsvp stays absent"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "task"
+          },
+          "why": "A dated invite is a plan, never a task"
+        }
+      ]
+    },
+    {
+      "name": "ill-go-sets-rsvp-yes",
+      "finding": "plan status removed (his answer sets rsvp)",
+      "occurred_at": "2026-11-17T12:00:00-05:00",
+      "text": "Ankur said he will go to Saturday's dinner with Sparsh at Sultan's.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "5b4a0000-0000-4000-8000-000000000001",
+            "kind": "person",
+            "title": "Sparsh Yandooru",
+            "detail": {
+              "birthday": null,
+              "aliases": []
+            }
+          },
+          {
+            "id": "5b4a0000-0000-4000-8000-000000000002",
+            "kind": "plan",
+            "title": "Dinner with Sparsh at Sultan's",
+            "body": null,
+            "occurred_at": "2026-11-21T19:00:00-05:00",
+            "detail": {
+              "end_at": null,
+              "all_day": false,
+              "time_zone": null,
+              "rsvp": null,
+              "outcome": null,
+              "outcome_at": null,
+              "actual_start": null,
+              "actual_end": null
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "5b4a0000-0000-4000-8000-0000000000e1",
+            "src_id": "5b4a0000-0000-4000-8000-000000000001",
+            "dst_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "type": "FRIEND_OF",
+            "properties": {}
+          },
+          {
+            "id": "5b4a0000-0000-4000-8000-0000000000e2",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "5b4a0000-0000-4000-8000-000000000002",
+            "type": "PARTICIPANT",
+            "properties": {}
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": "update_node",
+            "node_id": "5b4a0000-0000-4000-8000-000000000002",
+            "sets": "rsvp"
+          },
+          "check": {
+            "detail": {
+              "rsvp": "^yes$"
+            }
+          },
+          "why": "Going is rsvp yes on that plan"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "plan"
+          },
+          "why": "The answer never creates a second plan"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "close_node",
+            "node_id": "5b4a0000-0000-4000-8000-000000000002"
+          },
+          "why": "Going never closes the plan"
+        }
+      ]
+    },
+    {
+      "name": "not-going-sets-rsvp-no-and-keeps-the-plan",
+      "finding": "plan status removed (declined stays, rsvp no)",
+      "occurred_at": "2026-11-17T12:00:00-05:00",
+      "text": "Ankur said he is not going to Saturday's dinner with Sparsh at Sultan's.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "5b4a0000-0000-4000-8000-000000000001",
+            "kind": "person",
+            "title": "Sparsh Yandooru",
+            "detail": {
+              "birthday": null,
+              "aliases": []
+            }
+          },
+          {
+            "id": "5b4a0000-0000-4000-8000-000000000002",
+            "kind": "plan",
+            "title": "Dinner with Sparsh at Sultan's",
+            "body": null,
+            "occurred_at": "2026-11-21T19:00:00-05:00",
+            "detail": {
+              "end_at": null,
+              "all_day": false,
+              "time_zone": null,
+              "rsvp": null,
+              "outcome": null,
+              "outcome_at": null,
+              "actual_start": null,
+              "actual_end": null
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "5b4a0000-0000-4000-8000-0000000000e1",
+            "src_id": "5b4a0000-0000-4000-8000-000000000001",
+            "dst_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "type": "FRIEND_OF",
+            "properties": {}
+          },
+          {
+            "id": "5b4a0000-0000-4000-8000-0000000000e2",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "5b4a0000-0000-4000-8000-000000000002",
+            "type": "PARTICIPANT",
+            "properties": {}
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": "update_node",
+            "node_id": "5b4a0000-0000-4000-8000-000000000002",
+            "sets": "rsvp"
+          },
+          "check": {
+            "detail": {
+              "rsvp": "^no$"
+            }
+          },
+          "why": "Not going is rsvp no on that plan"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "close_node",
+            "node_id": "5b4a0000-0000-4000-8000-000000000002"
+          },
+          "why": "The dinner still happens; only his answer is no"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "plan"
+          },
+          "why": "The answer never creates a second plan"
+        }
+      ]
+    },
+    {
+      "name": "it-is-not-happening-closes-the-plan",
+      "finding": "plan status removed (called off = closed)",
+      "occurred_at": "2026-11-17T12:00:00-05:00",
+      "text": "Sparsh says Saturday's dinner at Sultan's is not happening.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "5b4a0000-0000-4000-8000-000000000001",
+            "kind": "person",
+            "title": "Sparsh Yandooru",
+            "detail": {
+              "birthday": null,
+              "aliases": []
+            }
+          },
+          {
+            "id": "5b4a0000-0000-4000-8000-000000000002",
+            "kind": "plan",
+            "title": "Dinner with Sparsh at Sultan's",
+            "body": null,
+            "occurred_at": "2026-11-21T19:00:00-05:00",
+            "detail": {
+              "end_at": null,
+              "all_day": false,
+              "time_zone": null,
+              "rsvp": null,
+              "outcome": null,
+              "outcome_at": null,
+              "actual_start": null,
+              "actual_end": null
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "5b4a0000-0000-4000-8000-0000000000e1",
+            "src_id": "5b4a0000-0000-4000-8000-000000000001",
+            "dst_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "type": "FRIEND_OF",
+            "properties": {}
+          },
+          {
+            "id": "5b4a0000-0000-4000-8000-0000000000e2",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "5b4a0000-0000-4000-8000-000000000002",
+            "type": "PARTICIPANT",
+            "properties": {}
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": "close_node",
+            "node_id": "5b4a0000-0000-4000-8000-000000000002"
+          },
+          "why": "An event that is called off is closed"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "plan"
+          },
+          "why": "Calling it off creates nothing"
+        }
+      ]
+    },
+    {
+      "name": "one-session-called-off-is-closed",
+      "finding": "plan status removed (update_plans close)",
+      "occurred_at": "2026-11-17T12:00:00-05:00",
+      "text": "Thursday's CSE 431 lecture (Nov 19) is cancelled.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "ce51c585-82de-407e-97a4-0dfcb67d79d3",
+            "kind": "memory",
+            "title": "CSE 431: Algorithm Engineering, standard section (Fall 2026)",
+            "body": null,
+            "occurred_at": null
+          }
+        ],
+        "edges": [
+          {
+            "id": "00000027-0000-4000-8000-000000000027",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "ce51c585-82de-407e-97a4-0dfcb67d79d3",
+            "type": "ENROLLED_IN",
+            "properties": {
+              "status": "enrolled"
+            }
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": "update_plans",
+            "hub": "ce51c585-82de-407e-97a4-0dfcb67d79d3"
+          },
+          "check": {
+            "fields": {
+              "from_date": "^2026-11-19$",
+              "to_date": "^2026-11-19$"
+            },
+            "set": {
+              "close": "^true$"
+            }
+          },
+          "why": "One session called off is closed through update_plans on its date"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "close_node",
+            "node_id": "ce51c585-82de-407e-97a4-0dfcb67d79d3"
+          },
+          "why": "The course is not closed for one session"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "plan"
+          },
+          "why": "Never a new plan for one session"
+        }
+      ]
+    },
+    {
+      "name": "dinner-sometime-is-not-a-plan",
+      "finding": "plan status removed (no time, no plan)",
+      "occurred_at": "2026-11-17T12:00:00-05:00",
+      "text": "Sparsh said we should get dinner sometime next week.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "5b4a0000-0000-4000-8000-000000000001",
+            "kind": "person",
+            "title": "Sparsh Yandooru",
+            "detail": {
+              "birthday": null,
+              "aliases": []
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "5b4a0000-0000-4000-8000-0000000000e1",
+            "src_id": "5b4a0000-0000-4000-8000-000000000001",
+            "dst_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "type": "FRIEND_OF",
+            "properties": {}
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "plan"
+          },
+          "why": "A proposal with no time is not a plan"
+        }
+      ]
+    },
+    {
+      "name": "proposed-then-confirmed-keeps-one-plan",
+      "finding": "plan status removed (no second plan)",
+      "occurred_at": "2026-11-17T12:00:00-05:00",
+      "text": "Sparsh confirmed Saturday's dinner at Sultan's is at 7:00 PM.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "5b4a0000-0000-4000-8000-000000000001",
+            "kind": "person",
+            "title": "Sparsh Yandooru",
+            "detail": {
+              "birthday": null,
+              "aliases": []
+            }
+          },
+          {
+            "id": "5b4a0000-0000-4000-8000-000000000002",
+            "kind": "plan",
+            "title": "Dinner with Sparsh at Sultan's",
+            "body": null,
+            "occurred_at": "2026-11-21T19:00:00-05:00",
+            "detail": {
+              "end_at": null,
+              "all_day": false,
+              "time_zone": null,
+              "rsvp": null,
+              "outcome": null,
+              "outcome_at": null,
+              "actual_start": null,
+              "actual_end": null
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "5b4a0000-0000-4000-8000-0000000000e1",
+            "src_id": "5b4a0000-0000-4000-8000-000000000001",
+            "dst_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "type": "FRIEND_OF",
+            "properties": {}
+          },
+          {
+            "id": "5b4a0000-0000-4000-8000-0000000000e2",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "5b4a0000-0000-4000-8000-000000000002",
+            "type": "PARTICIPANT",
+            "properties": {}
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "plan"
+          },
+          "why": "Confirming the time never creates a second plan"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "close_node",
+            "node_id": "5b4a0000-0000-4000-8000-000000000002"
+          },
+          "why": "The confirmed dinner is not closed"
+        }
+      ]
+    },
+    {
+      "name": "someday-dinner-gets-a-time-becomes-one-plan",
+      "finding": "plan status removed (Someday item then a time)",
+      "occurred_at": "2026-11-17T12:00:00-05:00",
+      "text": "Sparsh set the dinner for Saturday, Nov 21 at 7:00 PM at Sultan's.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "5b4a0000-0000-4000-8000-000000000001",
+            "kind": "person",
+            "title": "Sparsh Yandooru",
+            "detail": {
+              "birthday": null,
+              "aliases": []
+            }
+          },
+          {
+            "id": "5b4a0000-0000-4000-8000-000000000003",
+            "kind": "task",
+            "title": "Dinner with Sparsh",
+            "body": null,
+            "occurred_at": null,
+            "detail": {
+              "opens_on": null,
+              "closes_at": null,
+              "done_at": null
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "5b4a0000-0000-4000-8000-0000000000e1",
+            "src_id": "5b4a0000-0000-4000-8000-000000000001",
+            "dst_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "type": "FRIEND_OF",
+            "properties": {}
+          },
+          {
+            "id": "5b4a0000-0000-4000-8000-0000000000e3",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "5b4a0000-0000-4000-8000-000000000003",
+            "type": "RELATED_TO",
+            "properties": {}
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "kind": "plan"
+          },
+          "check": {
+            "local_date": "2026-11-21",
+            "local_time": "19:00"
+          },
+          "why": "A fixed time makes the plan"
+        },
+        {
+          "expect": "some",
+          "match": {
+            "op": [
+              "close_node",
+              "update_node"
+            ],
+            "node_id": "5b4a0000-0000-4000-8000-000000000003"
+          },
+          "why": "The Someday item is closed or updated, not left beside the plan"
         }
       ]
     }

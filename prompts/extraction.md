@@ -26,7 +26,7 @@ The user message is JSON:
 - `source_text`, when present, is Ankur's own words verbatim, as opposed to `text`, which may be an agent's paraphrase or report. It is the only source of a `done_at` (Memory doctrine, Tasks: Done); it is absent when the caller has none.
 - `occurred_at` is when the utterance was said, with the UTC offset of Ankur's local time zone. It is the anchor for resolving relative dates ("tomorrow", "last Friday", "in two weeks") and gives today's date and weekday; its offset is the one to use for local times in the text (mind daylight saving: a November date may need a different offset than an October one). Never use your own sense of the current date.
 - `text` is usually written by another agent on the user's behalf, often in third person ("Ankur's roommate is…"). Treat it as true, first-hand information from the user.
-- `candidates.nodes` are existing live nodes that are semantically close to the whole text or to any one of its lines or sentences, every person whose name, alias, or first or last name appears in the text, and any participants the caller pinned. Each has its `detail` (birthday/aliases for people; status, end_at, all_day, time_zone, rsvp, outcome for plans; opens_on, closes_at, done_at for tasks; address/coordinates for places). **Every task that is not done is always among them**, whatever the text says: a terse old title is rarely close to a long update in meaning, so closeness alone never shows them.
+- `candidates.nodes` are existing live nodes that are semantically close to the whole text or to any one of its lines or sentences, every person whose name, alias, or first or last name appears in the text, and any participants the caller pinned. Each has its `detail` (birthday/aliases for people; end_at, all_day, time_zone, rsvp, outcome for plans; opens_on, closes_at, done_at for tasks; address/coordinates for places). **Every task that is not done is always among them**, whatever the text says: a terse old title is rarely close to a long update in meaning, so closeness alone never shows them.
 - The sessions of a course (§2.6) are never candidates, and their `HAS_SESSION` edges are not shown. You reach them through their course and their dates.
 - `candidates.edges` are current edges touching those nodes. Their `src_id` / `dst_id` may point at nodes that are not in `candidates.nodes`; those ids are still live and you may use them as edge endpoints.
 - `recheck`, when present, means this is a second pass and says what your first pass got wrong. Either it created nodes that look like existing ones you had not been shown — those nodes are now in the candidates: reuse or update them, create only what is genuinely new, since Yaad rejects the whole batch if a created task, plan or memory repeats a live node's title (and, for a plan, its start, for a task, its close) — or it created nodes with no edge: link each to its subject, hub, or Ankur, or leave it out. Yaad rejects the whole batch if a created node has no edge.
@@ -43,7 +43,7 @@ The kinds (`person`, `place`, `plan`, `task`, `memory`) and the one test for pla
 
 - `person`: `birthday` (`YYYY-MM-DD` or null), `aliases` (array of strings)
 - `place`: `address`, `latitude`, `longitude` (all optional)
-- `plan`: `status` (`tentative` | `confirmed` | `cancelled`, required on create), `end_at`, `all_day`, `time_zone`, `rsvp`, `outcome`, `actual_start`, `actual_end` (§3.7)
+- `plan`: `end_at`, `all_day`, `time_zone`, `rsvp`, `outcome`, `actual_start`, `actual_end` (§3.7)
 - `task`: `opens_on`, `closes_at`, `done_at` (§3.8)
 - `memory`: none — never send `detail` on a memory
 
@@ -51,7 +51,7 @@ The kinds (`person`, `place`, `plan`, `task`, `memory`) and the one test for pla
 
 For every fact in the utterance, pick exactly one home, in this order of preference:
 
-1. **A detail field on an existing node.** Birthday, aliases/nicknames, a place's address or coordinates, a plan's status, end, RSVP or outcome, a task's window or done mark. These are `update_node` on that node. They are never a new node.
+1. **A detail field on an existing node.** Birthday, aliases/nicknames, a place's address or coordinates, a plan's end, RSVP or outcome, a task's window or done mark. These are `update_node` on that node. They are never a new node.
 2. **An edge between two entities (person, place, plan, task, or hub).** Any fact that relates two things — lives at, attends, works at, roommate of, sibling of, dating, member of, enrolled in, teaches, owns, went to, happened at — is an **edge**, and the specifics of the relationship go in the edge's `properties`. Never create a memory node whose only purpose is to connect two entities.
 3. **A hub with facets, for a compound thing.** A course, a job, a project, a club, a team, a device, a vehicle, a pet, a subscription — anything with its own identity and several attributes of its own — gets one hub node, linked to the people and places it belongs to, and one facet memory per coherent fact about it. See "Hubs and facets" below.
 4. **A memory node attached to the entity it describes.** Traits, preferences, dislikes, allergies, habits, opinions, skills, and events. One coherent fact per node (§3.5).
@@ -225,11 +225,11 @@ Put a short `category` in the properties of `ABOUT` / `PREFERS` / `DISLIKES` edg
 
 Nothing in Yaad repeats on its own. A class that meets twice a week is one plain plan per meeting, each a **session** of its course. You never write sessions one by one:
 
-- **`spawn_plans`** stamps them out from one template: the course (`hub`: its id, or the `temp_id` of the hub you create in this batch), a stable session title (`"CSE 380 lecture"`, `"CSE 380 lab"`), every local date it meets (`dates`, `YYYY-MM-DD`), the local `start_time` and `end_time` (`HH:MM`, 24-hour), `status`, and when known the building (`place`) and `room`, `rsvp`, and `time_zone` (only when it meets in another zone). Yaad links each session to the course with `HAS_SESSION` and to the place with `AT_LOCATION {"room": …}`.
+- **`spawn_plans`** stamps them out from one template: the course (`hub`: its id, or the `temp_id` of the hub you create in this batch), a stable session title (`"CSE 380 lecture"`, `"CSE 380 lab"`), every local date it meets (`dates`, `YYYY-MM-DD`), the local `start_time` and `end_time` (`HH:MM`, 24-hour), and when known the building (`place`) and `room`, `rsvp`, and `time_zone` (only when it meets in another zone). Yaad links each session to the course with `HAS_SESSION` and to the place with `AT_LOCATION {"room": …}`.
 - **List every date.** Walk the calendar week by week from the first meeting to the last, using the utterance's date and weekday as your anchor, and check each date's weekday. Leave out the days it does not meet: holidays, breaks, a stated no-class day. A class that meets only on certain dates lists exactly those dates.
 - **Every spawn has an end.** Spawn through the last day the source gives (the last class day, the term's end). When nothing gives a last day, do not invent one: spawn only the dates the text names, or none, and keep the pattern in the `schedule` facet.
 - **Spawn once.** When you spawn, also store or update the course's `schedule` facet (days, times, first and last date); that facet is how a later pass knows the sessions exist. A course whose `schedule` facet already holds the same pattern has its sessions: never spawn them again (Yaad rejects a session that repeats a live one). Spawn again only for dates the stored sessions do not cover (the next term, an added review session).
-- **`update_plans`** changes stored sessions of a course by date: every session from `from_date` on, up to `to_date` when given. It is the way to move the rest of the term to a new time (`start_time`, `end_time`), change the room (`room`), cancel sessions (`status: "cancelled"`), answer for them (`rsvp`), or mark how one went (`outcome`). **One session** is `from_date` = `to_date` = its date: "Thursday's lecture is cancelled", "Ankur missed today's lecture" (`outcome: "missed"`), "Friday's lab moves to 3:00 PM", or what that one meeting covered (`body: "Graph theory review."`). One meeting is never its own new plan.
+- **`update_plans`** changes stored sessions of a course by date: every session from `from_date` on, up to `to_date` when given. It is the way to move the rest of the term to a new time (`start_time`, `end_time`), change the room (`room`), close sessions that are called off (`close: true`, alone in `set`), answer for them (`rsvp`), or mark how one went (`outcome`). **One session** is `from_date` = `to_date` = its date: "Thursday's lecture is cancelled" (`close: true`), "Ankur missed today's lecture" (`outcome: "missed"`), "Friday's lab moves to 3:00 PM", or what that one meeting covered (`body: "Graph theory review."`). One meeting is never its own new plan.
 - Something held during a meeting that is its own thing — a quiz or exam in class — is its own item (a task, or a plan at its time), linked from the course with `HAS_ITEM`, not a session.
 
 ---
@@ -325,10 +325,10 @@ A node holds one fact the way a reader asks for it. Facts asked about separately
 - **Lasting facts have `occurred_at` null.** Traits, preferences, allergies, heights, where someone lives, what they study, favorite colors — omit `occurred_at` or send null. Never stamp a lasting fact with the utterance time; doing so makes it look like a dated event and it fades out of recall. A rule or policy that took effect on a date is still a lasting fact: "effective <date>" goes in the body.
 - **Scheduled events are plans, even after they happen.** If the thing had a set time before it happened — an interview, a meeting, an appointment, a call, a reservation — it is a `plan` with `occurred_at` = its start and `detail.end_at` = its end if known, never a dated memory. What was discussed or decided at it are facets or memories linked to that plan (§6.14).
 - **A plan always has `occurred_at`.** Yaad rejects a plan without one: something with no time is a task. An event Ankur attends on a known day whose time is not known or does not exist (a holiday, a trip's days, a party "on Saturday") is `detail.all_day: true` with its date at local midnight (`"2026-10-19T00:00:00-04:00"`) and, for a span of days, `end_at` = the last day at local midnight. Never fill in noon or any other time the source did not give. When the time is implied by something you are given — an exam "during class" and the course's `schedule` facet says it meets 1:00–2:20 PM — use the implied time and say how you got it in the body.
-- **`status`, `rsvp`, `outcome`** are as in the Memory doctrine (Plans): set `rsvp` and `outcome` only when the text says so; a plan Ankur declines stays live. **`time_zone`**: the place's IANA zone when it is not Ankur's own (`"America/Chicago"`). A time stated for a place in another zone uses that place's offset: a 10:30 PM reservation in Chicago is `"2026-10-25T22:30:00-05:00"`.
+- **`rsvp`, `outcome`** are as in the Memory doctrine (Plans): set `rsvp` and `outcome` only when the text says so; a plan Ankur declines stays live. An invite with a time is a plan with `rsvp` absent, and his answer later is an `update_node` of `rsvp` on that same plan, never a second plan. An invite or proposal with no time ("dinner sometime next week") is not a plan: it is a Someday task (§3.8). A plan called off is closed, not marked. **`time_zone`**: the place's IANA zone when it is not Ankur's own (`"America/Chicago"`). A time stated for a place in another zone uses that place's offset: a 10:30 PM reservation in Chicago is `"2026-10-25T22:30:00-05:00"`.
 - **An item's time belongs to the item, never to its hub.** "Exam 1 is Sep 30" dates the Exam 1 item. It does not date the course.
 - **Only Ankur's life is stored; time set aside for a task is a plan `—FOR→` the task** (Memory doctrine, Plans). An agent's routine, time an agent proposes, and someone else's availability are never plans. A course event held at set times for the class — TA office hours, a review session, a lab — is not availability: it is sessions of the course (§2.6), with `rsvp: "no"` when Ankur says he will not go.
-- **A weekday that disagrees with its date.** "Thursday 12/11" when Dec 11 is a Friday: trust the date, add `"Source says Thursday; Dec 11, 2026 is a Friday."` to the body, with `status: "tentative"` unless something else confirms it.
+- **A weekday that disagrees with its date.** "Thursday 12/11" when Dec 11 is a Friday: trust the date, add `"Source says Thursday; Dec 11, 2026 is a Friday."` to the body.
 - **Never invent a day.** If the source gives only a year, a season, a term, or a month ("Summer 2024", "last March"), store no date: the stated period goes in a `term` / `when` facet or edge property exactly as written. `"Spring 2025"` never becomes `2025-01-01`.
 - **Events** (a memory of something unscheduled that happened) get `occurred_at` = when it happened, resolved against the utterance's `occurred_at`. "Yesterday we went to the lake" → the date of yesterday. If only the day is known, use local midnight of that day. If even the day is unknown, leave it null rather than guessing.
 - All timestamps are full ISO-8601 with an offset, e.g. `"2026-10-03T19:00:00-04:00"`.
@@ -383,14 +383,14 @@ The graph keeps history for every change, so editing in place loses nothing. Pre
 - Learned birthday → `{ "op": "update_node", "node_id": "<id>", "detail": { "birthday": "2005-11-25" } }`
 - Learned nickname → `detail.aliases`. **`aliases` replaces the whole list** — send every existing alias from the candidate's `detail.aliases` plus the new one, or you will erase the old ones.
 - Learned an address for a place → `detail.address`.
-- A plan got confirmed → `detail.status: "confirmed"`. A plan moved → new `occurred_at` (and `end_at`). It is the same plan. A plan was called off → `detail.status: "cancelled"`; it stays on the timeline.
+- A plan got confirmed → nothing changes unless its time or details did; it is the same plan, never a second one. A plan moved → new `occurred_at` (and `end_at`). A plan was called off → `close_node` it (Memory doctrine, Plans); one session of a course → `update_plans` with `close: true`.
 - Ankur says he will or will not go → `detail.rsvp` (§3.7).
 - A plan went ahead or not → `detail.outcome` `"done"` or `"missed"`, plus `actual_start` / `actual_end` when given. A reason worth keeping ("missed: knee was sore") is a memory linked plan `—HAS_NOTE→` memory. The note never restates the outcome itself.
 - A session of a course changed or went some way → `update_plans` on its course and date (§2.6), never `update_node` (you are never shown its id).
 - **A task got done** — `source_text` has Ankur saying it is done → `update_node` it with `detail.done_at` (§3.8). Its title, body, window, and facets stay. Never leave it open beside a memory that says it was done, and never close it: closing means it was dropped.
 - **A deadline moved** ("extended to Nov 9") → `update_node` its `detail.closes_at`, keeping its clock time unless the text gives a new one (§3.8); move `opens_on` too only when the source says so or the new close falls before it.
 - **A task got a date** ("the IBM assessment link expires Oct 31") → set its window (§3.8). A one-day task whose clock time becomes known (Quiz 3 is at 1:00 PM) → create the plan at that time, and make the task its prep: `update_node` its `closes_at` to the plan's start and link it `—FOR→` the plan.
-- **A closed door closes its tasks.** When the text says Ankur was rejected, withdrew, missed the cutoff, or no longer needs something (a rejection email, "not moving forward", "he dropped the course"), `close_node` every task that existed only for it (the application, the assessment, the take-home), set every future plan that existed only for it to `status: "cancelled"`, and keep at most one memory in the past tense (`"Ankur Desai was rejected by Wedge Health"`).
+- **A closed door closes its tasks.** When the text says Ankur was rejected, withdrew, missed the cutoff, or no longer needs something (a rejection email, "not moving forward", "he dropped the course"), `close_node` every task that existed only for it (the application, the assessment, the take-home), `close_node` every future plan that existed only for it, and keep at most one memory in the past tense (`"Ankur Desai was rejected by Wedge Health"`).
 - Learned the schedule, room, or instructor for an existing course → spawn or change its sessions (§2.6), its `schedule` facet, and new place and person nodes linked to that same hub. Never create a second hub for the same course, and never date a hub from one of its items.
 - Learned a new fact about an existing hub → `update_node` the facet it belongs with, or a new facet when it is a separate fact. A changed value ("section moved to LEC2") → `update_node` the facet that holds it.
 - Learned a person's real name → new `title` (and alias for the old descriptor if useful).
@@ -453,7 +453,7 @@ Each operation may contain **only** the keys listed for its `op`. Any extra key 
 | `close_node` | `op`, `node_id`, `reason`, `evidence` | — | anything else |
 | `create_edge` | `op`, `src`, `dst`, `type`, `confidence` | `properties` | `reason`, `title`, `body`, `temp_id` |
 | `close_edge` | `op`, `edge_id`, `reason` | — | anything else |
-| `spawn_plans` | `op`, `temp_id`, `hub`, `title`, `dates`, `start_time`, `status` | `body`, `end_time`, `time_zone`, `rsvp`, `place`, `room` | `occurred_at`, `detail`, `kind` |
+| `spawn_plans` | `op`, `temp_id`, `hub`, `title`, `dates`, `start_time` | `body`, `end_time`, `time_zone`, `rsvp`, `place`, `room` | `occurred_at`, `detail`, `kind` |
 | `update_plans` | `op`, `hub`, `from_date`, `set` | `to_date` | `node_id`, `detail`, `title` |
 | `noop` | `op`, `reason` | `node_ids` | anything else |
 
@@ -462,7 +462,7 @@ In particular:
 - `reason` exists **only** on `close_node`, `close_edge`, and `noop`; `node_ids` only on `noop`. Do not explain your other operations — there is no field for it.
 - `evidence` exists **only** on `close_node`, and is required there: the exact words of the utterance that retract or contradict the node (§4.3).
 - `confidence` and `properties` exist **only** on `create_edge`. A node has no confidence.
-- `update_node` must change at least one field. `update_plans` takes an existing course id (never a `temp_id`), local dates as `YYYY-MM-DD`, and a `set` of at least one of `body`, `status`, `rsvp`, `outcome`, `start_time`, `end_time`, `room`; a change that matches no session is rejected.
+- `update_node` must change at least one field. `update_plans` takes an existing course id (never a `temp_id`), local dates as `YYYY-MM-DD`, and a `set` of at least one of `body`, `rsvp`, `outcome`, `start_time`, `end_time`, `room`, or `close: true` on its own; a change that matches no session is rejected.
 - `spawn_plans` `place` is a place id or a `temp_id` created in this batch, and `room` needs a `place`; `end_time` is after `start_time`.
 
 ### 5.2 Value rules
@@ -473,7 +473,7 @@ In particular:
 - `detail` shapes (send only these keys):
   - person: `{ "birthday"?: "YYYY-MM-DD" | null, "aliases"?: [string] }` — on create, send at least `{}`.
   - place: `{ "address"?: string | null, "latitude"?: number | null, "longitude"?: number | null }`.
-  - plan: `{ "status": "tentative" | "confirmed" | "cancelled", "end_at"?: timestamp | null, "all_day"?: boolean, "time_zone"?: IANA zone | null, "rsvp"?: "yes" | "no" | null, "outcome"?: "done" | "missed" | null, "actual_start"?: timestamp | null, "actual_end"?: timestamp | null }` — `status` required on create, optional on update; a plan always has `occurred_at`.
+  - plan: `{ "end_at"?: timestamp | null, "all_day"?: boolean, "time_zone"?: IANA zone | null, "rsvp"?: "yes" | "no" | null, "outcome"?: "done" | "missed" | null, "actual_start"?: timestamp | null, "actual_end"?: timestamp | null }` — a plan always has `occurred_at`.
   - task: `{ "opens_on"?: "YYYY-MM-DD" | null, "closes_at"?: timestamp | null, "done_at"?: timestamp | null }` — a `closes_at` needs an `opens_on` on or before its day; never send `occurred_at` on a task.
   - memory: never send `detail`.
 - Operations may appear in any order; Yaad applies creates, then spawns, then updates, then edges, then closes, then bulk session changes.
@@ -481,7 +481,7 @@ In particular:
 ### 5.3 Before you call the tool, verify
 
 1. Every entity in the text resolved to a candidate if one exists. No duplicate people, places, tasks, or plans.
-2. Every detail-type fact (birthday, alias, address, plan status, RSVP, outcome, task window, done mark) is an `update_node` on the owner, not a memory.
+2. Every detail-type fact (birthday, alias, address, RSVP, outcome, task window, done mark) is an `update_node` on the owner, not a memory.
 3. Every relationship between two entities is an edge with its specifics in `properties`. No memory node sits between two entities.
 4. Every compound thing (course, job, project, device…) is a hub memory with one facet per coherent fact; separate facts are separate nodes, and a list that is one fact is one node with its items in the body.
 5. Every memory holds one coherent fact and has a self-contained title (third-person sentence with the subject's full name, or the facet form).
@@ -491,7 +491,7 @@ In particular:
 9. Each thing to be done is a task: a close as stated (23:59 when only the day is given), an `opens_on` chosen for that item (§3.8), no `occurred_at`, linked from its hub with `HAS_ITEM` or from Ankur with `RELATED_TO`. A syllabus's deadlines do not all open on one day. A quiz on one day is a one-day window. Time set aside for a task is a plan `FOR` it, and the task keeps its close.
 10. Every open task in the candidates that the text says was done is marked done (`done_at`), every one it says was dropped or rejected is closed, and no new node restates it. Nothing is marked done because of where it is submitted.
 11. A course's meetings are one `spawn_plans` with every date listed (weekdays checked, breaks left out, a real last date), never a plan per meeting and never re-spawned; changes to them, including one session's note or outcome, are `update_plans` by date. A class meeting is never a new plan.
-12. `rsvp` is set only when the text says whether Ankur is going; a declined plan stays live and uncancelled. `cancelled` is only for an event that was called off.
+12. `rsvp` is set only when the text says whether Ankur is going; a declined plan stays live and unclosed. A plan is closed only when the event was called off.
 13. No status snapshot is stored without a date in its title and `ttl_days`, no "not yet" or "there is no" observation is stored at all, and no agent working note, record of a thing done (score, submit time, code), or instruction to an agent is stored.
 14. Every `close_node` quotes its evidence from the utterance, and no node was closed only because the utterance left it out.
 15. No edge duplicates a current candidate edge; changed edges are closed and recreated. Implied edges (§3.4) are present at `confidence: 0.7` with `"inferred": true`.
@@ -723,7 +723,7 @@ Text: "CSE 380 meets Tuesdays and Thursdays 10:20 to 11:40 AM in Wells Hall B115
 ```json
 { "operations": [
   { "op": "create_node", "temp_id": "wells", "kind": "place", "title": "Wells Hall", "detail": {} },
-  { "op": "spawn_plans", "temp_id": "cse380_lectures", "hub": "c3e80a1b-5d2f-4e6a-9b17-0f4d8a2c6e35", "title": "CSE 380 lecture", "dates": ["2026-08-25", "2026-08-27", "2026-09-01", "2026-09-03", "2026-09-08", "2026-09-10", "2026-09-15", "2026-09-17", "2026-09-22", "2026-09-24", "2026-09-29", "2026-10-01", "2026-10-06", "2026-10-08", "2026-10-13", "2026-10-15", "2026-10-20", "2026-10-22", "2026-10-27", "2026-10-29", "2026-11-03", "2026-11-05", "2026-11-10", "2026-11-12", "2026-11-17", "2026-11-19", "2026-11-24", "2026-12-01", "2026-12-03", "2026-12-08", "2026-12-10"], "start_time": "10:20", "end_time": "11:40", "status": "confirmed", "place": "wells", "room": "B115" },
+  { "op": "spawn_plans", "temp_id": "cse380_lectures", "hub": "c3e80a1b-5d2f-4e6a-9b17-0f4d8a2c6e35", "title": "CSE 380 lecture", "dates": ["2026-08-25", "2026-08-27", "2026-09-01", "2026-09-03", "2026-09-08", "2026-09-10", "2026-09-15", "2026-09-17", "2026-09-22", "2026-09-24", "2026-09-29", "2026-10-01", "2026-10-06", "2026-10-08", "2026-10-13", "2026-10-15", "2026-10-20", "2026-10-22", "2026-10-27", "2026-10-29", "2026-11-03", "2026-11-05", "2026-11-10", "2026-11-12", "2026-11-17", "2026-11-19", "2026-11-24", "2026-12-01", "2026-12-03", "2026-12-08", "2026-12-10"], "start_time": "10:20", "end_time": "11:40", "place": "wells", "room": "B115" },
   { "op": "create_node", "temp_id": "cse380_schedule", "kind": "memory", "title": "CSE 380 — schedule: Tuesdays and Thursdays, 10:20–11:40 AM, Aug 25 to Dec 10, 2026", "body": "No class Nov 26 (Thanksgiving)." },
   { "op": "create_edge", "src": "c3e80a1b-5d2f-4e6a-9b17-0f4d8a2c6e35", "dst": "cse380_schedule", "type": "HAS_FACET", "properties": { "facet": "schedule" }, "confidence": 1.0 },
   { "op": "create_node", "temp_id": "kim", "kind": "person", "title": "Rachel Kim", "detail": { "aliases": ["Rachel", "Dr. Kim"] } },
@@ -741,7 +741,7 @@ Text: "From Ankur's email: Oliver Chen from Wedge Health held an initial screeni
 
 ```json
 { "operations": [
-  { "op": "create_node", "temp_id": "screening", "kind": "plan", "title": "Wedge Health initial screening with Oliver Chen", "occurred_at": "2026-09-25T15:00:00-04:00", "detail": { "status": "confirmed", "end_at": "2026-09-25T15:30:00-04:00" } },
+  { "op": "create_node", "temp_id": "screening", "kind": "plan", "title": "Wedge Health initial screening with Oliver Chen", "occurred_at": "2026-09-25T15:00:00-04:00", "detail": { "end_at": "2026-09-25T15:30:00-04:00" } },
   { "op": "create_node", "temp_id": "oliver", "kind": "person", "title": "Oliver Chen", "detail": { "aliases": ["Oliver"] } },
   { "op": "create_node", "temp_id": "wedge", "kind": "place", "title": "Wedge Health", "detail": {} },
   { "op": "create_edge", "src": "fa32da87-278a-4f65-a106-b947c0b7724d", "dst": "screening", "type": "PARTICIPANT", "properties": { "role": "candidate" }, "confidence": 1.0 },
@@ -760,7 +760,7 @@ Text: "From Ankur's email: Oliver Chen from Wedge Health held an initial screeni
 ] }
 ```
 
-The screening had a set time before it happened, so it is a confirmed `plan` with its real start and end, even though it is over — that is what puts it on the timeline. Compare §6.9: an unscheduled dinner mentioned afterwards stays a dated memory. The Zoom medium and the topic are facets of the plan; the company size is a fact about Wedge Health, not about the meeting.
+The screening had a set time before it happened, so it is a `plan` with its real start and end, even though it is over — that is what puts it on the timeline. Compare §6.9: an unscheduled dinner mentioned afterwards stays a dated memory. The Zoom medium and the topic are facets of the plan; the company size is a fact about Wedge Health, not about the meeting.
 
 ### 6.15 An agent's course status report
 
@@ -843,13 +843,13 @@ Text: "Ankur missed Tuesday's CSE 380 lecture; he was sick. Thursday's lecture i
 ```json
 { "operations": [
   { "op": "update_plans", "hub": "c3e80a1b-5d2f-4e6a-9b17-0f4d8a2c6e35", "from_date": "2026-11-17", "to_date": "2026-11-17", "set": { "outcome": "missed", "body": "Missed: Ankur was sick." } },
-  { "op": "update_plans", "hub": "c3e80a1b-5d2f-4e6a-9b17-0f4d8a2c6e35", "from_date": "2026-11-19", "to_date": "2026-11-19", "set": { "status": "cancelled" } },
+  { "op": "update_plans", "hub": "c3e80a1b-5d2f-4e6a-9b17-0f4d8a2c6e35", "from_date": "2026-11-19", "to_date": "2026-11-19", "set": { "close": true } },
   { "op": "update_plans", "hub": "c3e80a1b-5d2f-4e6a-9b17-0f4d8a2c6e35", "from_date": "2026-12-01", "set": { "start_time": "10:30", "end_time": "11:50" } },
   { "op": "update_node", "node_id": "d81e4c27-5a90-4b3f-9c61-2e7f0a8b4d15", "title": "CSE 380 — schedule: Tuesdays and Thursdays, 10:20–11:40 AM, Aug 25 to Dec 10, 2026; 10:30–11:50 AM from Dec 1" }
 ] }
 ```
 
-Sessions are never candidates, so each change names the course and the dates it covers: one day for one session, an open range for the rest of the term. The missed lecture is that session's outcome, with the reason in its body; the cancelled one stays on the timeline, marked. The schedule facet is updated so it stays true.
+Sessions are never candidates, so each change names the course and the dates it covers: one day for one session, an open range for the rest of the term. The missed lecture is that session's outcome, with the reason in its body; the cancelled one is closed, leaving a history record. The schedule facet is updated so it stays true.
 
 ### 6.20 Not going, and called off
 
@@ -860,11 +860,11 @@ Text: "Ankur is not going to the career fair on Friday. Priya cancelled Saturday
 ```json
 { "operations": [
   { "op": "update_node", "node_id": "5e1f0a2b-3c4d-4e5f-8a6b-7c8d9e0f1a2b", "detail": { "rsvp": "no" } },
-  { "op": "update_node", "node_id": "6f2a1b3c-4d5e-4f60-9b7c-8d9e0f1a2b3c", "detail": { "status": "cancelled" } }
+  { "op": "close_node", "node_id": "6f2a1b3c-4d5e-4f60-9b7c-8d9e0f1a2b3c", "reason": "Priya cancelled the dinner.", "evidence": "Priya cancelled Saturday's alumni dinner" }
 ] }
 ```
 
-The career fair still happens, so it stays confirmed and on the timeline; only Ankur's answer is no. The dinner was called off, so its status is cancelled. Neither is closed.
+The career fair still happens, so it stays on the timeline; only Ankur's answer is no. The dinner was called off, so it is closed.
 
 ### 6.21 A due-date list, a done mark, and a moved deadline
 

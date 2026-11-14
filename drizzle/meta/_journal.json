@@ -57,6 +57,13 @@
       "when": 1794625521246,
       "tag": "0007_task_verified_at",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794652276713,
+      "tag": "0008_drop_plan_status",
+      "breakpoints": true
     }
   ]
 }

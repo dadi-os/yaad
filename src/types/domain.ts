@@ -1,6 +1,6 @@
 /** API-facing domain types for the memory graph (nodes, edges, history). */
 
-import type { Outcome, PlanStatus, Rsvp } from "./timeline.js";
+import type { Outcome, Rsvp } from "./timeline.js";
 
 /** Graph node kind. */
 export type NodeKind = "person" | "memory" | "plan" | "place" | "task";
@@ -22,7 +22,6 @@ export type PlanDetail = {
   end_at: string | null;
   /** Date without a time of day: occurred_at and end_at sit at local midnight of their dates. */
   all_day: boolean;
-  status: PlanStatus;
   /** IANA zone of the place when it is not the box's (a Chicago dinner); null otherwise. */
   time_zone: string | null;
   /** Whether Ankur is going; null until he says. */

@@ -43,7 +43,7 @@ async function view(name: string, from: string, to: string): Promise<TimelineIte
 const WEEK = { from: "2026-10-19T04:00:00.000Z", to: "2026-10-26T04:00:00.000Z" };
 const titles = (items: TimelineItem[]) => items.map((item) => item.title);
 
-test("each view filters the same stored plans: planner, month and tile, with declined and cancelled plans kept", async () => {
+test("each view filters the same stored plans: planner, month and tile, with declined plans kept", async () => {
   await resetGraph(handle.sql);
   let axis = 0;
   const plan = (args: Omit<Parameters<typeof insertPlan>[1], "embedding">) =>
@@ -63,12 +63,6 @@ test("each view filters the same stored plans: planner, month and tile, with dec
     rsvp: "no",
   });
   await insertEdge(handle.db, { src: course, dst: hours, type: "HAS_SESSION" });
-  const cancelled = await plan({
-    title: "Study group",
-    occurredAt: new Date("2026-10-22T15:00:00.000Z"),
-    endAt: new Date("2026-10-22T16:00:00.000Z"),
-    status: "cancelled",
-  });
   const dinner = await plan({
     title: "Dinner at Ciccio Mio",
     occurredAt: new Date("2026-10-21T22:00:00.000Z"),
@@ -86,18 +80,16 @@ test("each view filters the same stored plans: planner, month and tile, with dec
     endAt: new Date("2026-10-25T20:00:00.000Z"),
   });
   const reminder = await plan({ title: "Call the bank", occurredAt: new Date("2026-10-22T19:00:00.000Z") });
-  assert.equal(new Set([lecture, hours, cancelled, dinner, allDay, trip, reminder]).size, 7);
+  assert.equal(new Set([lecture, hours, dinner, allDay, trip, reminder]).size, 6);
 
   assert.deepEqual(titles(await view("planner", WEEK.from, WEEK.to)), [
     "CSE 431 lecture",
     "CSE 431 office hours",
     "Dinner at Ciccio Mio",
-    "Study group",
     "Chicago trip",
   ]);
   assert.deepEqual(titles(await view("month", WEEK.from, WEEK.to)), [
     "Dinner at Ciccio Mio",
-    "Study group",
     "Call the bank",
     "Career fair",
     "Chicago trip",
@@ -106,7 +98,6 @@ test("each view filters the same stored plans: planner, month and tile, with dec
     "CSE 431 lecture",
     "CSE 431 office hours",
     "Dinner at Ciccio Mio",
-    "Study group",
     "Call the bank",
     "Career fair",
     "Chicago trip",
@@ -116,7 +107,6 @@ test("each view filters the same stored plans: planner, month and tile, with dec
   const byTitle = new Map(tile.map((item) => [item.title, item]));
   assert.equal(byTitle.get("CSE 431 office hours")?.rsvp, "no");
   assert.equal(byTitle.get("CSE 431 lecture")?.rsvp, null);
-  assert.equal(byTitle.get("Study group")?.status, "cancelled");
   assert.deepEqual(byTitle.get("CSE 431 lecture")?.hub, { id: course, title: "CSE 431" });
   assert.equal(byTitle.get("Dinner at Ciccio Mio")?.hub, null);
 });

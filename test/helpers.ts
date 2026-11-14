@@ -5,7 +5,7 @@ import { createDb, type Db, type Sql } from "../src/db/client.js";
 import { edge, node, personDetail, placeDetail, planDetail, taskDetail } from "../src/db/schema.js";
 import type { DwarChatResponse, DwarClient } from "../src/dwar/client.js";
 import type { Operation } from "../src/ingest/operations.js";
-import type { PlanStatus, Rsvp } from "../src/types/timeline.js";
+import type { Rsvp } from "../src/types/timeline.js";
 
 export function axisVector(dimension: number, axis: number): number[] {
   const values = Array.from({ length: dimension }, () => 0);
@@ -135,7 +135,6 @@ export async function insertPlan(
     embedding: number[];
     occurredAt: Date;
     endAt?: Date | null;
-    status?: PlanStatus;
     allDay?: boolean;
     rsvp?: Rsvp | null;
     agentId?: string;
@@ -159,7 +158,6 @@ export async function insertPlan(
     nodeId: id,
     endAt: args.endAt ?? null,
     allDay: args.allDay ?? false,
-    status: args.status ?? "confirmed",
     rsvp: args.rsvp ?? null,
   });
   return id;

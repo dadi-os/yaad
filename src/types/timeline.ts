@@ -1,10 +1,5 @@
 /** API-facing types for the timeline: every plan is a stored row, and each view is a filter over them. */
 
-/** Whether a plan is happening: tentative, confirmed, or cancelled. */
-export const PLAN_STATUSES = ["tentative", "confirmed", "cancelled"] as const;
-
-export type PlanStatus = (typeof PLAN_STATUSES)[number];
-
 /** Whether Ankur is going; a plan with no answer has a null rsvp. */
 export const RSVPS = ["yes", "no"] as const;
 
@@ -37,7 +32,6 @@ export type TimelineItem = {
   id: string;
   title: string;
   body: string | null;
-  status: PlanStatus;
   rsvp: Rsvp | null;
   start_at: string;
   end_at: string | null;

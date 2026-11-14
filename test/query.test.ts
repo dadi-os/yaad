@@ -153,9 +153,9 @@ test("query empty body is 422", async () => {
   assert.equal(res.statusCode, 422);
 });
 
-test("query status with conflicting kind is 422", async () => {
+test("query rejects the removed status filter", async () => {
   await resetGraph(handle.sql);
-  const res = await query({ kind: "person", status: "confirmed" });
+  const res = await query({ kind: "plan", status: "confirmed" });
   assert.equal(res.statusCode, 422);
 });
 

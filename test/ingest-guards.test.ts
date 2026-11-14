@@ -66,7 +66,7 @@ test("an all-day plan is stored at local midnight of its date and keeps the flag
         kind: "plan",
         title: "CSE 335 — last day to drop",
         occurred_at: "2026-10-19T12:00:00-04:00",
-        detail: { status: "confirmed", all_day: true },
+        detail: { all_day: true },
       },
     ],
   });
@@ -105,7 +105,7 @@ test("turning all_day on moves the existing start to midnight, and a plan needs 
     () =>
       validateOperations({ timeZone: config.env.timezone,
         db: handle.db,
-        operations: [{ op: "create_node", temp_id: "p", kind: "plan", title: "Someday", detail: { status: "confirmed", all_day: true } }],
+        operations: [{ op: "create_node", temp_id: "p", kind: "plan", title: "Someday", detail: { all_day: true } }],
       }),
     422,
     "invalid_request",
@@ -148,7 +148,7 @@ test("a created plan or memory that repeats a live one is rejected unless the ba
     kind: "plan",
     title,
     occurred_at: occurredAt,
-    detail: { status: "confirmed" },
+    detail: {},
   });
 
   await rejectsWith(
@@ -256,7 +256,7 @@ test("ingest re-extracts once with a lookalike it was not shown, and fails if th
     kind: "plan",
     title: QUIZ,
     occurred_at: QUIZ_AT,
-    detail: { status: "confirmed" },
+    detail: {},
   };
   const run = (rounds: Operation[][], users: string[]) =>
     ingest({
@@ -442,7 +442,7 @@ test("lookalike plans need a shared title word; lookalike tasks close the same d
     kind: "plan",
     title,
     occurred_at: new Date(at.getTime() + 3_600_000).toISOString(),
-    detail: { status: "confirmed" },
+    detail: {},
   });
   assert.deepEqual(await findLookalikes(handle.db, [createPlan("Dentist cleaning")], new Set(), "America/New_York"), [dentist]);
   assert.deepEqual(await findLookalikes(handle.db, [createPlan("Graduate info session")], new Set(), "America/New_York"), []);

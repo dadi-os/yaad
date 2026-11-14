@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { buildApp } from "../src/app.js";
-import { edge, node, planDetail } from "../src/db/schema.js";
+import { edge, node, nodeHistory, planDetail } from "../src/db/schema.js";
 import { applyOperations } from "../src/ingest/apply.js";
-import type { Operation } from "../src/ingest/operations.js";
+import { emitOperationsInput, type Operation } from "../src/ingest/operations.js";
 import { validateExtraction, validateOperations } from "../src/ingest/validate.js";
 import type { Config } from "../src/config.js";
 import { axisVector, insertMemory, insertPlace, mockDwar, openTestDb, resetGraph, testConfig } from "./helpers.js";
@@ -50,7 +50,6 @@ async function lectureCourse(dates: string[], extra: Record<string, unknown> = {
       dates,
       start_time: "10:20",
       end_time: "11:40",
-      status: "confirmed",
       place: building,
       room: "1345",
       ...extra,
@@ -66,11 +65,11 @@ test("spawn_plans stamps one plain plan per date at the local time, linked to th
   const { hub, building, result } = await lectureCourse(["2026-10-27", "2026-11-03", "2026-10-29"]);
   const sessions = await sessionsOf(hub);
   assert.deepEqual(
-    sessions.map((row) => [row.node.title, row.node.occurredAt?.toISOString(), row.detail.endAt?.toISOString(), row.detail.status, row.node.embedding]),
+    sessions.map((row) => [row.node.title, row.node.occurredAt?.toISOString(), row.detail.endAt?.toISOString(), row.node.embedding]),
     [
-      ["CSE 380 lecture", "2026-10-27T14:20:00.000Z", "2026-10-27T15:40:00.000Z", "confirmed", null],
-      ["CSE 380 lecture", "2026-10-29T14:20:00.000Z", "2026-10-29T15:40:00.000Z", "confirmed", null],
-      ["CSE 380 lecture", "2026-11-03T15:20:00.000Z", "2026-11-03T16:40:00.000Z", "confirmed", null],
+      ["CSE 380 lecture", "2026-10-27T14:20:00.000Z", "2026-10-27T15:40:00.000Z", null],
+      ["CSE 380 lecture", "2026-10-29T14:20:00.000Z", "2026-10-29T15:40:00.000Z", null],
+      ["CSE 380 lecture", "2026-11-03T15:20:00.000Z", "2026-11-03T16:40:00.000Z", null],
     ],
   );
   assert.deepEqual(result.spawned.lectures, sessions.map((row) => row.node.id));
@@ -87,7 +86,7 @@ test("spawn_plans rejects repeated dates, an end before the start, a room with n
   await resetGraph(handle.sql);
   const course = await insertMemory(handle.db, { title: "CSE 380", embedding: axisVector(dim, 0) });
   const spawn = (extra: Record<string, unknown>): Operation =>
-    ({ op: "spawn_plans", temp_id: "s", hub: course, title: "Lecture", dates: ["2026-10-27"], start_time: "10:20", status: "confirmed", ...extra }) as Operation;
+    ({ op: "spawn_plans", temp_id: "s", hub: course, title: "Lecture", dates: ["2026-10-27"], start_time: "10:20", ...extra }) as Operation;
   const rejects = (op: Operation) =>
     assert.rejects(
       () => validateOperations({ timeZone: config.env.timezone, db: handle.db, operations: [op] }),
@@ -103,7 +102,7 @@ test("spawn_plans is refused past max_sessions_per_spawn, and re-spawning the sa
   await resetGraph(handle.sql);
   const small: Config = { ...config, plan: { max_sessions_per_spawn: 2 } };
   const course = await insertMemory(handle.db, { title: "CSE 380", embedding: axisVector(dim, 0) });
-  const spawn: Operation = { op: "spawn_plans", temp_id: "s", hub: course, title: "Lecture", dates: ["2026-10-27", "2026-10-29", "2026-11-03"], start_time: "10:20", status: "confirmed" };
+  const spawn: Operation = { op: "spawn_plans", temp_id: "s", hub: course, title: "Lecture", dates: ["2026-10-27", "2026-10-29", "2026-11-03"], start_time: "10:20" };
   await assert.rejects(
     () => writes([spawn], small),
     (err: unknown) => (err as { statusCode?: number }).statusCode === 422 && /max_sessions_per_spawn/.test((err as Error).message),
@@ -116,7 +115,7 @@ test("spawn_plans is refused past max_sessions_per_spawn, and re-spawning the sa
   assert.equal((await sessionsOf(course)).length, 3);
 });
 
-test("update_plans moves a course's later sessions, keeping each date and length, and changes room and status in bulk", async () => {
+test("update_plans moves a course's later sessions, keeping each date and length, and changes room and rsvp in bulk", async () => {
   await resetGraph(handle.sql);
   const { hub } = await lectureCourse(["2026-10-27", "2026-10-29", "2026-11-03"]);
   await writes([{ op: "update_plans", hub, from_date: "2026-10-29", set: { start_time: "11:00" } }]);
@@ -130,9 +129,9 @@ test("update_plans moves a course's later sessions, keeping each date and length
     ],
   );
 
-  await writes([{ op: "update_plans", hub, from_date: "2026-11-03", set: { status: "cancelled", rsvp: "no", room: "2010" } }]);
+  await writes([{ op: "update_plans", hub, from_date: "2026-11-03", set: { rsvp: "no", room: "2010" } }]);
   sessions = await sessionsOf(hub);
-  assert.deepEqual(sessions.map((row) => [row.detail.status, row.detail.rsvp]), [["confirmed", null], ["confirmed", null], ["cancelled", "no"]]);
+  assert.deepEqual(sessions.map((row) => row.detail.rsvp), [null, null, "no"]);
   const rooms = await handle.db.select().from(edge).where(and(eq(edge.type, "AT_LOCATION"), isNull(edge.validTo)));
   assert.deepEqual(rooms.map((row) => row.properties.room).sort(), ["1345", "1345", "2010"]);
 
@@ -145,6 +144,29 @@ test("update_plans moves a course's later sessions, keeping each date and length
   assert.ok(sessions[1]?.detail.outcomeAt instanceof Date);
 });
 
+test("update_plans close closes the matched sessions like close_node, keeping a history row, and leaves the rest", async () => {
+  await resetGraph(handle.sql);
+  const { hub, building } = await lectureCourse(["2026-10-27", "2026-10-29", "2026-11-03"]);
+  const [, called] = await sessionsOf(hub);
+  assert.ok(called);
+  await writes([{ op: "update_plans", hub, from_date: "2026-10-29", to_date: "2026-10-29", set: { close: true } }]);
+  assert.deepEqual((await sessionsOf(hub)).map((row) => row.node.occurredAt?.toISOString()), ["2026-10-27T14:20:00.000Z", "2026-11-03T15:20:00.000Z"]);
+  assert.equal((await handle.db.select().from(node).where(eq(node.id, called.node.id))).length, 0);
+  const history = await handle.db.select().from(nodeHistory).where(eq(nodeHistory.nodeId, called.node.id));
+  assert.deepEqual(history.map((row) => [row.field, row.oldValue]), [["deleted", "CSE 380 lecture"]]);
+  const located = await handle.db.select().from(edge).where(and(eq(edge.type, "AT_LOCATION"), eq(edge.dstId, building), isNull(edge.validTo)));
+  assert.equal(located.length, 2);
+});
+
+test("update_plans set accepts close only on its own", () => {
+  const hub = "00000000-0000-4000-8000-000000000000";
+  const parse = (set: Record<string, unknown>) =>
+    emitOperationsInput.safeParse({ operations: [{ op: "update_plans", hub, from_date: "2026-10-29", set }] }).success;
+  assert.equal(parse({ close: true }), true);
+  assert.equal(parse({ close: true, rsvp: "no" }), false);
+  assert.equal(parse({ close: false }), false);
+});
+
 test("a new course hub whose only links are its spawned sessions is not an unlinked create", async () => {
   await resetGraph(handle.sql);
   const { hub } = await lectureCourse(["2026-10-27"]);
@@ -155,10 +177,10 @@ test("update_plans that matches no session is a 422 and writes nothing", async (
   await resetGraph(handle.sql);
   const { hub } = await lectureCourse(["2026-10-27"]);
   await assert.rejects(
-    () => writes([{ op: "update_plans", hub, from_date: "2027-01-01", set: { status: "cancelled" } }]),
+    () => writes([{ op: "update_plans", hub, from_date: "2027-01-01", set: { rsvp: "no" } }]),
     (err: unknown) => (err as { statusCode?: number }).statusCode === 422,
   );
-  assert.equal((await sessionsOf(hub))[0]?.detail.status, "confirmed");
+  assert.equal((await sessionsOf(hub))[0]?.detail.rsvp, null);
 });
 
 test("sessions stay out of the memory graph and recall's walk, and the course's timeline items name it", async () => {

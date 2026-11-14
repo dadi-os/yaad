@@ -9,7 +9,6 @@
 import { and, asc, eq, gt, isNull, or, sql, type SQL } from "drizzle-orm";
 import { YaadError } from "../errors.js";
 import type { NodeKind } from "../types/domain.js";
-import type { PlanStatus } from "../types/timeline.js";
 import type { Db } from "./client.js";
 import { node, personDetail, planDetail, taskDetail, type NodeRow } from "./schema.js";
 import { relevantOrder, relevantRecently } from "./tasks.js";
@@ -21,7 +20,6 @@ export type NodeFilter = {
   name?: string | undefined;
   occurred_from?: string | undefined;
   occurred_to?: string | undefined;
-  status?: PlanStatus | undefined;
   /** A local date: the tasks relevant that day. */
   relevant_on?: string | undefined;
 };
@@ -33,16 +31,12 @@ export function hasFilter(filter: NodeFilter): boolean {
     filter.name !== undefined ||
     filter.occurred_from !== undefined ||
     filter.occurred_to !== undefined ||
-    filter.status !== undefined ||
     filter.relevant_on !== undefined
   );
 }
 
-/** Reject a plan status filter combined with a non-plan kind, and `relevant_on` combined with a non-task kind. */
+/** Reject `relevant_on` combined with a non-task kind. */
 export function assertFilterCoherent(filter: NodeFilter): void {
-  if (filter.status !== undefined && filter.kind !== undefined && filter.kind !== "plan") {
-    throw new YaadError(422, "invalid_request", "status filter requires kind to be plan or unset");
-  }
   if (filter.relevant_on !== undefined && filter.kind !== undefined && filter.kind !== "task") {
     throw new YaadError(422, "invalid_request", "relevant_on requires kind to be task or unset");
   }
@@ -55,14 +49,8 @@ export async function filterNodes(db: Db, filter: NodeFilter, limit: number, off
 
   if (filter.kind !== undefined) {
     conditions.push(eq(node.kind, filter.kind));
-  } else if (filter.status !== undefined) {
-    conditions.push(eq(node.kind, "plan"));
   } else if (filter.relevant_on !== undefined) {
     conditions.push(eq(node.kind, "task"));
-  }
-
-  if (filter.status !== undefined) {
-    conditions.push(eq(planDetail.status, filter.status));
   }
 
   if (filter.relevant_on !== undefined) {

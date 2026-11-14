@@ -1,4 +1,4 @@
-/** `POST /query` — exact/filter lookup over live nodes (kind, name, date range, plan status, tasks relevant on a day). */
+/** `POST /query` — exact/filter lookup over live nodes (kind, name, date range, tasks relevant on a day). */
 
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../../db/client.js";

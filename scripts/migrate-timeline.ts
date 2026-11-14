@@ -6,7 +6,7 @@
  *
  * A recurring plan with a start becomes a hub (a memory) and one plan per occurrence from its start
  * through `--through`, each linked `HAS_SESSION`, with the hub's place, the matching `plan_occurrence`
- * row (moved, cancelled, outcome, actual times) and the matching `HAS_NOTE` notes. A recurring plan
+ * row (moved, outcome, actual times; a cancelled session is left out) and the matching `HAS_NOTE` notes. A recurring plan
  * anchored on a due (rent on the 1st) becomes one task per occurrence. Plans that have both a start and
  * a due, and routine-kind plans, are listed for a decision and left alone.
  */
@@ -27,7 +27,6 @@ type Legacy = {
   agent_id: string | null;
   occurred_at: Date | null;
   end_at: Date | null;
-  status: string;
   recurrence: string;
   due_at: Date | null;
   opens_at: Date | null;
@@ -71,7 +70,7 @@ try {
   const counts = { hubs: 0, sessions: 0, tasks: 0, notes: 0, skippedMoves: 0 };
   await client.begin(async (tx) => {
     const series = await tx<Legacy[]>`
-      SELECT n.id, n.title, n.body, n.source, n.agent_id, n.occurred_at, d.end_at, d.status, d.recurrence, d.due_at, d.opens_at, d.time_zone, d.hide_from_planner
+      SELECT n.id, n.title, n.body, n.source, n.agent_id, n.occurred_at, d.end_at, d.recurrence, d.due_at, d.opens_at, d.time_zone, d.hide_from_planner
       FROM node n JOIN plan_detail d ON d.node_id = n.id
       WHERE n.kind = 'plan' AND d.recurrence IS NOT NULL`;
     for (const plan of series) {
@@ -111,13 +110,16 @@ try {
         const day = localDate(at, where);
         planned.add(day);
         const row = overrides.find((override) => override.occurrence_date === day);
+        if (row?.state === "cancelled") {
+          continue;
+        }
         const start = row?.state === "moved" && row.start_at ? row.start_at : at;
         const end = row?.state === "moved" ? (row.end_at ?? (length === null ? null : new Date(start.getTime() + length))) : length === null ? null : new Date(at.getTime() + length);
         const id = randomUUID();
         await tx`INSERT INTO node (id, kind, title, body, occurred_at, source, agent_id) VALUES (${id}, 'plan', ${plan.title}, ${plan.body}, ${start}, ${plan.source}, ${plan.agent_id})`;
         await tx`
-          INSERT INTO plan_detail (node_id, end_at, status, time_zone, rsvp, outcome, outcome_at, actual_start, actual_end)
-          VALUES (${id}, ${end}, ${row?.state === "cancelled" ? "cancelled" : plan.status}, ${plan.time_zone}, ${plan.hide_from_planner ? "no" : null},
+          INSERT INTO plan_detail (node_id, end_at, time_zone, rsvp, outcome, outcome_at, actual_start, actual_end)
+          VALUES (${id}, ${end}, ${plan.time_zone}, ${plan.hide_from_planner ? "no" : null},
             ${row?.outcome ?? null}, ${row?.outcome_at ?? null}, ${row?.actual_start ?? null}, ${row?.actual_end ?? null})`;
         await tx`INSERT INTO edge (id, src_id, dst_id, type, properties, confidence) VALUES (${randomUUID()}, ${plan.id}, ${id}, 'HAS_SESSION', '{}', 1)`;
         for (const place of places) {

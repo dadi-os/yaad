@@ -67,13 +67,13 @@ HTTP errors: `{ "error": { "type": "<code>", "message": "..." } }`. Shared infra
 | --- | --- | --- |
 | `person` | someone Dadi knows | `person_detail` (birthday, aliases) |
 | `memory` | a thing that happened | none |
-| `plan` | something with a real time: an event Ankur attends, one session of a class | `plan_detail` (end_at, all_day, status, time_zone, rsvp, outcome, outcome_at, actual_start, actual_end) |
+| `plan` | something with a real time: an event Ankur attends, one session of a class | `plan_detail` (end_at, all_day, time_zone, rsvp, outcome, outcome_at, actual_start, actual_end) |
 | `task` | something to do, relevant from an open day until a close | `task_detail` (opens_on, closes_at, done_at, verified_at) |
 | `place` | somewhere you go | `place_detail` (address, latitude, longitude) |
 
 `occurred_at` is the single "when" for every kind that has one: a plan's start (required), a memory's date. A task has none; its window is `task_detail`. Unknown dates are `NULL`. `expires_at` is null for permanent nodes; observations get a timestamp from `ttl_days`.
 
-A plan's `status` says whether it is happening (`tentative`, `confirmed`, `cancelled`); its `rsvp` says whether Ankur is going (`yes`, `no`, or null until he says). A task is relevant from `opens_on` (a local date) until `closes_at`; with neither it is Someday, and a close needs an open on or before its day. `done_at` is Ankur's tick. `verified_at` is the task's freshness: set when it is created, updated (any `update_node` on it), ticked or unticked, or listed in a `noop`'s `node_ids` (extraction's way to say the text restated it as stored; nothing else changes, no history row, `updated_at` untouched). Null for tasks that predate it. A task last verified before today is stale when the answer matters: check the source. Ingest decides every date; nothing in code or config derives a missing one.
+A plan has no status: it has a real start, so an invite or proposal with a time is a plan whose `rsvp` (whether Ankur is going: `yes`, `no`, or null until he answers) is null, and a plan called off is closed (`close_node`; history keeps a record). Unanswered and `yes` plans block his free time, `no` plans stay on the timeline. What happened afterwards is `outcome` (`done`, `missed`). Something with no time ("dinner sometime next week") is never a plan: it is a Someday task. A task is relevant from `opens_on` (a local date) until `closes_at`; with neither it is Someday, and a close needs an open on or before its day. `done_at` is Ankur's tick. `verified_at` is the task's freshness: set when it is created, updated (any `update_node` on it), ticked or unticked, or listed in a `noop`'s `node_ids` (extraction's way to say the text restated it as stored; nothing else changes, no history row, `updated_at` untouched). Null for tasks that predate it. A task last verified before today is stale when the answer matters: check the source. Ingest decides every date; nothing in code or config derives a missing one.
 
 ## Places
 
@@ -85,7 +85,7 @@ Recurrence is not stored. A class that meets twice a week is one plain plan per 
 
 ## Memory doctrine
 
-`prompts/memory.md` is the one statement of what memory is and is not, the node kinds, plan versus task by clock time, task windows (`opens_on`, `closes_at`) decided from the text, `rsvp`, `status`, venue-is-where, the correction rule, and freshness. `loadExtractionPrompt` composes it before `prompts/extraction.md`, which holds only the write path's own rules (candidates, edges, operations, worked examples). Recall has no prompt: it is retrieval code (embedding, anchors, walk, score), so its LLM is the calling agent, and the contract that agent reads is the `recall_memory` and `ingest_memory` tool text in Hath, which reuses the doctrine's sentences verbatim. Change a doctrine sentence in `memory.md` and carry the same sentence to those tool descriptions and Hath's system prompt.
+`prompts/memory.md` is the one statement of what memory is and is not, the node kinds, plan versus task by clock time, task windows (`opens_on`, `closes_at`) decided from the text, `rsvp`, called-off-is-closed, venue-is-where, the correction rule, and freshness. `loadExtractionPrompt` composes it before `prompts/extraction.md`, which holds only the write path's own rules (candidates, edges, operations, worked examples). Recall has no prompt: it is retrieval code (embedding, anchors, walk, score), so its LLM is the calling agent, and the contract that agent reads is the `recall_memory` and `ingest_memory` tool text in Hath, which reuses the doctrine's sentences verbatim. Change a doctrine sentence in `memory.md` and carry the same sentence to those tool descriptions and Hath's system prompt.
 
 ## Query vs recall
 
@@ -141,7 +141,7 @@ There is no separate planner: every plan is a stored row, agents write plans onl
 | `month` | all-day and multi-day plans, and plans that are not a session of a course |
 | `tile` | every plan overlapping the range: the home ribbon |
 
-Cancelled and declined plans are kept in every view, marked by `status` and `rsvp`; nothing is hidden. Each item: `id`, `title`, `body`, `status`, `rsvp`, `start_at`, `end_at`, `all_day`, `time_zone`, `outcome`, `outcome_at`, `actual_start` / `actual_end`, `place` (`{ id, title, address, room }`), `hub` (`{ id, title }` of the course it is a session of, or null), `owner` (the plan's agent id, else its source), and its `notes`. Ankur's hand writes are `PUT /timeline/outcome` and `PUT /timeline/rsvp`.
+Declined plans are kept in every view, marked by `rsvp`; a plan called off is closed and absent. Each item: `id`, `title`, `body`, `rsvp`, `start_at`, `end_at`, `all_day`, `time_zone`, `outcome`, `outcome_at`, `actual_start` / `actual_end`, `place` (`{ id, title, address, room }`), `hub` (`{ id, title }` of the course it is a session of, or null), `owner` (the plan's agent id, else its source), and its `notes`. Ankur's hand writes are `PUT /timeline/outcome` and `PUT /timeline/rsvp`.
 
 ## Tasks
 
@@ -153,7 +153,7 @@ Body: `{ seed_ids? }`. Without seeds: every live node. With seeds: the seeds plu
 
 ### `POST /query`
 
-Body: `{ kind?, name?, occurred_from?, occurred_to?, status?, relevant_on?, limit?, offset? }`. At least one filter is required. Date bounds use interval overlap; undated rows are excluded when either bound is present.
+Body: `{ kind?, name?, occurred_from?, occurred_to?, relevant_on?, limit?, offset? }`. At least one filter is required. Date bounds use interval overlap; undated rows are excluded when either bound is present.
 
 ## Ingest
 
@@ -170,11 +170,11 @@ Plans with `detail.all_day: true` have a date but no time of day: Yaad moves the
 | `close_node` | `node_id`, `reason`, `evidence` (the utterance words that retract it, quoted exactly) |
 | `create_edge` | `src`, `dst`, `type`, `properties?`, `confidence` |
 | `close_edge` | `edge_id`, `reason` |
-| `spawn_plans` | `temp_id`, `hub` (course id or temp_id), `title`, `body?`, `dates` (local dates), `start_time`, `end_time?` (local HH:MM), `time_zone?`, `status`, `rsvp?`, `place?`, `room?`; creates one plan per date, at most `plan.max_sessions_per_spawn`; a session that duplicates a live plan is `duplicate_node`; the result's `spawned` maps `temp_id` to the new ids |
-| `update_plans` | `hub`, `from_date`, `to_date?`, `set` (`body?`, `status?`, `rsvp?`, `outcome?`, `start_time?`, `end_time?`, `room?`); changes every session of the course in the range (one session when `to_date` = `from_date`), 422 when none match |
+| `spawn_plans` | `temp_id`, `hub` (course id or temp_id), `title`, `body?`, `dates` (local dates), `start_time`, `end_time?` (local HH:MM), `time_zone?`, `rsvp?`, `place?`, `room?`; creates one plan per date, at most `plan.max_sessions_per_spawn`; a session that duplicates a live plan is `duplicate_node`; the result's `spawned` maps `temp_id` to the new ids |
+| `update_plans` | `hub`, `from_date`, `to_date?`, `set` (`body?`, `rsvp?`, `outcome?`, `start_time?`, `end_time?`, `room?`, or `close: true` alone, which closes each session as `close_node` does and keeps a history row); changes every session of the course in the range (one session when `to_date` = `from_date`), 422 when none match |
 | `noop` | `reason`, optional `node_ids` (open tasks the text restates exactly as stored; each gets `verified_at` touched) |
 
-The `emit_operations` tool schema has one `create_node` variant per kind: `memory` offers no `detail`, `plan` requires `detail.status` and an `occurred_at`, `task` offers `detail.opens_on` / `closes_at` / `done_at`, and `person`/`place` offer only their own detail keys.
+The `emit_operations` tool schema has one `create_node` variant per kind: `memory` offers no `detail`, `plan` requires an `occurred_at`, `task` offers `detail.opens_on` / `closes_at` / `done_at`, and `person`/`place` offer only their own detail keys.
 
 ## Lint
 
@@ -182,7 +182,7 @@ The `emit_operations` tool schema has one `create_node` variant per kind: `memor
 
 ## Recall
 
-`POST /recall` takes `{ query?, from?, hops?, kind?, name?, occurred_from?, occurred_to?, status?, relevant_on?, limit?, debug? }` and needs a `query`, `from`, or a filter.
+`POST /recall` takes `{ query?, from?, hops?, kind?, name?, occurred_from?, occurred_to?, relevant_on?, limit?, debug? }` and needs a `query`, `from`, or a filter.
 
 | anchors | when |
 | --- | --- |

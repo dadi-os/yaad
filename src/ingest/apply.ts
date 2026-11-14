@@ -116,7 +116,6 @@ export async function applyOperations(opts: {
             nodeId: id,
             endAt: detail.end_at ? new Date(detail.end_at) : null,
             allDay: detail.all_day ?? false,
-            status: detail.status,
             timeZone: detail.time_zone ?? null,
             rsvp: detail.rsvp ?? null,
             outcome: detail.outcome ?? null,
@@ -183,7 +182,6 @@ export async function applyOperations(opts: {
               .set({
                 ...(detail.end_at !== undefined ? { endAt: detail.end_at ? new Date(detail.end_at) : null } : {}),
                 ...(detail.all_day !== undefined ? { allDay: detail.all_day } : {}),
-                ...(detail.status !== undefined ? { status: detail.status } : {}),
                 ...(detail.time_zone !== undefined ? { timeZone: detail.time_zone } : {}),
                 ...(detail.rsvp !== undefined ? { rsvp: detail.rsvp } : {}),
                 ...(detail.outcome !== undefined ? { outcome: detail.outcome, outcomeAt: detail.outcome ? at : null } : {}),
@@ -309,8 +307,9 @@ export async function applyOperations(opts: {
 
     for (const op of operations) {
       if (op.op === "update_plans") {
-        const ids = await changeSessions(tx, { op, timeZone: opts.config.env.timezone, at });
-        applied.push({ ...op, ids });
+        const changed = await changeSessions(tx, { op, timeZone: opts.config.env.timezone, at, author: opts.author });
+        stranded.push(...changed.neighbors);
+        applied.push({ ...op, ids: changed.ids });
       }
     }
 

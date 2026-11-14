@@ -6,7 +6,7 @@
 import { randomUUID } from "node:crypto";
 import { and, eq, gt, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import { edge, node, planDetail } from "../db/schema.js";
-import type { Tx } from "../db/temporal.js";
+import { deleteNode, type Tx } from "../db/temporal.js";
 import { YaadError } from "../errors.js";
 import { addDays, dayStart, localDate, localInstant } from "../local-time.js";
 import type { NodeAuthor } from "../types/domain.js";
@@ -75,7 +75,6 @@ export async function spawnSessions(
       nodeId: id,
       endAt: op.end_time === undefined ? null : localInstant(date, op.end_time, zone),
       allDay: false,
-      status: op.status,
       timeZone: op.time_zone ?? null,
       rsvp: op.rsvp ?? null,
     });
@@ -98,10 +97,15 @@ export async function spawnSessions(
 /**
  * Apply `op.set` to every session of `op.hub` between `from_date` and `to_date` (local dates in
  * the box's zone). A moved start keeps each session's own date and, unless the op sets an end,
- * its length. Node history is not written: sessions change by the dozen. Returns the ids
- * changed; a change that matches no session is a 422.
+ * its length. Node history is not written for a change: sessions change by the dozen. `close`
+ * closes each matched session as `close_node` closes a node (history keeps a record), and
+ * returns the nodes its edges joined as `neighbors`. Returns the ids changed; a change that
+ * matches no session is a 422.
  */
-export async function changeSessions(tx: Tx, opts: { op: UpdatePlansOp; timeZone: string; at: Date }): Promise<string[]> {
+export async function changeSessions(
+  tx: Tx,
+  opts: { op: UpdatePlansOp; timeZone: string; at: Date; author: NodeAuthor },
+): Promise<{ ids: string[]; neighbors: string[] }> {
   const { op, at } = opts;
   const from = dayStart(op.from_date, opts.timeZone);
   const sessions = await tx
@@ -122,7 +126,14 @@ export async function changeSessions(tx: Tx, opts: { op: UpdatePlansOp; timeZone
   if (sessions.length === 0) {
     throw new YaadError(422, "invalid_request", `update_plans ${op.hub}: no session from ${op.from_date}${op.to_date ? ` to ${op.to_date}` : ""}`);
   }
-  const { body, status, rsvp, outcome, start_time: startTime, end_time: endTime, room } = op.set;
+  if (op.set.close === true) {
+    const neighbors: string[] = [];
+    for (const { node: session } of sessions) {
+      neighbors.push(...(await deleteNode(tx, session.id, at, opts.author)));
+    }
+    return { ids: sessions.map((row) => row.node.id), neighbors };
+  }
+  const { body, rsvp, outcome, start_time: startTime, end_time: endTime, room } = op.set;
   for (const { node: session, detail } of sessions) {
     const start = session.occurredAt;
     if (start === null) {
@@ -141,7 +152,6 @@ export async function changeSessions(tx: Tx, opts: { op: UpdatePlansOp; timeZone
       .update(planDetail)
       .set({
         endAt,
-        ...(status !== undefined ? { status } : {}),
         ...(rsvp !== undefined ? { rsvp } : {}),
         ...(outcome !== undefined ? { outcome, outcomeAt: outcome === null ? null : at } : {}),
       })
@@ -153,5 +163,5 @@ export async function changeSessions(tx: Tx, opts: { op: UpdatePlansOp; timeZone
       .set({ properties: room === null ? sql`${edge.properties} - 'room'` : sql`${edge.properties} || ${JSON.stringify({ room })}::jsonb` })
       .where(and(eq(edge.type, "AT_LOCATION"), isNull(edge.validTo), inArray(edge.srcId, sessions.map((row) => row.node.id))));
   }
-  return sessions.map((row) => row.node.id);
+  return { ids: sessions.map((row) => row.node.id), neighbors: [] };
 }

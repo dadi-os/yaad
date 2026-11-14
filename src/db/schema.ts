@@ -15,7 +15,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { loadFileConfig } from "../config.js";
-import { OUTCOMES, PLAN_STATUSES, RSVPS } from "../types/timeline.js";
+import { OUTCOMES, RSVPS } from "../types/timeline.js";
 
 const embeddingDimension = loadFileConfig().embedding.dimension;
 
@@ -106,7 +106,6 @@ export const planDetail = pgTable(
      * was never stated). Its occurred_at and end_at sit at local midnight of their dates.
      */
     allDay: boolean("all_day").notNull().default(false),
-    status: text("status").notNull(),
     /** IANA zone of the place when it is not the box's, so clients can show its local time. */
     timeZone: text("time_zone"),
     /** Whether Ankur is going: yes or no; null while he has not said. */
@@ -119,7 +118,6 @@ export const planDetail = pgTable(
     actualEnd: timestamptz("actual_end"),
   },
   (table) => [
-    check("plan_status_check", sql`${table.status} IN (${inList(PLAN_STATUSES)})`),
     check("plan_rsvp_check", sql`${table.rsvp} IS NULL OR ${table.rsvp} IN (${inList(RSVPS)})`),
     check("plan_outcome_check", sql`${table.outcome} IS NULL OR ${table.outcome} IN (${inList(OUTCOMES)})`),
   ],

@@ -20,7 +20,7 @@ import type {
   TaskDetail,
 } from "./types/domain.js";
 import { YaadError } from "./errors.js";
-import { OUTCOMES, PLAN_STATUSES, RSVPS } from "./types/timeline.js";
+import { OUTCOMES, RSVPS } from "./types/timeline.js";
 
 function iso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
@@ -111,7 +111,6 @@ export function toPlanDetail(row: PlanDetailRow): PlanDetail {
   return {
     end_at: iso(row.endAt),
     all_day: row.allDay,
-    status: parseKnown(PLAN_STATUSES, row.status, "plan status"),
     time_zone: row.timeZone,
     rsvp: row.rsvp === null ? null : parseKnown(RSVPS, row.rsvp, "plan rsvp"),
     outcome: row.outcome === null ? null : parseKnown(OUTCOMES, row.outcome, "plan outcome"),
