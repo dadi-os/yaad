@@ -1,7 +1,7 @@
 /**
  * End-to-end ingest: embed the utterance and its segments → candidates → Dwar extraction,
- * re-run once with any lookalikes the first pass missed or nodes it left without an
- * edge → validate → apply.
+ * re-run once with any lookalikes the first pass missed, nodes it left without an
+ * edge, or a submitted/done claim the text does not make → validate → apply.
  */
 
 import type { Config } from "../config.js";
@@ -13,7 +13,7 @@ import { applyOperations, type ApplyResult } from "./apply.js";
 import { assembleCandidates, segmentsOf } from "./candidates.js";
 import { findLookalikes } from "./duplicates.js";
 import { emitOperations, recheckNote } from "./emit.js";
-import { unlinkedCreates, validateExtraction, validateOperations } from "./validate.js";
+import { statusClaims, unlinkedCreates, validateExtraction, validateOperations } from "./validate.js";
 
 /** Extract memory ops from an utterance and apply them in one transaction. */
 export async function ingest(opts: {
@@ -59,11 +59,13 @@ export async function ingest(opts: {
     opts.db,
     first.operations,
     new Set(first.candidates.nodes.map((candidate) => candidate.id)),
+    opts.config.env.timezone,
   );
   const unlinked = unlinkedCreates(first.operations);
+  const status = statusClaims(first.operations, opts.text).length > 0;
   const { operations } =
-    missed.length > 0 || unlinked.length > 0
-      ? await extract(missed, recheckNote({ lookalikes: missed.length > 0, unlinked }))
+    missed.length > 0 || unlinked.length > 0 || status
+      ? await extract(missed, recheckNote({ lookalikes: missed.length > 0, unlinked, status }))
       : first;
 
   const timeZone = opts.config.env.timezone;

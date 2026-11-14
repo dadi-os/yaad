@@ -12,8 +12,9 @@ import {
   getPlaceDetail,
   getPlanDetail,
   getTaskDetail,
+  HUB_DEGREE,
 } from "../db/read.js";
-import { node, type NodeRow } from "../db/schema.js";
+import { node, type EdgeRow, type NodeRow } from "../db/schema.js";
 import type { DwarClient } from "../dwar/client.js";
 import { YaadError } from "../errors.js";
 import { toEdgeRecord, toNodeRecord, toPersonDetail, toPlaceDetail, toPlanDetail, toTaskDetail } from "../serialize.js";
@@ -65,7 +66,8 @@ export async function recall(opts: {
 }): Promise<RecallResult> {
   const queryEmbedding = opts.query !== undefined ? await embedQuery(opts.dwar, opts.query) : null;
   const cfg = opts.config.recall;
-  const anchors = await selectAnchorRows(opts, queryEmbedding);
+  const now = opts.now ?? new Date();
+  const anchors = await selectAnchorRows(opts, queryEmbedding, now);
   if (anchors.length === 0) {
     return {
       nodes: [],
@@ -79,14 +81,14 @@ export async function recall(opts: {
 
   const walk = initialWalk(anchors.map((row) => row.id));
   const rows = new Map<string, NodeRow>(anchors.map((row) => [row.id, row]));
-  const now = opts.now ?? new Date();
   const gated = opts.hops === undefined;
   const hopLimit = opts.hops ?? (queryEmbedding ? cfg.hop_cap : 0);
   let hopsTaken = 0;
 
   while (hopsTaken < hopLimit && walk.frontier.length > 0) {
     const incident = (await getIncidentEdgesForIds(opts.db, walk.frontier)).filter((edge) => edge.type !== SESSION_EDGE);
-    const expanded = expandOneHop(walk, incident);
+    const hubs = opts.from === undefined ? hubsAmong(walk.frontier, incident) : new Set<string>();
+    const expanded = expandOneHop({ nodes: walk.nodes, frontier: walk.frontier.filter((id) => !hubs.has(id)) }, incident);
     hopsTaken += 1;
     if (expanded.newlyDiscovered.length > 0) {
       for (const row of await getNodesByIds(opts.db, expanded.newlyDiscovered)) {
@@ -155,6 +157,16 @@ export async function recall(opts: {
   };
 }
 
+/** The frontier nodes with more than {@link HUB_DEGREE} live edges in `incident`: returned when reached, never walked out of. */
+function hubsAmong(frontier: string[], incident: EdgeRow[]): Set<string> {
+  const degree = new Map<string, number>();
+  for (const edge of incident) {
+    degree.set(edge.srcId, (degree.get(edge.srcId) ?? 0) + 1);
+    degree.set(edge.dstId, (degree.get(edge.dstId) ?? 0) + 1);
+  }
+  return new Set(frontier.filter((id) => (degree.get(id) ?? 0) > HUB_DEGREE));
+}
+
 /** Embed the recall query through Dwar; a missing vector is a 502. */
 async function embedQuery(dwar: DwarClient, query: string): Promise<number[]> {
   const [embedding] = await dwar.embed([query], "yaad/recall");
@@ -167,18 +179,21 @@ async function embedQuery(dwar: DwarClient, query: string): Promise<number[]> {
 /**
  * Anchor rows for a request: every `from` id (404 when one is unknown or expired),
  * else the filter matches (ranked by similarity and capped at anchor_limit when a
- * query is set, capped at `limit` otherwise), else ANN hits above the floor.
+ * query is set, capped at `limit` otherwise), else the plans and tasks the query's title
+ * words name followed by ANN hits above the floor (see findAnchors).
  */
 async function selectAnchorRows(
   opts: {
     db: Db;
     sql: Sql;
     config: Config;
+    query?: string | undefined;
     from?: string[] | undefined;
     filter?: NodeFilter | undefined;
     limit: number;
   },
   queryEmbedding: number[] | null,
+  now: Date,
 ): Promise<NodeRow[]> {
   if (opts.from !== undefined) {
     const found = await getNodesByIds(opts.db, opts.from);
@@ -202,11 +217,10 @@ async function selectAnchorRows(
       .slice(0, opts.config.recall.anchor_limit)
       .map((item) => item.row);
   }
-  if (!queryEmbedding) {
+  if (!queryEmbedding || opts.query === undefined) {
     throw new YaadError(422, "invalid_request", "query, from, or a filter is required");
   }
-  const hits = await findAnchors({ sql: opts.sql, config: opts.config, embedding: queryEmbedding });
-  return hits.map((hit) => hit.row);
+  return findAnchors({ db: opts.db, sql: opts.sql, config: opts.config, query: opts.query, embedding: queryEmbedding, now });
 }
 
 /** Walk entry for a node the walk must already hold; absence is an internal error. */

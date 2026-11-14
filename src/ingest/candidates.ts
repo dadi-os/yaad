@@ -5,12 +5,13 @@ import type { Config } from "../config.js";
 import type { Db, Sql } from "../db/client.js";
 import { annSearch } from "../db/ann.js";
 import { openTasks } from "../db/tasks.js";
-import { getCurrentPersons, getIncidentEdgesForIds, getNode, getNodesByIds } from "../db/read.js";
+import { getCurrentPersons, getIncidentEdgesForIds, getNode, getNodesByIds, HUB_DEGREE } from "../db/read.js";
 import {
   personDetail,
   placeDetail,
   planDetail,
   taskDetail,
+  type EdgeRow,
   type NodeRow,
   type PersonDetailRow,
   type PlaceDetailRow,
@@ -65,7 +66,7 @@ export function segmentsOf(text: string, limit: number): string[] {
  * of the title at least three letters long (a first or last name). Agents write "Ankur",
  * not "Ankur Desai", so the title alone would miss them.
  */
-function personNames(title: string, aliases: string[]): string[] {
+export function personNames(title: string, aliases: string[]): string[] {
   const words = title
     .split(/\s+/)
     .map((word) => word.replace(/[^\p{L}'-]/gu, ""))
@@ -81,9 +82,9 @@ function mentions(text: string, name: string): boolean {
 
 /**
  * Build the candidate graph shown to extraction: live nodes near the whole utterance and
- * near each of its segments, every task not done (an old task with a terse title is not near a
- * long update in meaning, so similarity alone never brings it, and the model would create a second
- * task instead of settling the first), every person named in the text, explicit participant ids,
+ * near each of its segments, every recent or upcoming task not done, newest first (a task with a
+ * terse title is not near a long update in meaning, so similarity alone never brings it, and the
+ * model would create a second task instead of settling the first), every person named in the text, explicit participant ids,
  * and `extraIds` (lookalikes found after a first extraction, see findLookalikes).
  */
 export async function assembleCandidates(opts: {
@@ -120,7 +121,7 @@ export async function assembleCandidates(opts: {
     }
   }
 
-  for (const { node: open } of (await openTasks(opts.db)).slice(0, opts.config.ingest.open_item_limit)) {
+  for (const { node: open } of await openTasks(opts.db, opts.config.ingest.open_item_limit, new Date())) {
     byId.set(open.id, open);
   }
 
@@ -157,9 +158,21 @@ export async function assembleCandidates(opts: {
   const ids = nodes.map((row) => row.id);
   const incident = (await getIncidentEdgesForIds(opts.db, ids)).filter((edge) => edge.type !== SESSION_EDGE);
   const idSet = new Set(ids);
-  const between = incident.filter((edge) => idSet.has(edge.srcId) && idSet.has(edge.dstId));
-  const rest = incident.filter((edge) => !(idSet.has(edge.srcId) && idSet.has(edge.dstId)));
-  const edges = [...between, ...rest].slice(0, opts.config.ingest.edge_context_limit);
+  const degree = new Map<string, number>();
+  for (const edge of incident) {
+    degree.set(edge.srcId, (degree.get(edge.srcId) ?? 0) + 1);
+    degree.set(edge.dstId, (degree.get(edge.dstId) ?? 0) + 1);
+  }
+  const hubby = (edge: EdgeRow) => (degree.get(edge.srcId) ?? 0) > HUB_DEGREE || (degree.get(edge.dstId) ?? 0) > HUB_DEGREE;
+  const taskIds = new Set(nodes.filter((row) => row.kind === "task").map((row) => row.id));
+  const itemEdges = incident.filter((edge) => edge.type === "HAS_ITEM" && taskIds.has(edge.dstId));
+  const others = incident.filter((edge) => !itemEdges.includes(edge));
+  const between = others.filter((edge) => idSet.has(edge.srcId) && idSet.has(edge.dstId));
+  const rest = others.filter((edge) => !(idSet.has(edge.srcId) && idSet.has(edge.dstId)));
+  const edges = [
+    ...itemEdges,
+    ...[...between.filter((edge) => !hubby(edge)), ...between.filter(hubby), ...rest].slice(0, opts.config.ingest.edge_context_limit),
+  ];
 
   const details = await loadDetails(opts.db, nodes);
   return {

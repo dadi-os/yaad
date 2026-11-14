@@ -188,10 +188,47 @@ export function unlinkedCreates(operations: Operation[]): Extract<Operation, { o
   );
 }
 
+/** Words that say work was handed in; a node's title or body must not use them unless the utterance reports it. */
+const SUBMISSION_WORDS = /\b(?:submitted|uploaded|turned in|handed in)\b/gi;
+
+/** Wording that reports Ankur finished something; `uploaded` counts only with Ankur as its subject. */
+const COMPLETION_WORDS = /\b(?:submitted|turned in|handed in|sent in|done|completed|finished|paid|applied|(?:ankur|he|she|i)\s+(?:just\s+)?uploaded)\b/gi;
+
+/** True when `word` at `index` in `text` is not negated ("not submitted", "not yet done", "never paid"). */
+function affirmed(text: string, index: number): boolean {
+  return !/\b(?:not|never|no|yet to be|un)\s+(?:yet\s+)?$|n't\s+(?:yet\s+)?$/i.test(text.slice(Math.max(0, index - 16), index));
+}
+
+/** True when `text` contains a pattern match that is not negated. */
+function says(text: string, words: RegExp): boolean {
+  return [...text.matchAll(words)].some((match) => affirmed(text, match.index));
+}
+
+/**
+ * statusClaims returns the batch's creates and updates that record something as submitted or
+ * done (a title or body saying so, or `done_at` set) when `text` never reports that Ankur did it.
+ * Where a thing is handed in, or what a page shows, is not a completion; the model sometimes
+ * writes it as one anyway.
+ */
+export function statusClaims(operations: Operation[], text: string): Operation[] {
+  if (says(text, COMPLETION_WORDS)) {
+    return [];
+  }
+  return operations.filter((op) => {
+    if (op.op !== "create_node" && op.op !== "update_node") {
+      return false;
+    }
+    const detail = op.detail as Record<string, unknown> | undefined;
+    const written = [op.title, op.body].filter((value): value is string => typeof value === "string").join("\n");
+    return typeof detail?.done_at === "string" || says(written, SUBMISSION_WORDS);
+  });
+}
+
 /**
  * Checks on a batch extraction emitted for `text`: every `close_node` quotes the words
  * in the utterance that retract or contradict the node (a fact the utterance merely
- * leaves out is not a retraction), every created node has an edge in the batch, and no
+ * leaves out is not a retraction), no node is recorded as submitted or done when the utterance
+ * does not say so (see {@link statusClaims}), every created node has an edge in the batch, and no
  * create duplicates a live node or another create in the batch.
  */
 export async function validateExtraction(opts: {
@@ -213,6 +250,14 @@ export async function validateExtraction(opts: {
         `close_node ${op.node_id}: evidence must quote the utterance words that retract it, got "${op.evidence}"`,
       );
     }
+  }
+  const claims = statusClaims(opts.operations, opts.text);
+  if (claims.length > 0) {
+    throw new YaadError(
+      422,
+      "unsourced_status",
+      `the utterance does not say Ankur submitted or finished anything, but the batch records it: ${claims.map((op) => JSON.stringify(op)).join(", ")}`,
+    );
   }
   await rejectDuplicates(opts.db, opts.operations, opts.timeZone);
   const unlinked = unlinkedCreates(opts.operations);

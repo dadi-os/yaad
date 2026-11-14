@@ -30,11 +30,13 @@ function localIso(iso: string): string {
 /**
  * recheckNote tells extraction on its second pass what its first pass got wrong: it
  * created lookalikes of nodes it had not been shown (now added to candidates), or it
- * created nodes with no edge.
+ * created nodes with no edge, or it recorded something as submitted or done that the
+ * utterance does not say Ankur did.
  */
 export function recheckNote(opts: {
   lookalikes: boolean;
   unlinked: Extract<Operation, { op: "create_node" }>[];
+  status: boolean;
 }): string {
   const notes: string[] = [];
   if (opts.lookalikes) {
@@ -46,6 +48,11 @@ export function recheckNote(opts: {
     const titles = opts.unlinked.map((op) => `"${op.title}"`).join(", ");
     notes.push(
       `A first pass created nodes with no edge: ${titles}. Every node you create needs at least one edge in this batch, to its subject, its hub, or Ankur (§5.3); link each one, or leave it out if it is not worth storing.`,
+    );
+  }
+  if (opts.status) {
+    notes.push(
+      "A first pass wrote that something was submitted or done, but the text never says Ankur did it. Write where it is handed in as an instruction (\"Submit on Gradescope.\") and leave done_at unset.",
     );
   }
   return notes.join(" ");

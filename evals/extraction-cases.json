@@ -3846,6 +3846,533 @@
           "why": "The homework is an item of its course"
         }
       ]
+    },
+    {
+      "name": "venue-past-participle",
+      "finding": "a8c49f7b T1 25353 (node fbcf0d46 body 'submitted on Gradescope')",
+      "occurred_at": "2026-11-12T20:00:00-05:00",
+      "text": "CSE 431 HW5 has two due dates on Gradescope: questions 1 to 4 are due Wed Nov 18, 2026, 11:59 PM ET; question 5 is due Wed Nov 25, 2026, 11:59 PM ET.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "c4310000-0000-4000-8000-000000000a01",
+            "kind": "memory",
+            "title": "CSE 431 class",
+            "body": null,
+            "occurred_at": null
+          },
+          {
+            "id": "c4310000-0000-4000-8000-000000000a02",
+            "kind": "task",
+            "title": "CSE 431 — HW5 Questions 1 to 4",
+            "body": null,
+            "occurred_at": null,
+            "detail": {
+              "opens_on": "2026-11-11",
+              "closes_at": "2026-11-19T04:59:00.000Z",
+              "done_at": null
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "00000065-0000-4000-8000-000000000065",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "c4310000-0000-4000-8000-000000000a01",
+            "type": "ENROLLED_IN",
+            "properties": {
+              "status": "enrolled"
+            }
+          },
+          {
+            "id": "00000066-0000-4000-8000-000000000066",
+            "src_id": "c4310000-0000-4000-8000-000000000a01",
+            "dst_id": "c4310000-0000-4000-8000-000000000a02",
+            "type": "HAS_ITEM",
+            "properties": {
+              "item": "assignment"
+            }
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "none",
+          "match": {
+            "op": [
+              "create_node",
+              "update_node"
+            ],
+            "text": "\\b(submitted|uploaded|turned in|handed in)\\b"
+          },
+          "why": "A venue is where: a title or body must not say the work was submitted"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "update_node",
+            "sets": "done_at"
+          },
+          "why": "A due-date list is not a completion"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_edge",
+            "type": "HAS_ITEM",
+            "dst": "c4310000-0000-4000-8000-000000000a02"
+          },
+          "why": "The hub already has this task; resending its HAS_ITEM edge makes a duplicate edge"
+        }
+      ]
+    },
+    {
+      "name": "page-shows-upload-is-not-done",
+      "finding": "a8c49f7b T1 25390 (node a38b3647 done_at from a course-site upload)",
+      "occurred_at": "2026-11-13T09:00:00-05:00",
+      "text": "The CSE 335 course site shows desaia11.zip uploaded Thursday, November 12, 2026 at 11:50 PM ET, before the 11:55 PM deadline.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "c3350000-0000-4000-8000-000000000b01",
+            "kind": "memory",
+            "title": "CSE 335 class",
+            "body": null,
+            "occurred_at": null
+          },
+          {
+            "id": "c3350000-0000-4000-8000-000000000b02",
+            "kind": "task",
+            "title": "CSE 335 — Step 6",
+            "body": null,
+            "occurred_at": null,
+            "detail": {
+              "opens_on": "2026-11-05",
+              "closes_at": "2026-11-13T04:55:00.000Z",
+              "done_at": null
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "00000067-0000-4000-8000-000000000067",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "c3350000-0000-4000-8000-000000000b01",
+            "type": "ENROLLED_IN",
+            "properties": {
+              "status": "enrolled"
+            }
+          },
+          {
+            "id": "00000068-0000-4000-8000-000000000068",
+            "src_id": "c3350000-0000-4000-8000-000000000b01",
+            "dst_id": "c3350000-0000-4000-8000-000000000b02",
+            "type": "HAS_ITEM",
+            "properties": {
+              "item": "assignment"
+            }
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "none",
+          "match": {
+            "op": "update_node",
+            "sets": "done_at"
+          },
+          "why": "What a page shows is a record an agent can read again; only Ankur's word marks a task done"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": [
+              "create_node",
+              "update_node"
+            ],
+            "text": "submitted|uploaded"
+          },
+          "why": "No node may record the upload as a submission"
+        }
+      ]
+    },
+    {
+      "name": "ankur-done-now-uses-utterance-time",
+      "finding": "a8c49f7b M7 (done_at 7 s before the statement, minute-rounded)",
+      "occurred_at": "2026-11-13T16:47:07-05:00",
+      "text": "Ankur sent in the scholarship essay.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "e5000000-0000-4000-8000-000000000c02",
+            "kind": "task",
+            "title": "Engineering scholarship essay",
+            "body": null,
+            "occurred_at": null,
+            "detail": {
+              "opens_on": "2026-11-13",
+              "closes_at": "2026-11-16T17:00:00.000Z",
+              "done_at": null
+            }
+          }
+        ],
+        "edges": []
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": "update_node",
+            "node_id": "e5000000-0000-4000-8000-000000000c02",
+            "sets": "done_at"
+          },
+          "check": {
+            "done_local_date": "2026-11-13",
+            "done_at_is_utterance": true
+          },
+          "why": "Ankur said he did it now: done_at is the utterance time, to the second, never a rounded clock time"
+        }
+      ]
+    },
+    {
+      "name": "moved-deadline-keeps-time",
+      "finding": "a8c49f7b M6 (moved deadline reset to 23:59)",
+      "occurred_at": "2026-11-25T10:00:00-05:00",
+      "text": "Ankur says the study abroad deadline got pushed to Dec 18.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "ab000000-0000-4000-8000-000000000d02",
+            "kind": "task",
+            "title": "Study abroad application",
+            "body": null,
+            "occurred_at": null,
+            "detail": {
+              "opens_on": "2026-11-23",
+              "closes_at": "2026-12-11T22:00:00.000Z",
+              "done_at": null
+            }
+          }
+        ],
+        "edges": []
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": "update_node",
+            "node_id": "ab000000-0000-4000-8000-000000000d02",
+            "sets": "closes_at"
+          },
+          "check": {
+            "closes_local_date": "2026-12-18",
+            "closes_local_time": "17:00"
+          },
+          "why": "A moved deadline keeps its old clock time when no new one is given"
+        }
+      ]
+    },
+    {
+      "name": "instructor-stage-is-not-a-task",
+      "finding": "a8c49f7b T1 25364 (Grading stage task beside the stored Feedback task, B-DUP)",
+      "occurred_at": "2026-11-12T20:00:00-05:00",
+      "text": "CSE 300 Kritik Essay 3: Feedback runs Wed Nov 18, 2:00 AM to Thu Nov 19, 11:59 PM ET; Grading Thu Nov 19, 11:59 PM ET.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "c3000000-0000-4000-8000-000000000e01",
+            "kind": "memory",
+            "title": "CSE 300 class",
+            "body": null,
+            "occurred_at": null
+          },
+          {
+            "id": "c3000000-0000-4000-8000-000000000e02",
+            "kind": "task",
+            "title": "CSE 300 — Kritik Essay 3 Feedback",
+            "body": null,
+            "occurred_at": null,
+            "detail": {
+              "opens_on": "2026-11-18",
+              "closes_at": "2026-11-20T04:59:00.000Z",
+              "done_at": null
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "00000069-0000-4000-8000-000000000069",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "c3000000-0000-4000-8000-000000000e01",
+            "type": "ENROLLED_IN",
+            "properties": {
+              "status": "enrolled"
+            }
+          },
+          {
+            "id": "0000006a-0000-4000-8000-00000000006a",
+            "src_id": "c3000000-0000-4000-8000-000000000e01",
+            "dst_id": "c3000000-0000-4000-8000-000000000e02",
+            "type": "HAS_ITEM",
+            "properties": {
+              "item": "assignment"
+            }
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "task"
+          },
+          "why": "Grading is a stage the instructor runs and Feedback is already stored: no second task"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "task",
+            "title": "grading"
+          },
+          "why": "An instructor's grading stage is not Ankur's deliverable"
+        }
+      ]
+    },
+    {
+      "name": "module-is-a-hub",
+      "finding": "a8c49f7b T1 25374 (Module 8 task beside its item, B-DUP)",
+      "occurred_at": "2026-11-12T20:00:00-05:00",
+      "text": "CSE 300 Module 8 closes Fri Nov 13, 2026 at 11:59 PM ET. Its items are the AI, Data and Machine Learning Quiz and the AI Impact Quiz, both closing then.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "c3000000-0000-4000-8000-000000000f01",
+            "kind": "memory",
+            "title": "CSE 300 class",
+            "body": null,
+            "occurred_at": null
+          }
+        ],
+        "edges": [
+          {
+            "id": "0000006b-0000-4000-8000-00000000006b",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "c3000000-0000-4000-8000-000000000f01",
+            "type": "ENROLLED_IN",
+            "properties": {
+              "status": "enrolled"
+            }
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "task",
+            "title": "module"
+          },
+          "why": "A module that holds items is their hub, never a task"
+        },
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "kind": "task",
+            "title": "Machine Learning Quiz"
+          },
+          "check": {
+            "closes_local_date": "2026-11-13"
+          },
+          "why": "Each item is a task"
+        },
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "kind": "task",
+            "title": "Impact Quiz"
+          },
+          "check": {
+            "closes_local_date": "2026-11-13"
+          },
+          "why": "Each item is a task"
+        }
+      ]
+    },
+    {
+      "name": "agent-instruction-as-preference",
+      "finding": "a8c49f7b T4 25441 (an instruction to agents stored as Ankur's dislike)",
+      "occurred_at": "2026-11-13T21:30:00-05:00",
+      "text": "Ankur does not want to be bothered each morning about what is due that day. Each class checks its own due items every morning at 7:00 AM ET and handles them without messaging him.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          }
+        ],
+        "edges": []
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": "noop"
+          },
+          "why": "How agents check on or message him is an instruction, however it is phrased"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node"
+          },
+          "why": "No memory is stored for an agent instruction"
+        }
+      ]
+    },
+    {
+      "name": "relayed-correction-of-rsvp-is-noop",
+      "finding": "a8c49f7b M5 25436 (a relayed correction closed Ankur's PARTICIPANT edge)",
+      "occurred_at": "2026-11-13T21:40:00-05:00",
+      "text": "Correction: the graduate school info session on Mon Nov 16 is not something Ankur is attending; he is not going.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "9a1c0000-0000-4000-8000-000000000f11",
+            "kind": "plan",
+            "title": "Graduate school info session",
+            "body": null,
+            "occurred_at": "2026-11-16T17:00:00-05:00",
+            "detail": {
+              "end_at": "2026-11-16T18:00:00-05:00",
+              "all_day": false,
+              "status": "confirmed",
+              "time_zone": null,
+              "rsvp": "no",
+              "outcome": null,
+              "outcome_at": null,
+              "actual_start": null,
+              "actual_end": null
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "0000006c-0000-4000-8000-00000000006c",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "9a1c0000-0000-4000-8000-000000000f11",
+            "type": "PARTICIPANT",
+            "properties": {}
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "none",
+          "match": {
+            "op": [
+              "close_edge",
+              "close_node"
+            ]
+          },
+          "why": "The RSVP is already no: a restated no neither removes Ankur from the event nor closes it"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node"
+          },
+          "why": "Nothing new to store"
+        }
+      ]
     }
   ]
 }

@@ -1,7 +1,7 @@
 /** Apply validated ingest operations in one transaction (embeds, locks, spawned sessions). */
 
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { and, eq, isNull, or } from "drizzle-orm";
 import type { DwarClient } from "../dwar/client.js";
 import { embeddingText } from "../dwar/client.js";
 import type { Config } from "../config.js";
@@ -40,7 +40,8 @@ export type AppliedOperation = Operation & { id?: string; ids?: string[] };
 
 export type ApplyResult = {
   operations: AppliedOperation[];
-  counts: Record<Operation["op"], number>;
+  /** Operations applied by kind, plus `edge_exists`: edges skipped because a current edge already holds them. */
+  counts: Record<Operation["op"] | "edge_exists", number>;
   /** Maps create_node temp_id → persisted uuid. */
   temp_ids: Record<string, string>;
   /** Maps spawn_plans temp_id → the ids of the plans it created, in date order. */
@@ -71,6 +72,7 @@ export async function applyOperations(opts: {
     const tempIds = new Map<string, string>();
     const spawned: Record<string, string[]> = {};
     const applied: AppliedOperation[] = [];
+    let edgesSkipped = 0;
     const closedNodes = new Set<string>();
     const closedEdges = new Set<string>();
     const stranded: string[] = [];
@@ -266,6 +268,10 @@ export async function applyOperations(opts: {
         if (srcId === dstId) {
           throw new YaadError(422, "invalid_request", "create_edge src must not equal dst");
         }
+        if (await edgeAlreadyHeld(tx, srcId, dstId, op.type, op.properties ?? {})) {
+          edgesSkipped += 1;
+          continue;
+        }
         const id = await insertEdge(tx, {
           srcId,
           dstId,
@@ -312,7 +318,8 @@ export async function applyOperations(opts: {
     await reverify(tx, referenced, closedNodes, closedEdges);
     const orphans = await sweepOrphans(tx, stranded, at, opts.author);
 
-    const counts: Record<Operation["op"], number> = {
+    const counts: Record<Operation["op"] | "edge_exists", number> = {
+      edge_exists: edgesSkipped,
       create_node: 0,
       update_node: 0,
       close_node: 0,
@@ -569,6 +576,32 @@ async function reverify(
       throw err;
     }
   }
+}
+
+/** Person-to-person edge types read in both directions (extraction.md §2.3). */
+const SYMMETRIC_EDGE_TYPES = new Set(["ROOMMATE_OF", "FRIEND_OF", "SIBLING_OF", "PARTNER_OF", "COWORKER_OF", "CLASSMATE_OF"]);
+
+/**
+ * True when a current edge of `type` already joins `srcId` and `dstId` (either way round for a
+ * symmetric type) with every one of `properties` already set to the same value. Such an edge
+ * adds nothing, so it is skipped; one that carries new or different properties is still inserted.
+ */
+async function edgeAlreadyHeld(
+  tx: Tx,
+  srcId: string,
+  dstId: string,
+  type: string,
+  properties: Record<string, unknown>,
+): Promise<boolean> {
+  const forward = and(eq(edge.srcId, srcId), eq(edge.dstId, dstId));
+  const ends = SYMMETRIC_EDGE_TYPES.has(type) ? or(forward, and(eq(edge.srcId, dstId), eq(edge.dstId, srcId))) : forward;
+  const held = await tx
+    .select({ properties: edge.properties })
+    .from(edge)
+    .where(and(ends, eq(edge.type, type), isNull(edge.validTo)));
+  return held.some((row) =>
+    Object.entries(properties).every(([key, value]) => JSON.stringify(row.properties[key]) === JSON.stringify(value)),
+  );
 }
 
 function resolve(value: string, tempIds: Map<string, string>): string {

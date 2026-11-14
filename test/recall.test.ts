@@ -199,3 +199,40 @@ test("recall from an unknown node is not_found", async () => {
   assert.equal(res.statusCode, 404);
   assert.equal(res.json().error.type, "not_found");
 });
+
+test("a query naming an event's title anchors that event even when the embedding is nearer someone else", async () => {
+  await resetGraph(handle.sql);
+  const ankur = await insertPerson(handle.db, { title: "Ankur Desai", embedding: axisVector(dim, 0), aliases: ["Ankur"] });
+  const advising = await insertPlan(handle.db, {
+    title: "Advising with Dr. Okafor",
+    embedding: axisVector(dim, 2),
+    occurredAt: new Date("2026-11-16T20:30:00Z"),
+  });
+  const result = await recall({
+    db: handle.db,
+    sql: handle.sql,
+    dwar: mockDwar({ dimension: dim, embedAxis: 0 }),
+    config: base,
+    query: "Ankur advising appointment",
+    limit: 20,
+    debug: false,
+    now: new Date("2026-11-13T12:00:00Z"),
+  });
+  assert.ok(result.anchors.includes(advising));
+  assert.ok(result.anchors.includes(ankur));
+  assert.equal(result.nodes.find((item) => item.id === advising)?.hops, 0);
+});
+
+test("a query walk does not expand out of a node with over 100 edges, but an explicit from does", async () => {
+  await resetGraph(handle.sql);
+  const ankur = await insertPerson(handle.db, { title: "Ankur Desai", embedding: axisVector(dim, 0) });
+  for (let i = 0; i < 101; i++) {
+    const fact = await insertMemory(handle.db, { title: `fact ${i}`, embedding: axisVector(dim, 10 + i) });
+    await insertEdge(handle.db, { src: ankur, dst: fact, type: "RELATED_TO" });
+  }
+  const dwar = mockDwar({ dimension: dim, embedAxis: 0 });
+  const asked = await recall({ db: handle.db, sql: handle.sql, dwar, config: base, query: "Ankur", limit: 200, debug: false });
+  assert.deepEqual(asked.nodes.map((item) => item.id), [ankur]);
+  const from = await recall({ db: handle.db, sql: handle.sql, dwar, config: base, from: [ankur], hops: 1, limit: 200, debug: false });
+  assert.equal(from.nodes.length, 102);
+});

@@ -267,7 +267,7 @@ Memories, plans, and tasks:
 
 - A candidate memory that already states the fact → nothing to do for that fact.
 - A candidate memory that states an older or less precise version of the fact → `update_node` it (§4.2).
-- A candidate plan or task for the same thing → `update_node` it; never a second one. **The same task is the same thing with the same close day**, whatever the wording: "HW4 due Nov 4 11:59 PM (Gradescope)" restates the stored `"CSE 431 — HW4"` closing Nov 4.
+- A candidate plan or task for the same thing → `update_node` it; never a second one. **The same task is the same thing with the same close day**, whatever the wording: "HW4 due Nov 4 11:59 PM (Gradescope)" restates the stored `"CSE 431 — HW4"` closing Nov 4. Under one hub, a create that closes on the same day as a candidate task is that task unless its own deliverable differs; when unsure, update.
 
 ### 3.2 Decide the fact's home (§2.2)
 
@@ -318,7 +318,7 @@ A node holds one fact the way a reader asks for it. Facts asked about separately
 - `body` holds useful nuance the title does not: why, how strongly, exceptions, quotes worth keeping. Leave `body` null when there is nothing to add. Never restate the title.
 - Person titles are just the name: `"Sparsh Yandooru"`. Place titles are the name or address. Hub titles are the thing's identifier and facet titles are `"<hub short name> — <facet label>: <value>"` (§2.2).
 - **Plan and task titles are stable names, not descriptions.** A title is what Ankur would call the thing out loud: `"CSE 300 discussion session"`, `"CSE 431 — HW3"`, `"Dinner at Ciccio Mio"`, `"Michigan license renewal"`. It never contains a date, a time or time range, a weekday schedule, a term ("Fall 2026"), a section number, a room or address, a venue, "due", or a parenthetical of any of those, and never the facts the node's own fields hold. Anything worth keeping beyond the name goes in `body`: where to submit (`"Submit on Gradescope."`), a late policy (`"75% credit until Oct 13, 11:59 PM."`), what to bring.
-- **A venue is where, never whether.** "(Gradescope)", "on D2L", "submit via CLion", "in person" say where something is handed in or happens. They never mean it was submitted or done. Write `"Submit on Gradescope."` in the body; a task is done only when the text says it was done (§4.1).
+- **A venue is where, never whether.** "(Gradescope)", "on D2L", "submit via CLion", "in person" say where something is handed in or happens. They never mean it was submitted or done. Write where it is handed in as an instruction (`"Submit on Gradescope."`) in the body. Never write `submitted`, `uploaded`, `turned in` or `done` in a title or body unless this utterance says Ankur did it; a past participle of where it goes reads as done. A task is done only when the text says Ankur did it (§4.1).
 - **One real-world thing is one node.** Before creating a plan or task, compare it with the candidates by what it is, not by exact wording or time: the same class, deadline, appointment, call, or trip with more detail is the same node. `update_node` the candidate; never create a sibling.
 - **Titles never use relative words** — "next", "upcoming", "tonight", "this week", "latest". They are false the day after they are written.
 - **Say exactly what the source says, never more.** Being enrolled in something is not attending or completing it. Being listed in a portal is not participating. Planning to go is not having gone. A venue is not a submission. Upgrading the verb invents a fact.
@@ -345,7 +345,7 @@ A node holds one fact the way a reader asks for it. Facts asked about separately
 
 A task says when it is relevant, not when to do it. Its only schedule is a window: `opens_on` (the first local day it shows, `YYYY-MM-DD`) and `closes_at` (the instant it is due, with offset). You decide both; nothing in Yaad fills either in. A task never has `occurred_at`.
 
-**The close.** `closes_at` is the deadline as stated: "due Wed Nov 25 at 11:59 PM ET" → `"2026-11-25T23:59:00-05:00"`. A deadline with a date and no time closes at the end of that day, `23:59` local, and the body says `"Due time not stated."`; never invent another time. A task with nothing to be done by (a Someday thing: "apply to IBM", "find a primary care doctor") has no close.
+**The close.** `closes_at` is the deadline as stated: "due Wed Nov 25 at 11:59 PM ET" → `"2026-11-25T23:59:00-05:00"`. A deadline with a date and no time closes at the end of that day, `23:59` local, and the body says `"Due time not stated."`; never invent another time. A moved deadline keeps its clock time unless the text gives a new one; `time not stated` never resets a moved close to `23:59`. A task with nothing to be done by (a Someday thing: "apply to IBM", "find a primary care doctor") has no close.
 
 **The open — the hardest call you make.** Yaad rejects a close without an open, or an open after the close day. Choose `opens_on` per item, from what the source says or what you know about it, in this order:
 
@@ -359,9 +359,11 @@ A Someday task is something Ankur himself means to do ("apply to IBM", "find a p
 
 A thing to prepare for a timed plan (studying for an exam, packing for a flight) is its own task closing when the plan starts, opening per the rules above, linked task `—FOR→` plan.
 
-**Done.** `done_at` is the instant Ankur finished it: the time the text gives, else the utterance's `occurred_at` when it happened that day, else local midnight of the stated day. Set it only when the text says he did it (submitted, paid, applied, booked, finished). A task is never done because of where it is handed in, because a draft is ready, or because an agent expects it to be done.
+**Done.** `done_at` is set only when the text reports that Ankur did it (`Ankur submitted`, `Ankur says he sent it in`). What a page, portal, gradebook or file listing shows (an upload, a `Submitted` badge, a score) is a record an agent can read again, never a done mark. Its value is the completion time Ankur stated; when he stated none, it is the utterance's `occurred_at`, to the second when it happened that day, else local midnight of the stated day. An agent's rounded clock time (`about 4:47 PM`) is not a stated time. A task is never done because of where it is handed in, because a draft is ready, or because an agent expects it to be done.
 
 **One task per deliverable.** Weekly homework is one task per assignment, as the syllabus lists them; there are no repeating tasks.
+
+Only Ankur's own deliverables are tasks. A stage the instructor or the system runs (grading, release, evaluation windows he does not act in) is not a task: put it in the deliverable's body. A module, unit or week that holds items is their hub (a memory), never a task; its items are the tasks.
 
 ### 3.9 Expiry
 
@@ -412,8 +414,8 @@ The graph keeps history for every change, so editing in place loses nothing. Pre
 - Ankur says he will or will not go → `detail.rsvp` (§3.7).
 - A plan went ahead or not → `detail.outcome` `"done"` or `"missed"`, plus `actual_start` / `actual_end` when given. A reason worth keeping ("missed: knee was sore") is a memory linked plan `—HAS_NOTE→` memory. The note never restates the outcome itself.
 - A session of a course changed or went some way → `update_plans` on its course and date (§2.6), never `update_node` (you are never shown its id).
-- **A task got done** — submitted, paid, applied, booked, found → `update_node` it with `detail.done_at` (§3.8). Its title, body, window, and facets stay. Never leave it open beside a memory that says it was done, and never close it: closing means it was dropped.
-- **A deadline moved** ("extended to Nov 9") → `update_node` its `detail.closes_at`; move `opens_on` too only when the source says so or the new close falls before it.
+- **A task got done** — Ankur says it is done → `update_node` it with `detail.done_at` (§3.8). Its title, body, window, and facets stay. Never leave it open beside a memory that says it was done, and never close it: closing means it was dropped.
+- **A deadline moved** ("extended to Nov 9") → `update_node` its `detail.closes_at`, keeping its clock time unless the text gives a new one (§3.8); move `opens_on` too only when the source says so or the new close falls before it.
 - **A task got a date** ("the IBM assessment link expires Oct 31") → set its window (§3.8). A one-day task whose clock time becomes known (Quiz 3 is at 1:00 PM) → create the plan at that time, and make the task its prep: `update_node` its `closes_at` to the plan's start and link it `—FOR→` the plan.
 - **A closed door closes its tasks.** When the text says Ankur was rejected, withdrew, missed the cutoff, or no longer needs something (a rejection email, "not moving forward", "he dropped the course"), `close_node` every task that existed only for it (the application, the assessment, the take-home), set every future plan that existed only for it to `status: "cancelled"`, and keep at most one memory in the past tense (`"Ankur Desai was rejected by Wedge Health"`).
 - Learned the schedule, room, or instructor for an existing course → spawn or change its sessions (§2.6), its `schedule` facet, and new place and person nodes linked to that same hub. Never create a second hub for the same course, and never date a hub from one of its items.
@@ -461,9 +463,9 @@ If the utterance holds nothing but working notes or progress, emit a `noop` with
 
 **Records of things done are not memory.** What an agent can read back from the system that holds it, or that only says "this happened", is not stored: a score or grade on one graded item, when something was submitted (beyond marking its task done), the sets and weights of one workout, a single reading of weight or blood pressure, a confirmation number, an entry code, a one-time code. What is stored is what stays true and changes what someone does next: a final course grade, a standing policy, a trend that became a goal, a condition, a medication.
 
-**Instructions to agents are not memory.** How an agent should do its job — "no agent may submit coursework", "always ask Ankur before sending", how to lay out his day, a LinkedIn note template, a routine's steps, who asks whom on Sundays — belongs in that agent's charter, not in Yaad. So do approvals and message trails ("Ankur approved the draft", "career-manager relayed the offer"). Store any fact about Ankur's world that came with it; emit `noop` with the reason `"agent instruction"` for the rest.
+**Instructions to agents are not memory.** How an agent should do its job — "no agent may submit coursework", "always ask Ankur before sending", how to lay out his day, a LinkedIn note template, a routine's steps, who asks whom on Sundays — belongs in that agent's charter, not in Yaad. So do approvals and message trails ("Ankur approved the draft", "career-manager relayed the offer"). Store any fact about Ankur's world that came with it; emit `noop` with the reason `"agent instruction"` for the rest. A wish about how agents check on or message him (`does not want a daily message; each class checks at 7 AM`) is an instruction, however it is phrased.
 
-**A correction is never a working note.** When the text says a stored node is wrong, retracted, or superseded ("Correction: …", "… is wrong", "supersedes the earlier …"), apply it to the candidate it names (§4.2, §4.3) even if the rest of the text is progress you drop. A noop on a correction leaves the wrong fact live for every agent that recalls it.
+**A correction is never a working note.** When the text says a stored node is wrong, retracted, or superseded ("Correction: …", "… is wrong", "supersedes the earlier …"), apply it to the candidate it names (§4.2, §4.3) even if the rest of the text is progress you drop. A noop on a correction leaves the wrong fact live for every agent that recalls it. The exception is a "correction" that only restates what a candidate already holds (the plan's `rsvp` is already `no` and the text says he is not going): that is a `noop`. Not going is the plan's `rsvp`; it never closes his `PARTICIPANT` edge or the plan (§3.7).
 
 If every fact in the utterance is already captured exactly, emit a single `noop` with a short reason. That is a correct, common outcome. But a noop is wrong if any part of the utterance is missing from the graph — check each fact, including implications (§3.4) and specifics that belong in edge properties.
 
@@ -896,3 +898,18 @@ Text: "Ankur is not going to the career fair on Friday. Priya cancelled Saturday
 ```
 
 The career fair still happens, so it stays confirmed and on the timeline; only Ankur's answer is no. The dinner was called off, so its status is cancelled. Neither is closed.
+
+### 6.21 A due-date list, a done mark, and a moved deadline
+
+Candidates: person Ankur Desai (`fa32da87-278a-4f65-a106-b947c0b7724d`), memory "CSE 431 class" (`c4310000-0000-4000-8000-000000000a01`), task "CSE 431 — HW5 Questions 1 to 4" (`c4310000-0000-4000-8000-000000000a02`, opens Nov 11, closes Nov 18 11:59 PM, linked from the class by `HAS_ITEM`), task "Study abroad application" (`ab000000-0000-4000-8000-000000000d02`, closes Dec 11 5:00 PM), task "Engineering scholarship essay" (`e5000000-0000-4000-8000-000000000c02`). Utterance `occurred_at`: `2026-11-13T16:47:07-05:00`.
+
+Text: "CSE 431 HW5 questions 1 to 4 are due Wed Nov 18, 2026, 11:59 PM ET on Gradescope. Ankur sent in the scholarship essay. Ankur says the study abroad deadline got pushed to Dec 18."
+
+```json
+{ "operations": [
+  { "op": "update_node", "node_id": "e5000000-0000-4000-8000-000000000c02", "detail": { "done_at": "2026-11-13T16:47:07-05:00" } },
+  { "op": "update_node", "node_id": "ab000000-0000-4000-8000-000000000d02", "detail": { "closes_at": "2026-12-18T17:00:00-05:00" } }
+] }
+```
+
+HW5 questions 1 to 4 is already stored with that close, and its edge to the class is already a candidate, so it gets neither a node nor an edge, and "on Gradescope" is not a submission. Ankur said he sent the essay but gave no time, so `done_at` is the utterance's own `occurred_at`. The moved deadline keeps its 5:00 PM.

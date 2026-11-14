@@ -5,6 +5,7 @@ import { node, nodeHistory, planDetail } from "../src/db/schema.js";
 import { YaadError } from "../src/errors.js";
 import { applyOperations } from "../src/ingest/apply.js";
 import { assembleCandidates } from "../src/ingest/candidates.js";
+import { findLookalikes } from "../src/ingest/duplicates.js";
 import type { Operation } from "../src/ingest/operations.js";
 import { ingest } from "../src/ingest/pipeline.js";
 import { validateExtraction, validateOperations } from "../src/ingest/validate.js";
@@ -12,6 +13,7 @@ import type { NodeAuthor } from "../src/types/domain.js";
 import {
   axisVector,
   countCurrentNodes,
+  insertEdge,
   insertMemory,
   insertPerson,
   insertPlan,
@@ -304,12 +306,18 @@ test("candidates include a person the text names by first name only, as a whole 
   assert.ok(!(await candidateIds("Ankur and Shahid met.")).includes(riya));
 });
 
-test("candidates always include every task not done, however far its title is from the text", async () => {
+test("candidates always include every task not done that is open now or closes within the horizon, however far its title is from the text", async () => {
   await resetGraph(handle.sql);
   const idea = await insertTask(handle.db, { title: "Find a doctor", embedding: axisVector(dim, 5) });
   const untimed = await insertTask(handle.db, {
     title: "Renew the lease",
     embedding: axisVector(dim, 6),
+    opensOn: "2026-01-01",
+    closesAt: new Date(Date.now() + 30 * 86_400_000),
+  });
+  const faraway = await insertTask(handle.db, {
+    title: "Renew the passport",
+    embedding: axisVector(dim, 9),
     opensOn: "2098-12-01",
     closesAt: new Date("2099-01-01T15:00:00Z"),
   });
@@ -337,7 +345,7 @@ test("candidates always include every task not done, however far its title is fr
   });
   const ids = candidates.nodes.map((candidate) => candidate.id);
   assert.ok(ids.includes(idea) && ids.includes(untimed));
-  assert.ok(!ids.includes(scheduled));
+  assert.ok(!ids.includes(scheduled) && !ids.includes(faraway));
   assert.equal(candidates.nodes.filter((candidate) => candidate.title === "Finished errand").length, 0);
 });
 
@@ -356,4 +364,130 @@ test("history attributes a change to whoever made it, not to the node's creator"
   assert.equal(history?.agentId, "cse-335-specialist");
   const [row] = await handle.db.select().from(node).where(eq(node.id, id));
   assert.equal(row?.source, "manual");
+});
+
+test("candidates keep the newest open tasks when more are open than the cap", async () => {
+  await resetGraph(handle.sql);
+  const oldest = await insertTask(handle.db, { title: "Oldest", embedding: axisVector(dim, 5) });
+  await new Promise((done) => setTimeout(done, 5));
+  const newest = await insertTask(handle.db, { title: "Newest", embedding: axisVector(dim, 6) });
+  const candidates = await assembleCandidates({
+    db: handle.db,
+    sql: handle.sql,
+    config: { ...config, ingest: { ...config.ingest, open_item_limit: 1, candidate_similarity_floor: 2 } },
+    text: "Something unrelated.",
+    embedding: axisVector(dim, 1),
+    segmentEmbeddings: [],
+    participantIds: [],
+    extraIds: [],
+  });
+  const ids = candidates.nodes.map((candidate) => candidate.id);
+  assert.ok(ids.includes(newest) && !ids.includes(oldest));
+});
+
+test("a task's HAS_ITEM edge is always shown, ahead of the edges of a hub with over 100", async () => {
+  await resetGraph(handle.sql);
+  const ankur = await insertPerson(handle.db, { title: "Ankur Desai", embedding: axisVector(dim, 0), aliases: ["Ankur"] });
+  const course = await insertMemory(handle.db, { title: "CSE 431", embedding: axisVector(dim, 1) });
+  const task = await insertTask(handle.db, { title: "CSE 431 — HW5", embedding: axisVector(dim, 2) });
+  for (let i = 0; i < 101; i++) {
+    const other = await insertMemory(handle.db, { title: `fact ${i}`, embedding: axisVector(dim, 10 + i) });
+    await insertEdge(handle.db, { src: ankur, dst: other, type: "RELATED_TO" });
+  }
+  const itemEdge = await insertEdge(handle.db, { src: course, dst: task, type: "HAS_ITEM" });
+  const candidates = await assembleCandidates({
+    db: handle.db,
+    sql: handle.sql,
+    config: { ...config, ingest: { ...config.ingest, edge_context_limit: 1 } },
+    text: "Ankur has HW5.",
+    embedding: axisVector(dim, 1),
+    segmentEmbeddings: [],
+    participantIds: [],
+    extraIds: [],
+  });
+  assert.ok(candidates.edges.some((edge) => edge.id === itemEdge));
+  assert.equal(candidates.edges.length, 2);
+});
+
+test("a create_edge the graph already holds is skipped and counted; one with new properties is inserted", async () => {
+  await resetGraph(handle.sql);
+  const course = await insertMemory(handle.db, { title: "CSE 431", embedding: axisVector(dim, 1) });
+  const task = await insertTask(handle.db, { title: "CSE 431 — HW5", embedding: axisVector(dim, 2) });
+  await insertEdge(handle.db, { src: course, dst: task, type: "HAS_ITEM", properties: { item: "assignment" } });
+  const run = (properties: Record<string, unknown>) =>
+    applyOperations({
+      db: handle.db,
+      dwar: mockDwar({ dimension: dim }),
+      author: INGEST,
+      config,
+      operations: [{ op: "create_edge", src: course, dst: task, type: "HAS_ITEM", properties, confidence: 1 }],
+    });
+  const same = await run({ item: "assignment" });
+  assert.equal(same.counts.edge_exists, 1);
+  assert.equal(same.counts.create_edge, 0);
+  const richer = await run({ item: "assignment", weight: "10%" });
+  assert.equal(richer.counts.edge_exists, 0);
+  assert.equal(richer.counts.create_edge, 1);
+  const rows = await handle.sql<{ n: string }[]>`SELECT count(*)::text AS n FROM edge WHERE valid_to IS NULL`;
+  assert.equal(rows[0]?.n, "2");
+});
+
+test("lookalike plans need a shared title word; lookalike tasks close the same day under the same hub", async () => {
+  await resetGraph(handle.sql);
+  const at = new Date("2026-11-20T15:00:00Z");
+  const dentist = await insertPlan(handle.db, { title: "Dentist appointment", embedding: axisVector(dim, 1), occurredAt: at });
+  const createPlan = (title: string): Operation => ({
+    op: "create_node",
+    temp_id: "p",
+    kind: "plan",
+    title,
+    occurred_at: new Date(at.getTime() + 3_600_000).toISOString(),
+    detail: { status: "confirmed" },
+  });
+  assert.deepEqual(await findLookalikes(handle.db, [createPlan("Dentist cleaning")], new Set(), "America/New_York"), [dentist]);
+  assert.deepEqual(await findLookalikes(handle.db, [createPlan("Graduate info session")], new Set(), "America/New_York"), []);
+
+  const hub = await insertMemory(handle.db, { title: "CSE 300 class", embedding: axisVector(dim, 2) });
+  const stored = await insertTask(handle.db, {
+    title: "CSE 300 — Feedback",
+    embedding: axisVector(dim, 3),
+    opensOn: "2026-11-18",
+    closesAt: new Date("2026-11-20T04:59:00Z"),
+  });
+  await insertEdge(handle.db, { src: hub, dst: stored, type: "HAS_ITEM" });
+  const createTask = (closesAt: string): Operation[] => [
+    { op: "create_node", temp_id: "t", kind: "task", title: "CSE 300 — Grading", detail: { opens_on: "2026-11-18", closes_at: closesAt } },
+    { op: "create_edge", src: hub, dst: "t", type: "HAS_ITEM", confidence: 1 },
+  ];
+  assert.deepEqual(await findLookalikes(handle.db, createTask("2026-11-19T23:59:00-05:00"), new Set(), "America/New_York"), [stored]);
+  assert.deepEqual(await findLookalikes(handle.db, createTask("2026-11-24T23:59:00-05:00"), new Set(), "America/New_York"), []);
+});
+
+test("a batch that records something as submitted or done without the text saying so is re-extracted once, then rejected", async () => {
+  await resetGraph(handle.sql);
+  const task = await insertTask(handle.db, {
+    title: "CSE 335 — Step 6",
+    embedding: axisVector(dim, 2),
+    opensOn: "2026-11-05",
+    closesAt: new Date("2026-11-13T04:55:00Z"),
+  });
+  const done: Operation = { op: "update_node", node_id: task, detail: { done_at: "2026-11-12T23:50:00-05:00" } };
+  const run = (rounds: Operation[][], users: string[]) =>
+    ingest({
+      db: handle.db,
+      sql: handle.sql,
+      dwar: mockDwar({ dimension: dim, embedAxis: 1, rounds, reasonUsers: users }),
+      config,
+      text: "The CSE 335 course site shows desaia11.zip uploaded Thursday at 11:50 PM.",
+      occurredAt: "2026-11-13T09:00:00-05:00",
+      participantIds: [],
+      author: INGEST,
+    });
+  const users: string[] = [];
+  const result = await run([[done], [{ op: "noop", reason: "a page record" }]], users);
+  assert.equal(users.length, 2);
+  assert.match(users[1] ?? "", /never says Ankur did it/);
+  assert.equal(result.counts.noop, 1);
+
+  await rejectsWith(() => run([[done], [done]], []), 422, "unsourced_status");
 });

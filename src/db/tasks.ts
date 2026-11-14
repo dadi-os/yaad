@@ -1,6 +1,6 @@
 /** Reads of live tasks shared by the task routes, recall's `relevant_on` filter, and ingest candidates. */
 
-import { and, asc, eq, gt, inArray, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import { addDays, dayStart } from "../local-time.js";
 import type { TaskItem } from "../types/task.js";
 import { SESSION_EDGE, type TimelineHub } from "../types/timeline.js";
@@ -26,9 +26,26 @@ export function isSomeday(): SQL {
   return and(isNull(taskDetail.doneAt), isNull(taskDetail.opensOn))!;
 }
 
-/** Tasks not done, whether or not they have a window: what ingest settles before creating anything new. */
-export function openTasks(db: Pick<Db, "select">) {
-  return tasksWhere(db, isNull(taskDetail.doneAt)).orderBy(asc(node.createdAt));
+/** How far back from now an open task may have closed and still be settled by ingest. */
+const OPEN_TASK_PAST_DAYS = 14;
+/** How far ahead of now an open task may close and still be settled by ingest. */
+const OPEN_TASK_AHEAD_DAYS = 60;
+
+/**
+ * The `limit` newest tasks not done that ingest settles before creating anything new: those
+ * with no close, or closing within {@link OPEN_TASK_PAST_DAYS} back and {@link OPEN_TASK_AHEAD_DAYS}
+ * ahead of `now`. Newest first, so a task just created is never the one dropped at the cap.
+ */
+export function openTasks(db: Pick<Db, "select">, limit: number, now: Date) {
+  const from = new Date(now.getTime() - OPEN_TASK_PAST_DAYS * 86_400_000);
+  const to = new Date(now.getTime() + OPEN_TASK_AHEAD_DAYS * 86_400_000);
+  return tasksWhere(
+    db,
+    isNull(taskDetail.doneAt),
+    or(isNull(taskDetail.closesAt), and(gte(taskDetail.closesAt, from), lte(taskDetail.closesAt, to)))!,
+  )
+    .orderBy(desc(node.createdAt))
+    .limit(limit);
 }
 
 /**

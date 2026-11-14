@@ -52,6 +52,8 @@ const matcherSchema = z
     text: z.string().optional(),
     /** Edge type, on `create_edge`. */
     type: z.string().optional(),
+    /** Destination node id, exactly, on `create_edge`. */
+    dst: z.string().uuid().optional(),
     /** Only operations that set this field, at the top level or in `detail` (e.g. `done_at` on an update). */
     sets: z.string().optional(),
   })
@@ -82,6 +84,8 @@ const checkSchema = z
     not_done: z.literal(true).optional(),
     /** Local date of `detail.done_at`. */
     done_local_date: localDateString.optional(),
+    /** `detail.done_at` is the utterance's `occurred_at`, to the second. */
+    done_at_is_utterance: z.literal(true).optional(),
     /** `detail` keys that must be present and null (a cleared mark). */
     nulls: z.array(z.string()).min(1).optional(),
     /** A `spawn_plans` date list. */
@@ -260,6 +264,9 @@ function matches(op: Operation, match: Expectation["match"]): boolean {
   if (match.type !== undefined && !(op.op === "create_edge" && op.type === match.type)) {
     return false;
   }
+  if (match.dst !== undefined && !(op.op === "create_edge" && op.dst === match.dst)) {
+    return false;
+  }
   if (match.sets !== undefined && !(match.sets in op || match.sets in detailOf(op))) {
     return false;
   }
@@ -297,7 +304,7 @@ function datesFailure(op: Operation, check: NonNullable<NonNullable<Expectation[
 }
 
 /** Why `op` fails `check`, or null when it passes. */
-function checkFailure(op: Operation, check: NonNullable<Expectation["check"]>): string | null {
+function checkFailure(op: Operation, check: NonNullable<Expectation["check"]>, utteranceAt: string): string | null {
   const detail = detailOf(op);
   const occurredAt = "occurred_at" in op ? op.occurred_at : undefined;
   const local = typeof occurredAt === "string" ? localParts(occurredAt) : null;
@@ -360,6 +367,12 @@ function checkFailure(op: Operation, check: NonNullable<Expectation["check"]>): 
       return `done local date is ${done ?? "unset"}`;
     }
   }
+  if (check.done_at_is_utterance) {
+    const done = typeof detail.done_at === "string" ? Date.parse(detail.done_at) : Number.NaN;
+    if (done !== Date.parse(utteranceAt)) {
+      return `done_at is ${String(detail.done_at)}, not the utterance time ${utteranceAt}`;
+    }
+  }
   for (const key of check.nulls ?? []) {
     if (detail[key] !== null) {
       return `detail ${key} is ${JSON.stringify(detail[key])}, not null`;
@@ -390,7 +403,7 @@ function checkFailure(op: Operation, check: NonNullable<Expectation["check"]>): 
 }
 
 /** Failure messages for one expectation against one run's operations; empty when it holds. */
-function evaluate(expectation: Expectation, operations: Operation[]): string[] {
+function evaluate(expectation: Expectation, operations: Operation[], utteranceAt: string): string[] {
   const matched = operations.filter((op) => matches(op, expectation.match));
   if (expectation.expect === "none") {
     return matched.map((op) => `unexpected ${JSON.stringify(op)}`);
@@ -404,7 +417,7 @@ function evaluate(expectation: Expectation, operations: Operation[]): string[] {
   }
   const check = expectation.check ?? {};
   const failures = matched.flatMap((op) => {
-    const failure = checkFailure(op, check);
+    const failure = checkFailure(op, check, utteranceAt);
     return failure ? [`${failure}: ${JSON.stringify(op)}`] : [];
   });
   if (expectation.expect === "each") {
@@ -530,7 +543,7 @@ for (const testCase of cases) {
     const failures = [
       ...rejections(operations, testCase).map((detail) => `  ✗ Yaad would not apply this batch\n      ${detail}`),
       ...testCase.expectations.flatMap((expectation) =>
-        evaluate(expectation, operations).map((detail) => `  ✗ ${expectation.why}\n      ${detail}`),
+        evaluate(expectation, operations, testCase.occurred_at).map((detail) => `  ✗ ${expectation.why}\n      ${detail}`),
       ),
     ];
     if (failures.length === 0) {

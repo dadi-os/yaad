@@ -72,6 +72,9 @@ export async function getIncidentEdges(db: Db, nodeId: string): Promise<EdgeRow[
   return getIncidentEdgesForIds(db, [nodeId]);
 }
 
+/** A node with more live edges than this (Ankur, a school) is a hub: ingest lists its edges last and recall does not walk out of it. */
+export const HUB_DEGREE = 100;
+
 /** Current edges only (`valid_to IS NULL`). Historical edge lookup not wired yet. */
 export async function getIncidentEdgesForIds(db: Db, nodeIds: string[]): Promise<EdgeRow[]> {
   if (nodeIds.length === 0) {
