@@ -553,8 +553,8 @@ test("a task whose close is before the text is not stored, and its edge goes wit
 test("an unstated open outside its bounds is re-extracted once, then rejected as unsourced_window", async () => {
   await resetGraph(handle.sql);
   const course = await insertMemory(handle.db, { title: "IAH class", embedding: axisVector(dim, 0) });
-  const make = (opens_on: string): Operation[] => [
-    { op: "create_node", temp_id: "t", kind: "task", title: "IAH — Final Project Guidelines", detail: { opens_on, closes_at: "2026-12-14T23:59:00-05:00" } },
+  const make = (opens_on: string, title = "IAH — Final Project Guidelines"): Operation[] => [
+    { op: "create_node", temp_id: "t", kind: "task", title, detail: { opens_on, closes_at: "2026-12-14T23:59:00-05:00" } },
     { op: "create_edge", src: course, dst: "t", type: "HAS_ITEM", confidence: 1 },
   ];
   const run = (rounds: Operation[][], users: string[]) =>
@@ -574,5 +574,6 @@ test("an unstated open outside its bounds is re-extracted once, then rejected as
   assert.match(users[1] ?? "", /more than 28 days before its close/);
   assert.equal(result.counts.create_node, 1);
 
-  await rejectsWith(() => run([make("2026-11-13"), make("2026-11-13")], []), 422, "unsourced_window");
+  const other = "IAH — Final Project Rubric";
+  await rejectsWith(() => run([make("2026-11-13", other), make("2026-11-13", other)], []), 422, "unsourced_window");
 });
