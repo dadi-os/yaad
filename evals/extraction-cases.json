@@ -480,18 +480,13 @@
           "why": "If stored as an event it sits on its day with no invented time"
         },
         {
-          "expect": "some",
+          "expect": "none",
           "match": {
             "op": "create_node",
             "kind": "task",
             "title": "Phylogenetic"
           },
-          "check": {
-            "closes_local_date": "2026-09-16",
-            "closes_local_time": "23:59",
-            "not_done": true
-          },
-          "why": "The unsubmitted Class 4 assignment is an open task past its close, not done"
+          "why": "The Class 4 assignment closed before the text, so it is never created, overdue or not"
         },
         {
           "expect": "none",
@@ -1527,13 +1522,13 @@
           "match": {
             "op": "create_node",
             "kind": "task",
-            "title": "Reading"
+            "title": "Impacts"
           },
           "check": {
-            "closes_local_date": "2026-10-11",
+            "closes_local_date": "2026-10-12",
             "closes_local_time": "23:59"
           },
-          "why": "The reading closes at its due time"
+          "why": "The one deadline still ahead closes at its due time; the reading that closed Oct 11 is not created"
         }
       ]
     },
@@ -2997,7 +2992,8 @@
           },
           "why": "Done lives in done_at, not the body"
         }
-      ]
+      ],
+      "source_text": "I submitted CSE 431 HW3 to Gradescope tonight."
     },
     {
       "name": "due-date-change-moves-the-close",
@@ -3463,7 +3459,8 @@
           },
           "why": "Never a second task for the same application"
         }
-      ]
+      ],
+      "source_text": "I applied to Dryft."
     },
     {
       "name": "receipt-settles-the-terse-someday-task",
@@ -3535,7 +3532,8 @@
           },
           "why": "It was done, not dropped"
         }
-      ]
+      ],
+      "source_text": "I applied to IBM with Manisha's referral."
     },
     {
       "name": "found-doctor-settles-the-someday-task",
@@ -3607,7 +3605,8 @@
           },
           "why": "Nothing is scheduled"
         }
-      ]
+      ],
+      "source_text": "I found a doctor: Dr. Priya Rao at Sparrow Family Medicine."
     },
     {
       "name": "time-set-aside-is-a-plan-the-task-keeps-its-close",
@@ -4065,7 +4064,8 @@
           },
           "why": "Ankur said he did it now: done_at is the utterance time, to the second, never a rounded clock time"
         }
-      ]
+      ],
+      "source_text": "I sent in the scholarship essay."
     },
     {
       "name": "moved-deadline-keeps-time",
@@ -4432,6 +4432,451 @@
             ]
           },
           "why": "Nothing about the task changed"
+        }
+      ]
+    },
+    {
+      "name": "closed-date-task-is-refused",
+      "finding": "run 14c22f8f RC2 (past closes stored as new tasks)",
+      "occurred_at": "2026-11-13T23:07:46-05:00",
+      "text": "CSE 335 course site, read tonight: Design 3 closed Sun Sep 20, 2026 at 11:55 PM ET. Step 5 closed Fri Oct 9 at 11:55 PM ET. Project 2 Sprint 2 is due Fri Nov 20, 2026 at 11:55 PM ET.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "c3350000-0000-4000-8000-000000000c01",
+            "kind": "memory",
+            "title": "CSE 335 class",
+            "body": null,
+            "occurred_at": null
+          }
+        ],
+        "edges": [
+          {
+            "id": "00000301-0000-4000-8000-000000000301",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "c3350000-0000-4000-8000-000000000c01",
+            "type": "ENROLLED_IN",
+            "properties": {
+              "status": "enrolled"
+            }
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "task",
+            "title": "Design 3|Step 5"
+          },
+          "why": "A task whose close has passed is never created"
+        },
+        {
+          "expect": "each",
+          "match": {
+            "op": "create_node",
+            "kind": "task"
+          },
+          "check": {
+            "closes_after_utterance": true
+          },
+          "why": "Every task created closes after the text"
+        },
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "kind": "task",
+            "title": "Sprint 2"
+          },
+          "check": {
+            "closes_local_date": "2026-11-20",
+            "closes_local_time": "23:55",
+            "not_done": true
+          },
+          "why": "The task that is still ahead is stored"
+        }
+      ]
+    },
+    {
+      "name": "closed-items-backfill-is-refused",
+      "finding": "run 14c22f8f RC2 (about 28 closed items stored as overdue tasks)",
+      "occurred_at": "2026-11-13T23:07:46-05:00",
+      "text": "IBIO 355 on Codon, read tonight, every dated item: Class 2 Homework due Fri Sep 4, 2026 at 11:59 PM ET (shown as submitted). Class 4 Homework due Fri Sep 18 at 11:59 PM ET. Class 12 Homework due Fri Oct 2 at 11:59 PM ET. Class 14 Homework due Fri Oct 16 at 11:59 PM ET. Class 15 Homework due Thu Oct 29 at 11:59 PM ET. Class 20 Homework due Mon Nov 16, 2026 at 8:30 AM ET.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "1b100000-0000-4000-8000-000000000c01",
+            "kind": "memory",
+            "title": "IBIO 355 class",
+            "body": null,
+            "occurred_at": null
+          }
+        ],
+        "edges": [
+          {
+            "id": "00000302-0000-4000-8000-000000000302",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "1b100000-0000-4000-8000-000000000c01",
+            "type": "ENROLLED_IN",
+            "properties": {
+              "status": "enrolled"
+            }
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "task",
+            "title": "Class (2|4|12|14|15)\\b"
+          },
+          "why": "Items closed before the text are not backfilled as tasks"
+        },
+        {
+          "expect": "each",
+          "match": {
+            "op": "create_node",
+            "kind": "task"
+          },
+          "check": {
+            "closes_after_utterance": true
+          },
+          "why": "Every task created closes after the text"
+        },
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "kind": "task",
+            "title": "Class 20"
+          },
+          "check": {
+            "closes_local_date": "2026-11-16",
+            "closes_local_time": "08:30",
+            "not_done": true
+          },
+          "why": "The one item still ahead is stored, and nothing marks it done because a page showed 'submitted' for another"
+        }
+      ]
+    },
+    {
+      "name": "window-is-capped-at-28-days",
+      "finding": "run 14c22f8f RC12 (IAH final project window 31 days)",
+      "occurred_at": "2026-11-13T23:07:46-05:00",
+      "text": "IAH Final Project Guidelines are due Mon Dec 14, 2026 at 11:59 PM ET. The course site first showed them to the helper tonight.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "1a400000-0000-4000-8000-000000000c01",
+            "kind": "memory",
+            "title": "IAH class",
+            "body": null,
+            "occurred_at": null
+          }
+        ],
+        "edges": [
+          {
+            "id": "00000303-0000-4000-8000-000000000303",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "1a400000-0000-4000-8000-000000000c01",
+            "type": "ENROLLED_IN",
+            "properties": {
+              "status": "enrolled"
+            }
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "kind": "task",
+            "title": "Final Project"
+          },
+          "check": {
+            "closes_local_date": "2026-12-14",
+            "opens_within_days": 28,
+            "not_done": true
+          },
+          "why": "No window is longer than 28 days when the open is not stated"
+        }
+      ]
+    },
+    {
+      "name": "far-deadline-he-states-opens-28-days-before",
+      "finding": "run 14c22f8f RC12 (cap with a deadline Ankur states)",
+      "occurred_at": "2026-11-13T23:07:46-05:00",
+      "text": "Ankur says his study abroad application is due Fri Jan 29, 2027 at 5 PM.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          }
+        ],
+        "edges": []
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "kind": "task",
+            "title": "study abroad"
+          },
+          "check": {
+            "closes_local_date": "2027-01-29",
+            "closes_local_time": "17:00",
+            "opens_within_days": 28
+          },
+          "why": "A deadline far out opens at most 28 days before its close, not the day he says it"
+        }
+      ]
+    },
+    {
+      "name": "unstated-open-is-the-day-he-says-it",
+      "finding": "run 14c22f8f F-ESSAY-1 (essay opened Nov 2, 11 days before he said it)",
+      "occurred_at": "2026-11-13T23:34:00-05:00",
+      "text": "Ankur says the engineering scholarship essay is due Mon noon, submit on the portal.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          }
+        ],
+        "edges": []
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "kind": "task",
+            "title": "scholarship"
+          },
+          "check": {
+            "opens_on": "2026-11-13",
+            "closes_local_date": "2026-11-16",
+            "closes_local_time": "12:00",
+            "not_done": true
+          },
+          "why": "An open Ankur does not state is the day he says the deadline, never a lead before it"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "text": "submitted"
+          },
+          "why": "Where it is handed in is an instruction, not a completion"
+        }
+      ]
+    },
+    {
+      "name": "done-from-his-words-sets-done-at",
+      "finding": "run 14c22f8f RC6 (done only from Ankur's own words)",
+      "occurred_at": "2026-11-13T23:50:00-05:00",
+      "text": "Ankur says he submitted the scholarship essay.",
+      "source_text": "I submitted the scholarship essay.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "e5ca0000-0000-4000-8000-000000000e01",
+            "kind": "task",
+            "title": "Engineering scholarship essay",
+            "body": "Submit on the portal.",
+            "occurred_at": null,
+            "detail": {
+              "opens_on": "2026-11-13",
+              "closes_at": "2026-11-16T17:00:00.000Z",
+              "done_at": null
+            }
+          }
+        ],
+        "edges": []
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": "update_node",
+            "node_id": "e5ca0000-0000-4000-8000-000000000e01",
+            "sets": "done_at"
+          },
+          "check": {
+            "done_at_is_utterance": true
+          },
+          "why": "His own words say he did it, so the task is done"
+        }
+      ]
+    },
+    {
+      "name": "agent-paraphrase-is-not-his-words",
+      "finding": "run 14c22f8f RC6 (M3: 'submit on the portal' became 'submitted on the portal')",
+      "occurred_at": "2026-11-13T23:34:57-05:00",
+      "text": "Ankur says the scholarship essay is submitted on the portal.",
+      "source_text": "the essay is due Mon noon, submit on the portal",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "e5ca0000-0000-4000-8000-000000000e01",
+            "kind": "task",
+            "title": "Engineering scholarship essay",
+            "body": "Submit on the portal.",
+            "occurred_at": null,
+            "detail": {
+              "opens_on": "2026-11-13",
+              "closes_at": "2026-11-16T17:00:00.000Z",
+              "done_at": null
+            }
+          }
+        ],
+        "edges": []
+      },
+      "expectations": [
+        {
+          "expect": "none",
+          "match": {
+            "op": [
+              "create_node",
+              "update_node"
+            ],
+            "sets": "done_at"
+          },
+          "why": "His words are an instruction to submit; the agent's paraphrase does not make it done"
+        },
+        {
+          "expect": "none",
+          "match": {
+            "op": [
+              "create_node",
+              "update_node"
+            ],
+            "text": "submitted"
+          },
+          "why": "Nothing is written as submitted"
+        }
+      ]
+    },
+    {
+      "name": "no-words-from-him-no-done-at",
+      "finding": "run 14c22f8f RC6 (agent text alone never sets done_at)",
+      "occurred_at": "2026-11-13T23:50:00-05:00",
+      "text": "The helper reports the scholarship essay was submitted on the portal tonight.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "e5ca0000-0000-4000-8000-000000000e01",
+            "kind": "task",
+            "title": "Engineering scholarship essay",
+            "body": "Submit on the portal.",
+            "occurred_at": null,
+            "detail": {
+              "opens_on": "2026-11-13",
+              "closes_at": "2026-11-16T17:00:00.000Z",
+              "done_at": null
+            }
+          }
+        ],
+        "edges": []
+      },
+      "expectations": [
+        {
+          "expect": "none",
+          "match": {
+            "op": [
+              "create_node",
+              "update_node"
+            ],
+            "sets": "done_at"
+          },
+          "why": "Without his own words nothing sets done_at"
         }
       ]
     }

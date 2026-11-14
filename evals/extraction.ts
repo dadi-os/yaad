@@ -3,7 +3,8 @@
  * from real ingests that went wrong (see `extraction-cases.json`) and checks what it
  * emits. It writes nothing; it needs Dwar reachable at its mesh address and `TZ` set to
  * the box's zone. `npm run eval:extraction -- --runs=3` repeats each case to expose
- * flaky choices; `--case=<name>,<name>` runs only those cases. A run fails when its
+ * flaky choices; `--case=<name>,<name>` runs only those cases; `--route=complete` runs
+ * extraction on Dwar's `/chat/complete` (one effort step below `/chat/work`) to compare. A run fails when its
  * extraction is malformed, when Yaad would reject or re-extract the batch (see
  * {@link rejections}), or when any expectation fails. Exits 1 when any run fails.
  */
@@ -13,10 +14,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { loadFileConfig } from "../src/config.js";
-import { createDwarClient } from "../src/dwar/client.js";
+import { createDwarClient, type DwarRoute } from "../src/dwar/client.js";
 import type { CandidateState } from "../src/ingest/candidates.js";
 import { YaadError } from "../src/errors.js";
-import { emitOperations } from "../src/ingest/emit.js";
+import { EXTRACTION_ROUTE, emitOperations } from "../src/ingest/emit.js";
 import {
   personDetailBody,
   placeDetailBody,
@@ -24,7 +25,7 @@ import {
   taskDetailBody,
   type Operation,
 } from "../src/ingest/operations.js";
-import { normalizeQuote, unlinkedCreates } from "../src/ingest/validate.js";
+import { normalizeQuote, statusClaims, unlinkedCreates, windowClaims } from "../src/ingest/validate.js";
 import { localDate } from "../src/local-time.js";
 
 const serviceRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -77,6 +78,8 @@ const checkSchema = z
     closes_local_time: localTimeString.optional(),
     /** A task's `detail.opens_on`, exactly. */
     opens_on: localDateString.optional(),
+    /** `detail.closes_at` is after the utterance's `occurred_at`. */
+    closes_after_utterance: z.literal(true).optional(),
     /** The task opens on or before its close day, at most this many days before it. */
     opens_within_days: z.number().int().min(0).optional(),
     /** The task opens on its close day. */
@@ -162,6 +165,8 @@ const casesSchema = z
           finding: z.string().min(1),
           occurred_at: z.string().datetime({ offset: true }),
           text: z.string().min(1),
+          /** Ankur's own words, verbatim, as the caller would send them; absent when the case has none. */
+          source_text: z.string().min(1).optional(),
           candidates: z.object({ nodes: z.array(candidateNodeSchema), edges: z.array(candidateEdgeSchema) }).strict(),
           expectations: z.array(expectationSchema).min(1),
         })
@@ -344,6 +349,9 @@ function checkFailure(op: Operation, check: NonNullable<Expectation["check"]>, u
   if (check.closes_local_time !== undefined && closes?.time !== check.closes_local_time) {
     return `closes local time is ${closes?.time ?? "unset"}`;
   }
+  if (check.closes_after_utterance && !(typeof detail.closes_at === "string" && Date.parse(detail.closes_at) > Date.parse(utteranceAt))) {
+    return `closes_at ${String(detail.closes_at)} is not after the utterance time ${utteranceAt}`;
+  }
   if (check.opens_on !== undefined && opensOn !== check.opens_on) {
     return `opens_on is ${opensOn ?? "unset"}`;
   }
@@ -432,7 +440,8 @@ function evaluate(expectation: Expectation, operations: Operation[], utteranceAt
  * (a detail it does not accept, a plan with no start, a task with an occurred_at or a close
  * and no open on or before its day, a session template that makes no sense, an id that is
  * neither a candidate nor a temp_id, a `close_node` whose evidence is not in the text) or
- * run extraction again (a created node with no edge). Duplicate checks need the database
+ * run extraction again (a created node with no edge, a done mark without Ankur's words, an
+ * unstated open outside its bounds). Duplicate checks need the database
  * and are left to `expectations`.
  */
 function rejections(operations: Operation[], testCase: Case): string[] {
@@ -496,6 +505,12 @@ function rejections(operations: Operation[], testCase: Case): string[] {
   for (const op of unlinkedCreates(operations)) {
     out.push(`created node has no edge (Yaad re-extracts): ${JSON.stringify(op)}`);
   }
+  for (const op of statusClaims(operations, testCase.text, testCase.source_text)) {
+    out.push(`done or submitted without Ankur's words saying so (Yaad rejects after one recheck): ${JSON.stringify(op)}`);
+  }
+  for (const op of windowClaims(operations, testCase.text, testCase.occurred_at, zone)) {
+    out.push(`an open the text does not state, before the text's day or over 28 days before the close (Yaad rejects after one recheck): ${JSON.stringify(op)}`);
+  }
   return out;
 }
 
@@ -508,6 +523,11 @@ if (!Number.isInteger(runs) || runs < 1) {
   throw new Error(`--runs must be a positive integer, got ${runsArg}`);
 }
 const caseArg = process.argv.find((arg) => arg.startsWith("--case="));
+const routeArg = process.argv.find((arg) => arg.startsWith("--route="));
+const route = (routeArg ? routeArg.slice("--route=".length) : EXTRACTION_ROUTE) as DwarRoute;
+if (route !== "work" && route !== "complete") {
+  throw new Error(`--route must be work or complete, got ${routeArg}`);
+}
 const only = caseArg ? new Set(caseArg.slice("--case=".length).split(",")) : null;
 
 const fileConfig = loadFileConfig();
@@ -530,7 +550,9 @@ for (const testCase of cases) {
         config: { serviceRoot },
         occurredAt: testCase.occurred_at,
         text: testCase.text,
+        sourceText: testCase.source_text,
         candidates: expandCandidates(testCase.candidates),
+        route,
         recheck: null,
       });
     } catch (err) {

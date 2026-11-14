@@ -1,7 +1,8 @@
 /**
  * End-to-end ingest: embed the utterance and its segments → candidates → Dwar extraction,
  * re-run once with any lookalikes the first pass missed, nodes it left without an
- * edge, or a submitted/done claim the text does not make → validate → apply.
+ * edge, a submitted/done claim the text does not make, or a task open the text does not state
+ * and the bounds do not allow → drop tasks already closed → validate → apply.
  */
 
 import type { Config } from "../config.js";
@@ -12,8 +13,8 @@ import type { NodeAuthor } from "../types/domain.js";
 import { applyOperations, type ApplyResult } from "./apply.js";
 import { assembleCandidates, segmentsOf } from "./candidates.js";
 import { findLookalikes } from "./duplicates.js";
-import { emitOperations, recheckNote } from "./emit.js";
-import { statusClaims, unlinkedCreates, validateExtraction, validateOperations } from "./validate.js";
+import { EXTRACTION_ROUTE, emitOperations, recheckNote } from "./emit.js";
+import { dropClosedTasks, rejectWindowClaims, statusClaims, unlinkedCreates, validateExtraction, validateOperations, windowClaims } from "./validate.js";
 
 /** Extract memory ops from an utterance and apply them in one transaction. */
 export async function ingest(opts: {
@@ -22,6 +23,8 @@ export async function ingest(opts: {
   dwar: DwarClient;
   config: Config;
   text: string;
+  /** Ankur's own words, verbatim, when the caller has them; the only source of a `done_at`. */
+  sourceText?: string | undefined;
   occurredAt: string;
   participantIds: string[];
   author: NodeAuthor;
@@ -48,10 +51,12 @@ export async function ingest(opts: {
       config: opts.config,
       occurredAt: opts.occurredAt,
       text: opts.text,
+      sourceText: opts.sourceText,
       candidates,
+      route: EXTRACTION_ROUTE,
       recheck,
     });
-    return { candidates, operations };
+    return { candidates, operations: dropClosedTasks(operations, opts.occurredAt) };
   };
 
   const first = await extract([], null);
@@ -62,15 +67,17 @@ export async function ingest(opts: {
     opts.config.env.timezone,
   );
   const unlinked = unlinkedCreates(first.operations);
-  const status = statusClaims(first.operations, opts.text).length > 0;
+  const timeZone = opts.config.env.timezone;
+  const status = statusClaims(first.operations, opts.text, opts.sourceText).length > 0;
+  const windows = windowClaims(first.operations, opts.text, opts.occurredAt, timeZone).length > 0;
   const { operations } =
-    missed.length > 0 || unlinked.length > 0 || status
-      ? await extract(missed, recheckNote({ lookalikes: missed.length > 0, unlinked, status }))
+    missed.length > 0 || unlinked.length > 0 || status || windows
+      ? await extract(missed, recheckNote({ lookalikes: missed.length > 0, unlinked, status, windows }))
       : first;
 
-  const timeZone = opts.config.env.timezone;
   await validateOperations({ db: opts.db, operations, timeZone });
-  await validateExtraction({ db: opts.db, operations, text: opts.text, timeZone });
+  await validateExtraction({ db: opts.db, operations, text: opts.text, sourceText: opts.sourceText, timeZone });
+  rejectWindowClaims(operations, opts.text, opts.occurredAt, timeZone);
   return applyOperations({
     db: opts.db,
     dwar: opts.dwar,

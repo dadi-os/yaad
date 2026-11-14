@@ -148,6 +148,24 @@ test("recall filtered by relevant_on anchors on the tasks relevant that day", as
   assert.ok(recalled.created_at && recalled.updated_at);
 });
 
+test("recall for a day finds tasks closing within 14 days back, upcoming first, then recently past due latest first, then open-ended", async () => {
+  await resetGraph(handle.sql);
+  let axis = 0;
+  const task = (title: string, closesAt: string | null) =>
+    insertTask(handle.db, { title, embedding: axisVector(dim, axis++), opensOn: "2026-09-01", closesAt: closesAt === null ? null : new Date(closesAt) });
+  const later = await task("Later", "2026-11-22T17:00:00.000Z");
+  const soon = await task("Soon", "2026-11-15T17:00:00.000Z");
+  const pastNear = await task("Past, 2 days", "2026-11-10T17:00:00.000Z");
+  const pastFar = await task("Past, 5 days", "2026-11-07T17:00:00.000Z");
+  const openEnded = await task("Open-ended", null);
+  await task("Closed a month ago", "2026-10-10T17:00:00.000Z");
+  const app = await buildApp(config, { db: handle.db, sql: handle.sql, dwar: mockDwar({ dimension: dim }) });
+  const res = await app.inject({ method: "POST", url: "/recall", payload: { relevant_on: "2026-11-12" } });
+  await app.close();
+  assert.equal(res.statusCode, 200, res.body);
+  assert.deepEqual(res.json().nodes.map((n: { id: string }) => n.id), [soon, later, pastNear, pastFar, openEnded]);
+});
+
 /** The task's `verified_at` and the node's `updated_at`, read straight from the tables. */
 async function stamps(id: string) {
   const [detail] = await handle.db.select().from(taskDetail).where(eq(taskDetail.nodeId, id));

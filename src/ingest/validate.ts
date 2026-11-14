@@ -200,7 +200,7 @@ export function unlinkedCreates(operations: Operation[]): Extract<Operation, { o
 const SUBMISSION_WORDS = /\b(?:submitted|uploaded|turned in|handed in)\b/gi;
 
 /** Wording that reports Ankur finished something; `uploaded` counts only with Ankur as its subject. */
-const COMPLETION_WORDS = /\b(?:submitted|turned in|handed in|sent in|done|completed|finished|paid|applied|(?:ankur|he|she|i)\s+(?:just\s+)?uploaded)\b/gi;
+const COMPLETION_WORDS = /\b(?:submitted|turned in|handed in|sent in|done|completed|finished|paid|applied|found|registered|signed up|(?:ankur|he|she|i)\s+(?:just\s+)?uploaded)\b/gi;
 
 /** True when `word` at `index` in `text` is not negated ("not submitted", "not yet done", "never paid"). */
 function affirmed(text: string, index: number): boolean {
@@ -214,22 +214,98 @@ function says(text: string, words: RegExp): boolean {
 
 /**
  * statusClaims returns the batch's creates and updates that record something as submitted or
- * done (a title or body saying so, or `done_at` set) when `text` never reports that Ankur did it.
- * Where a thing is handed in, or what a page shows, is not a completion; the model sometimes
- * writes it as one anyway.
+ * done when the sources never report that Ankur did it: a `done_at` needs `sourceText` (Ankur's
+ * own words, verbatim) to say so, and a title or body saying submitted needs `text` or `sourceText`
+ * to. Where a thing is handed in, what a page shows, and an agent's paraphrase are not a
+ * completion; the model sometimes writes them as one anyway.
  */
-export function statusClaims(operations: Operation[], text: string): Operation[] {
-  if (says(text, COMPLETION_WORDS)) {
-    return [];
-  }
+export function statusClaims(operations: Operation[], text: string, sourceText?: string): Operation[] {
+  const ankurFinished = says(sourceText ?? "", COMPLETION_WORDS);
+  const reported = ankurFinished || says(text, COMPLETION_WORDS);
   return operations.filter((op) => {
     if (op.op !== "create_node" && op.op !== "update_node") {
       return false;
     }
     const detail = op.detail as Record<string, unknown> | undefined;
+    if (typeof detail?.done_at === "string" && !ankurFinished) {
+      return true;
+    }
     const written = [op.title, op.body].filter((value): value is string => typeof value === "string").join("\n");
-    return typeof detail?.done_at === "string" || says(written, SUBMISSION_WORDS);
+    return !reported && says(written, SUBMISSION_WORDS);
   });
+}
+
+/**
+ * dropClosedTasks returns `operations` without the tasks they create whose close is before
+ * `occurredAt` (a deadline already past when the text is from is never stored), and without the
+ * edges that name them. A batch left empty becomes one `noop`. Updating or ticking an existing
+ * task is not affected.
+ */
+export function dropClosedTasks(operations: Operation[], occurredAt: string): Operation[] {
+  const closed = new Set(
+    operations.flatMap((op) => {
+      const closes = op.op === "create_node" && op.kind === "task" ? (op.detail as { closes_at?: unknown } | undefined)?.closes_at : undefined;
+      return op.op === "create_node" && typeof closes === "string" && Date.parse(closes) < Date.parse(occurredAt) ? [op.temp_id] : [];
+    }),
+  );
+  if (closed.size === 0) {
+    return operations;
+  }
+  const kept = operations.filter(
+    (op) => !(op.op === "create_node" && closed.has(op.temp_id)) && !(op.op === "create_edge" && (closed.has(op.src) || closed.has(op.dst))),
+  );
+  return kept.length > 0 ? kept : [{ op: "noop", reason: "every task in the text closed before it" }];
+}
+
+/** Longest task window (open day to close day), in days, unless the text states the open. */
+const MAX_WINDOW_DAYS = 28;
+
+const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+
+/** True when `text` names the date `day` (`YYYY-MM-DD`): ISO, `M/D`, `Nov 13`, `November 13th`, or `13 Nov`. */
+export function statesDate(text: string, day: string): boolean {
+  const month = Number(day.slice(5, 7));
+  const date = Number(day.slice(8, 10));
+  const short = (MONTHS[month - 1] ?? "").slice(0, 3);
+  const forms = [
+    day,
+    `(?<!\\d)0?${month}/0?${date}(?!\\d)`,
+    `\\b${short}[a-z]*\\.?\\s+0?${date}(?:st|nd|rd|th)?(?!\\d)`,
+    `(?<!\\d)0?${date}(?:st|nd|rd|th)?\\s+(?:of\\s+)?${short}[a-z]*\\b`,
+  ];
+  return forms.some((form) => new RegExp(form, "i").test(text));
+}
+
+/**
+ * windowClaims returns the batch's created tasks whose open `text` does not state and that fall
+ * outside what an unstated open may be: before the local day the text is from (a deadline Ankur
+ * gives opens the day he says it), or more than {@link MAX_WINDOW_DAYS} days before the close.
+ */
+export function windowClaims(operations: Operation[], text: string, occurredAt: string, timeZone: string): Operation[] {
+  const today = localDate(new Date(occurredAt), timeZone);
+  return operations.filter((op) => {
+    if (op.op !== "create_node" || op.kind !== "task") {
+      return false;
+    }
+    const { opens_on: opens, closes_at: closes } = (op.detail ?? {}) as { opens_on?: unknown; closes_at?: unknown };
+    if (typeof opens !== "string" || typeof closes !== "string" || statesDate(text, opens)) {
+      return false;
+    }
+    const lead = (Date.parse(`${localDate(new Date(closes), timeZone)}T00:00:00Z`) - Date.parse(`${opens}T00:00:00Z`)) / 86_400_000;
+    return opens < today || lead > MAX_WINDOW_DAYS;
+  });
+}
+
+/** Rejects a batch whose second pass still has an unstated open outside its bounds (see {@link windowClaims}). */
+export function rejectWindowClaims(operations: Operation[], text: string, occurredAt: string, timeZone: string): void {
+  const claims = windowClaims(operations, text, occurredAt, timeZone);
+  if (claims.length > 0) {
+    throw new YaadError(
+      422,
+      "unsourced_window",
+      `the text does not state these tasks' open days, and they open before the text's day or more than ${MAX_WINDOW_DAYS} days before the close: ${claims.map((op) => JSON.stringify(op)).join(", ")}`,
+    );
+  }
 }
 
 /**
@@ -243,6 +319,8 @@ export async function validateExtraction(opts: {
   db: Db;
   operations: Operation[];
   text: string;
+  /** Ankur's own words, verbatim, when the caller has them: the only source of a `done_at`. */
+  sourceText?: string | undefined;
   timeZone: string;
 }): Promise<void> {
   const haystack = normalizeQuote(opts.text);
@@ -259,12 +337,12 @@ export async function validateExtraction(opts: {
       );
     }
   }
-  const claims = statusClaims(opts.operations, opts.text);
+  const claims = statusClaims(opts.operations, opts.text, opts.sourceText);
   if (claims.length > 0) {
     throw new YaadError(
       422,
       "unsourced_status",
-      `the utterance does not say Ankur submitted or finished anything, but the batch records it: ${claims.map((op) => JSON.stringify(op)).join(", ")}`,
+      `neither the text nor Ankur's own words say he submitted or finished anything, but the batch records it: ${claims.map((op) => JSON.stringify(op)).join(", ")}`,
     );
   }
   await rejectDuplicates(opts.db, opts.operations, opts.timeZone);

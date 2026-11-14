@@ -491,3 +491,88 @@ test("a batch that records something as submitted or done without the text sayin
 
   await rejectsWith(() => run([[done], [done]], []), 422, "unsourced_status");
 });
+
+test("a done_at is accepted only when the caller's source_text says Ankur finished", async () => {
+  await resetGraph(handle.sql);
+  const task = await insertTask(handle.db, {
+    title: "Engineering scholarship essay",
+    embedding: axisVector(dim, 2),
+    opensOn: "2026-11-13",
+    closesAt: new Date("2026-11-16T17:00:00Z"),
+  });
+  const done: Operation = { op: "update_node", node_id: task, detail: { done_at: "2026-11-13T23:34:57-05:00" } };
+  const run = (sourceText: string | undefined, users: string[]) =>
+    ingest({
+      db: handle.db,
+      sql: handle.sql,
+      dwar: mockDwar({ dimension: dim, embedAxis: 1, rounds: [[done], [done]], reasonUsers: users }),
+      config,
+      text: "Ankur says the scholarship essay is submitted on the portal.",
+      sourceText,
+      occurredAt: "2026-11-13T23:34:57-05:00",
+      participantIds: [],
+      author: INGEST,
+    });
+  const users: string[] = [];
+  await rejectsWith(() => run("the essay is due Mon noon, submit on the portal", users), 422, "unsourced_status");
+  assert.equal(users.length, 2);
+  assert.ok(users[0]?.includes('"source_text"'));
+
+  const result = await run("I submitted the scholarship essay.", []);
+  assert.equal(result.counts.update_node, 1);
+});
+
+test("a task whose close is before the text is not stored, and its edge goes with it", async () => {
+  await resetGraph(handle.sql);
+  const course = await insertMemory(handle.db, { title: "IBIO 355 class", embedding: axisVector(dim, 0) });
+  const make = (temp_id: string, title: string, closes_at: string): Operation[] => [
+    { op: "create_node", temp_id, kind: "task", title, detail: { opens_on: "2026-11-13", closes_at } },
+    { op: "create_edge", src: course, dst: temp_id, type: "HAS_ITEM", confidence: 1 },
+  ];
+  const result = await ingest({
+    db: handle.db,
+    sql: handle.sql,
+    dwar: mockDwar({
+      dimension: dim,
+      embedAxis: 1,
+      operations: [...make("old", "IBIO 355 — Class 2 Homework", "2026-09-04T23:59:00-04:00"), ...make("new", "IBIO 355 — Class 20 Homework", "2026-11-16T08:30:00-05:00")],
+    }),
+    config,
+    text: "IBIO 355 on Codon: Class 2 Homework due Sep 4, Class 20 Homework due Mon Nov 16 at 8:30 AM.",
+    occurredAt: "2026-11-13T23:07:46-05:00",
+    participantIds: [],
+    author: INGEST,
+  });
+  assert.equal(result.counts.create_node, 1);
+  assert.equal(result.counts.create_edge, 1);
+  const titles = (await handle.db.select({ title: node.title }).from(node)).map((row) => row.title);
+  assert.ok(titles.includes("IBIO 355 — Class 20 Homework"));
+  assert.ok(!titles.includes("IBIO 355 — Class 2 Homework"));
+});
+
+test("an unstated open outside its bounds is re-extracted once, then rejected as unsourced_window", async () => {
+  await resetGraph(handle.sql);
+  const course = await insertMemory(handle.db, { title: "IAH class", embedding: axisVector(dim, 0) });
+  const make = (opens_on: string): Operation[] => [
+    { op: "create_node", temp_id: "t", kind: "task", title: "IAH — Final Project Guidelines", detail: { opens_on, closes_at: "2026-12-14T23:59:00-05:00" } },
+    { op: "create_edge", src: course, dst: "t", type: "HAS_ITEM", confidence: 1 },
+  ];
+  const run = (rounds: Operation[][], users: string[]) =>
+    ingest({
+      db: handle.db,
+      sql: handle.sql,
+      dwar: mockDwar({ dimension: dim, embedAxis: 1, rounds, reasonUsers: users }),
+      config,
+      text: "IAH Final Project Guidelines are due Mon Dec 14, 2026 at 11:59 PM. The site first showed them tonight.",
+      occurredAt: "2026-11-13T23:07:46-05:00",
+      participantIds: [],
+      author: INGEST,
+    });
+  const users: string[] = [];
+  const result = await run([make("2026-11-13"), make("2026-11-16")], users);
+  assert.equal(users.length, 2);
+  assert.match(users[1] ?? "", /more than 28 days before its close/);
+  assert.equal(result.counts.create_node, 1);
+
+  await rejectsWith(() => run([make("2026-11-13"), make("2026-11-13")], []), 422, "unsourced_window");
+});

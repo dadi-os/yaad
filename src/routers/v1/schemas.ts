@@ -138,6 +138,8 @@ export const createEdgeBody = z
 
 const ingestFields = {
   text: z.string().min(1),
+  /** Ankur's own words, verbatim: the only source of a task's `done_at`. Omit when there are none. */
+  source_text: z.string().min(1).optional(),
   occurred_at: z.string().datetime({ offset: true }),
   participant_ids: z.array(z.string().uuid()).optional(),
 };

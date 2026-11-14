@@ -40,7 +40,7 @@ export async function registerRecall(app: FastifyInstance): Promise<void> {
       from,
       filter,
       hops,
-      limit: limit ?? app.config.recall.default_limit,
+      limit: limit ?? (filter.relevant_on !== undefined ? app.config.page.max_size : app.config.recall.default_limit),
       debug: debug === true,
     });
     void recordAccess(

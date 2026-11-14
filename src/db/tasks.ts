@@ -21,13 +21,36 @@ export function relevantOn(date: string): SQL {
   return and(isNull(taskDetail.doneAt), isNotNull(taskDetail.opensOn), lte(taskDetail.opensOn, date))!;
 }
 
+/**
+ * What a recall for a day finds: {@link relevantOn} tasks that have no close or closed no more
+ * than {@link OPEN_TASK_PAST_DAYS} days before that local day. The day views keep every past-due task.
+ */
+export function relevantRecently(date: string): SQL {
+  return and(
+    relevantOn(date),
+    or(isNull(taskDetail.closesAt), sql`${taskDetail.closesAt}::date >= ${date}::date - ${OPEN_TASK_PAST_DAYS}::int`),
+  )!;
+}
+
+/**
+ * Order for a recall for a day: tasks closing on or after it first, soonest first; then the
+ * recently past due, latest close first; then those with no close.
+ */
+export function relevantOrder(date: string): SQL[] {
+  const upcoming = sql`${taskDetail.closesAt}::date >= ${date}::date`;
+  return [
+    sql`CASE WHEN ${taskDetail.closesAt} IS NULL THEN 2 WHEN ${upcoming} THEN 0 ELSE 1 END`,
+    sql`CASE WHEN ${upcoming} THEN extract(epoch FROM ${taskDetail.closesAt}) ELSE -extract(epoch FROM ${taskDetail.closesAt}) END`,
+  ];
+}
+
 /** Not done and with no window: it is relevant on no particular day. */
 export function isSomeday(): SQL {
   return and(isNull(taskDetail.doneAt), isNull(taskDetail.opensOn))!;
 }
 
-/** How far back from now an open task may have closed and still be settled by ingest. */
-const OPEN_TASK_PAST_DAYS = 14;
+/** How far back from now (or from a recalled day) a task may have closed and still count as open. */
+export const OPEN_TASK_PAST_DAYS = 14;
 /** How far ahead of now an open task may close and still be settled by ingest. */
 const OPEN_TASK_AHEAD_DAYS = 60;
 

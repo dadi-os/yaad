@@ -2,7 +2,8 @@
  * Exact node filters shared by `POST /query` and filter-anchored `POST /recall`. A date-bounded
  * filter returns nodes whose time falls in the range, treating a plan with no end as an instant
  * at its start. `relevant_on` returns the tasks not done whose open day has come by that local
- * day, whether still open or past due.
+ * day and that have no close or closed within the last 14 days of it: closing on or after the day
+ * first (soonest first), then the recently past due (latest first).
  */
 
 import { and, asc, eq, gt, isNull, or, sql, type SQL } from "drizzle-orm";
@@ -11,7 +12,7 @@ import type { NodeKind } from "../types/domain.js";
 import type { PlanStatus } from "../types/timeline.js";
 import type { Db } from "./client.js";
 import { node, personDetail, planDetail, taskDetail, type NodeRow } from "./schema.js";
-import { relevantOn } from "./tasks.js";
+import { relevantOrder, relevantRecently } from "./tasks.js";
 
 /** Exact criteria over live nodes; unset fields do not constrain. */
 export type NodeFilter = {
@@ -47,7 +48,7 @@ export function assertFilterCoherent(filter: NodeFilter): void {
   }
 }
 
-/** Live nodes matching every set filter, ordered by occurred_at then created_at. */
+/** Live nodes matching every set filter, ordered by occurred_at then created_at (`relevant_on`: see {@link relevantOrder}). */
 export async function filterNodes(db: Db, filter: NodeFilter, limit: number, offset: number): Promise<NodeRow[]> {
   const needsPersonJoin = filter.name !== undefined && (filter.kind === undefined || filter.kind === "person");
   const conditions: SQL[] = [or(isNull(node.expiresAt), gt(node.expiresAt, new Date()))!];
@@ -65,7 +66,7 @@ export async function filterNodes(db: Db, filter: NodeFilter, limit: number, off
   }
 
   if (filter.relevant_on !== undefined) {
-    conditions.push(relevantOn(filter.relevant_on));
+    conditions.push(relevantRecently(filter.relevant_on));
   }
 
   if (filter.name !== undefined) {
@@ -103,7 +104,7 @@ export async function filterNodes(db: Db, filter: NodeFilter, limit: number, off
   }
   const rows = await query
     .where(and(...conditions))
-    .orderBy(asc(node.occurredAt), asc(taskDetail.closesAt), asc(node.createdAt))
+    .orderBy(...(filter.relevant_on !== undefined ? relevantOrder(filter.relevant_on) : [asc(node.occurredAt), asc(taskDetail.closesAt)]), asc(node.createdAt))
     .limit(limit)
     .offset(offset);
   return rows.map((row) => row.node);

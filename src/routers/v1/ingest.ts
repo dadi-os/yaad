@@ -13,6 +13,7 @@ export async function registerIngest(app: FastifyInstance): Promise<void> {
       dwar: app.dwar,
       config: app.config,
       text: body.text,
+      sourceText: body.source_text,
       occurredAt: body.occurred_at,
       participantIds: body.participant_ids ?? [],
       author:

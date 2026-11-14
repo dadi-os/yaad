@@ -30,6 +30,12 @@ const chatResponseSchema = z.object({
 
 export type DwarChatResponse = z.infer<typeof chatResponseSchema>;
 
+/**
+ * The Dwar chat route a work call runs on: `work` (the lane block, effort xhigh) or `complete`
+ * (the caller's system prompt only, effort high). Efforts are Dwar's `CHAT` table, not Yaad's.
+ */
+export type DwarRoute = "work" | "complete";
+
 export type DwarTool = {
   name: string;
   description: string;
@@ -49,7 +55,7 @@ export function embeddingText(title: string, body: string | null): string {
 export type DwarClient = {
   embed: (texts: string[], caller: string) => Promise<number[][]>;
   /**
-   * One `/chat/work` call with `tool_choice: "auto"`, so the model can think before
+   * One `/chat/<route>` call with `tool_choice: "auto"`, so the model can think before
    * its tool call (a forced call skips thinking); callers reject a reply with no tool call.
    */
   work: (args: {
@@ -57,6 +63,7 @@ export type DwarClient = {
     user: string;
     tools: DwarTool[];
     caller: string;
+    route: DwarRoute;
   }) => Promise<DwarChatResponse>;
 };
 
@@ -121,7 +128,7 @@ export function createDwarClient(config: DwarConfig): DwarClient {
       const data = await withRetry(config, () =>
         http
           .post(
-            "/chat/work",
+            `/chat/${args.route}`,
             {
               system: args.system,
               messages: [{ role: "user", content: args.user }],

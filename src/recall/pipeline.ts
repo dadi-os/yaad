@@ -119,7 +119,7 @@ export async function recall(opts: {
 
   const ranked = queryEmbedding
     ? scoreAll(rows, walk.nodes, queryEmbedding, cfg, now).sort((a, b) => b.parts.total - a.parts.total)
-    : orderWithoutQuery(rows, walk.nodes).map((row) => ({ row, parts: null }));
+    : orderWithoutQuery(rows, walk.nodes, opts.filter?.relevant_on !== undefined).map((row) => ({ row, parts: null }));
   const top = ranked.slice(0, opts.limit);
 
   const nodes: RecallNode[] = [];
@@ -258,12 +258,15 @@ function scoreAll(
   return present.map((row) => ({ row, parts: scoreNode(row, requireWalkNode(walk, row.id), ctx) }));
 }
 
-/** Query-less order: nearest hop first, then chronological, undated last. */
-function orderWithoutQuery(rows: Map<string, NodeRow>, walk: Map<string, WalkNode>): NodeRow[] {
+/** Query-less order: nearest hop first, then chronological, undated last; with `keepAnchorOrder`, anchors keep the order the filter gave them. */
+function orderWithoutQuery(rows: Map<string, NodeRow>, walk: Map<string, WalkNode>, keepAnchorOrder: boolean): NodeRow[] {
   return presentRows(rows, walk).sort((a, b) => {
     const hopDelta = requireWalkNode(walk, a.id).hop - requireWalkNode(walk, b.id).hop;
     if (hopDelta !== 0) {
       return hopDelta;
+    }
+    if (keepAnchorOrder && requireWalkNode(walk, a.id).hop === 0) {
+      return 0;
     }
     if (a.occurredAt && b.occurredAt) {
       const delta = a.occurredAt.getTime() - b.occurredAt.getTime();

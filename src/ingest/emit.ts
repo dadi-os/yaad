@@ -3,11 +3,14 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Config } from "../config.js";
-import type { DwarClient } from "../dwar/client.js";
+import type { DwarClient, DwarRoute } from "../dwar/client.js";
 import { YaadError } from "../errors.js";
 import { formatZod } from "../routers/v1/schemas.js";
 import type { CandidateState } from "./candidates.js";
 import { emitOperationsInput, emitOperationsToolSchema, type Operation } from "./operations.js";
+
+/** The Dwar chat route extraction runs on; `complete` (one effort step lower) is only for the eval to measure. */
+export const EXTRACTION_ROUTE: DwarRoute = "work";
 
 /**
  * The extraction system prompt: the shared `prompts/memory.md` doctrine, then the write-path
@@ -36,12 +39,13 @@ function localIso(iso: string): string {
  * recheckNote tells extraction on its second pass what its first pass got wrong: it
  * created lookalikes of nodes it had not been shown (now added to candidates), or it
  * created nodes with no edge, or it recorded something as submitted or done that the
- * utterance does not say Ankur did.
+ * utterance does not say Ankur did, or gave a task an unstated open outside its bounds.
  */
 export function recheckNote(opts: {
   lookalikes: boolean;
   unlinked: Extract<Operation, { op: "create_node" }>[];
   status: boolean;
+  windows: boolean;
 }): string {
   const notes: string[] = [];
   if (opts.lookalikes) {
@@ -60,6 +64,11 @@ export function recheckNote(opts: {
       "A first pass wrote that something was submitted or done, but the text never says Ankur did it. Write where it is handed in as an instruction (\"Submit on Gradescope.\") and leave done_at unset.",
     );
   }
+  if (opts.windows) {
+    notes.push(
+      "A first pass gave a task an open day the text does not state that is before the day the text is from, or more than 28 days before its close. An open the text does not state is never earlier than the day the text is from and never more than 28 days before the close.",
+    );
+  }
   return notes.join(" ");
 }
 
@@ -72,7 +81,10 @@ export async function emitOperations(opts: {
   config: Pick<Config, "serviceRoot">;
   occurredAt: string;
   text: string;
+  /** Ankur's own words, verbatim, when the caller has them; the only source of a `done_at`. */
+  sourceText?: string | undefined;
   candidates: CandidateState;
+  route: DwarRoute;
   /** On the second pass, what the first pass got wrong (see {@link recheckNote}); null on the first. */
   recheck: string | null;
 }): Promise<Operation[]> {
@@ -80,6 +92,7 @@ export async function emitOperations(opts: {
   const user = JSON.stringify({
     occurred_at: localIso(opts.occurredAt),
     text: opts.text,
+    ...(opts.sourceText !== undefined ? { source_text: opts.sourceText } : {}),
     candidates: opts.candidates,
     ...(opts.recheck !== null ? { recheck: opts.recheck } : {}),
   });
@@ -95,6 +108,7 @@ export async function emitOperations(opts: {
       },
     ],
     caller: "yaad/ingest",
+    route: opts.route,
   });
   if (response.stop_reason !== "tool_use") {
     throw new YaadError(

@@ -15,10 +15,19 @@ test("a done_at or a submitted body is a claim when the text does not report Ank
   assert.deepEqual(statusClaims([bodyOf("Submit on Gradescope.")], text), []);
 });
 
-test("nothing is a claim when the text reports Ankur finishing", () => {
-  assert.deepEqual(statusClaims([done], "Ankur sent in the scholarship essay."), []);
-  assert.deepEqual(statusClaims([done], "Ankur uploaded the zip."), []);
+test("a done_at is a claim unless Ankur's own words say he finished, whatever the agent's text says", () => {
+  const paraphrase = "Ankur says the essay is submitted on the portal.";
+  assert.deepEqual(statusClaims([done], paraphrase), [done]);
+  assert.deepEqual(statusClaims([done], paraphrase, "the essay is due Mon noon, submit on the portal"), [done]);
+  assert.deepEqual(statusClaims([done], paraphrase, "I sent in the scholarship essay."), []);
+  assert.deepEqual(statusClaims([done], "x", "I uploaded the zip."), []);
+  assert.deepEqual(statusClaims([done], "x", "I found a doctor."), []);
+});
+
+test("a submitted body needs the text or Ankur's words to report finishing", () => {
   assert.deepEqual(statusClaims([bodyOf("Submitted.")], "Ankur submitted HW3 last night."), []);
+  assert.deepEqual(statusClaims([bodyOf("Submitted.")], "HW3 is due Friday.", "I turned in HW3."), []);
+  assert.equal(statusClaims([bodyOf("Submitted.")], "HW3 is due Friday.").length, 1);
 });
 
 test("a negated completion word does not report finishing, and a negated body is not a claim", () => {
