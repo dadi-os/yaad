@@ -25,8 +25,7 @@ import {
   taskDetailBody,
   type Operation,
 } from "../src/ingest/operations.js";
-import { normalizeQuote, statusClaims, unlinkedCreates, windowClaims } from "../src/ingest/validate.js";
-import { localDate } from "../src/local-time.js";
+import { clampWindows, normalizeQuote, pastCloses, unlinkedCreates } from "../src/ingest/validate.js";
 
 const serviceRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -56,7 +55,7 @@ const matcherSchema = z
     type: z.string().optional(),
     /** Destination node id, exactly, on `create_edge`. */
     dst: z.string().uuid().optional(),
-    /** Only operations that set this field, at the top level or in `detail` (e.g. `done_at` on an update). */
+    /** Only operations that set this field, at the top level or in `detail` (e.g. `done` on an update). */
     sets: z.string().optional(),
   })
   .strict();
@@ -84,13 +83,13 @@ const checkSchema = z
     opens_within_days: z.number().int().min(0).optional(),
     /** The task opens on its close day. */
     one_day: z.literal(true).optional(),
-    /** `detail.done_at` is absent or null. */
+    /** `detail.done` is absent or false. */
     not_done: z.literal(true).optional(),
-    /** Local date of `detail.done_at`. */
-    done_local_date: localDateString.optional(),
-    /** `detail.done_at` is the utterance's `occurred_at`, to the second. */
-    done_at_is_utterance: z.literal(true).optional(),
-    /** `detail` keys that must be present and null (a cleared mark). */
+    /** `detail.done` is true. */
+    done_true: z.literal(true).optional(),
+    /** `detail.done` is false (a cleared mark). */
+    done_false: z.literal(true).optional(),
+    /** `detail` keys that must be present and null. */
     nulls: z.array(z.string()).min(1).optional(),
     /** A `spawn_plans` date list. */
     dates: z
@@ -367,20 +366,14 @@ function checkFailure(op: Operation, check: NonNullable<Expectation["check"]>, u
   if (check.one_day && (opensOn === null || opensOn !== closes?.date)) {
     return `window is ${opensOn ?? "unset"} to ${closes?.date ?? "unset"}`;
   }
-  if (check.not_done && detail.done_at !== undefined && detail.done_at !== null) {
-    return `done_at is ${String(detail.done_at)}`;
+  if (check.not_done && detail.done !== undefined && detail.done !== false) {
+    return `done is ${String(detail.done)}`;
   }
-  if (check.done_local_date !== undefined) {
-    const done = typeof detail.done_at === "string" ? localParts(detail.done_at).date : null;
-    if (done !== check.done_local_date) {
-      return `done local date is ${done ?? "unset"}`;
-    }
+  if (check.done_true && detail.done !== true) {
+    return `done is ${String(detail.done)}`;
   }
-  if (check.done_at_is_utterance) {
-    const done = typeof detail.done_at === "string" ? Date.parse(detail.done_at) : Number.NaN;
-    if (done !== Date.parse(utteranceAt)) {
-      return `done_at is ${String(detail.done_at)}, not the utterance time ${utteranceAt}`;
-    }
+  if (check.done_false && detail.done !== false) {
+    return `done is ${String(detail.done)}`;
   }
   for (const key of check.nulls ?? []) {
     if (detail[key] !== null) {
@@ -440,8 +433,7 @@ function evaluate(expectation: Expectation, operations: Operation[], utteranceAt
  * (a detail it does not accept, a plan with no start, a task with an occurred_at or a close
  * and no open on or before its day, a session template that makes no sense, an id that is
  * neither a candidate nor a temp_id, a `close_node` whose evidence is not in the text) or
- * run extraction again (a created node with no edge, a done mark without Ankur's words, an
- * unstated open outside its bounds). Duplicate checks need the database
+ * run extraction again (a created node with no edge). Duplicate checks need the database
  * and are left to `expectations`.
  */
 function rejections(operations: Operation[], testCase: Case): string[] {
@@ -469,12 +461,6 @@ function rejections(operations: Operation[], testCase: Case): string[] {
         const detail = detailOf(op);
         if (op.occurred_at) {
           out.push(`a task has no occurred_at: ${label}`);
-        }
-        if (typeof detail.closes_at === "string") {
-          const closeDay = localDate(new Date(detail.closes_at), zone);
-          if (typeof detail.opens_on !== "string" || detail.opens_on > closeDay) {
-            out.push(`a close needs an open on or before its day: ${label}`);
-          }
         }
       }
     }
@@ -504,12 +490,6 @@ function rejections(operations: Operation[], testCase: Case): string[] {
   }
   for (const op of unlinkedCreates(operations)) {
     out.push(`created node has no edge (Yaad re-extracts): ${JSON.stringify(op)}`);
-  }
-  for (const op of statusClaims(operations, testCase.text, testCase.source_text)) {
-    out.push(`done or submitted without Ankur's words saying so (Yaad rejects after one recheck): ${JSON.stringify(op)}`);
-  }
-  for (const op of windowClaims(operations, testCase.text, testCase.occurred_at, zone)) {
-    out.push(`an open the text does not state, before the text's day or over 28 days before the close (Yaad rejects after one recheck): ${JSON.stringify(op)}`);
   }
   return out;
 }
@@ -563,10 +543,19 @@ for (const testCase of cases) {
       console.log(`FAIL ${label}\n  ✗ extraction failed: ${err.message}`);
       continue;
     }
+    const stored = new Map(
+      testCase.candidates.nodes.flatMap((candidate) => (candidate.kind === "task" ? [[candidate.id, (candidate.detail?.opens_on as string | null | undefined) ?? null] as const] : [])),
+    );
+    const settled = clampWindows(pastCloses(operations, testCase.occurred_at, testCase.source_text, zone).operations, {
+      text: [testCase.text, testCase.source_text].filter((part) => part !== undefined).join("\n"),
+      occurredAt: testCase.occurred_at,
+      timeZone: zone,
+      storedOpens: stored,
+    }).operations;
     const failures = [
       ...rejections(operations, testCase).map((detail) => `  ✗ Yaad would not apply this batch\n      ${detail}`),
       ...testCase.expectations.flatMap((expectation) =>
-        evaluate(expectation, operations, testCase.occurred_at).map((detail) => `  ✗ ${expectation.why}\n      ${detail}`),
+        evaluate(expectation, settled, testCase.occurred_at).map((detail) => `  ✗ ${expectation.why}\n      ${detail}`),
       ),
     ];
     if (failures.length === 0) {

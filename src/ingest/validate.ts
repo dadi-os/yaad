@@ -6,10 +6,9 @@
 
 import type { Db } from "../db/client.js";
 import { getEdge, getNode, getTaskDetail } from "../db/read.js";
-import { localDate } from "../local-time.js";
+import { addDays, daysBetween, localDate } from "../local-time.js";
 import { YaadError } from "../errors.js";
 import { parse } from "../routers/v1/schemas.js";
-import { rejectDuplicates } from "./duplicates.js";
 import {
   patchPersonDetailBody,
   patchPlaceDetailBody,
@@ -196,71 +195,50 @@ export function unlinkedCreates(operations: Operation[]): Extract<Operation, { o
   );
 }
 
-/** Words that say work was handed in; a node's title or body must not use them unless the utterance reports it. */
-const SUBMISSION_WORDS = /\b(?:submitted|uploaded|turned in|handed in)\b/gi;
-
-/** Wording that reports Ankur finished something; `uploaded` counts only with Ankur as its subject. */
-const COMPLETION_WORDS = /\b(?:submitted|turned in|handed in|sent in|done|completed|finished|paid|applied|found|registered|signed up|(?:ankur|he|she|i)\s+(?:just\s+)?uploaded)\b/gi;
-
-/** True when `word` at `index` in `text` is not negated ("not submitted", "not yet done", "never paid"). */
-function affirmed(text: string, index: number): boolean {
-  return !/\b(?:not|never|no|yet to be|un)\s+(?:yet\s+)?$|n't\s+(?:yet\s+)?$/i.test(text.slice(Math.max(0, index - 16), index));
-}
-
-/** True when `text` contains a pattern match that is not negated. */
-function says(text: string, words: RegExp): boolean {
-  return [...text.matchAll(words)].some((match) => affirmed(text, match.index));
-}
+/** What a skipped create reports: the task and why it was not stored. */
+export type SkippedTask = { title: string; closes_at: string; reason: string };
 
 /**
- * statusClaims returns the batch's creates and updates that record something as submitted or
- * done when the sources never report that Ankur did it: a `done_at` needs `sourceText` (Ankur's
- * own words, verbatim) to say so, and a title or body saying submitted needs `text` or `sourceText`
- * to. Where a thing is handed in, what a page shows, and an agent's paraphrase are not a
- * completion; the model sometimes writes them as one anyway.
+ * pastCloses returns `operations` without the tasks they create whose close is before the local
+ * day `occurredAt` is in (read in `timeZone`), unless `sourceText` states that day (see
+ * {@link statesPastDay}), and without the edges that name them. A batch left empty becomes one
+ * `noop`. The removed tasks are reported as `skipped`. Updating an existing task is not affected.
  */
-export function statusClaims(operations: Operation[], text: string, sourceText?: string): Operation[] {
-  const ankurFinished = says(sourceText ?? "", COMPLETION_WORDS);
-  const reported = ankurFinished || says(text, COMPLETION_WORDS);
-  return operations.filter((op) => {
-    if (op.op !== "create_node" && op.op !== "update_node") {
-      return false;
+export function pastCloses(
+  operations: Operation[],
+  occurredAt: string,
+  sourceText: string | undefined,
+  timeZone: string,
+): { operations: Operation[]; skipped: SkippedTask[] } {
+  const today = localDate(new Date(occurredAt), timeZone);
+  const skipped: SkippedTask[] = [];
+  const dropped = new Set<string>();
+  for (const op of operations) {
+    const closes = op.op === "create_node" && op.kind === "task" ? (op.detail as { closes_at?: unknown } | undefined)?.closes_at : undefined;
+    if (op.op !== "create_node" || typeof closes !== "string") {
+      continue;
     }
-    const detail = op.detail as Record<string, unknown> | undefined;
-    if (typeof detail?.done_at === "string" && !ankurFinished) {
-      return true;
+    const day = localDate(new Date(closes), timeZone);
+    if (day < today && !(sourceText !== undefined && statesPastDay(sourceText, day, today))) {
+      dropped.add(op.temp_id);
+      skipped.push({ title: op.title, closes_at: closes, reason: "closed before the text and not stated by Ankur" });
     }
-    const written = [op.title, op.body].filter((value): value is string => typeof value === "string").join("\n");
-    return !reported && says(written, SUBMISSION_WORDS);
-  });
-}
-
-/**
- * dropClosedTasks returns `operations` without the tasks they create whose close is before
- * `occurredAt` (a deadline already past when the text is from is never stored), and without the
- * edges that name them. A batch left empty becomes one `noop`. Updating or ticking an existing
- * task is not affected.
- */
-export function dropClosedTasks(operations: Operation[], occurredAt: string): Operation[] {
-  const closed = new Set(
-    operations.flatMap((op) => {
-      const closes = op.op === "create_node" && op.kind === "task" ? (op.detail as { closes_at?: unknown } | undefined)?.closes_at : undefined;
-      return op.op === "create_node" && typeof closes === "string" && Date.parse(closes) < Date.parse(occurredAt) ? [op.temp_id] : [];
-    }),
-  );
-  if (closed.size === 0) {
-    return operations;
+  }
+  if (dropped.size === 0) {
+    return { operations, skipped };
   }
   const kept = operations.filter(
-    (op) => !(op.op === "create_node" && closed.has(op.temp_id)) && !(op.op === "create_edge" && (closed.has(op.src) || closed.has(op.dst))),
+    (op) => !(op.op === "create_node" && dropped.has(op.temp_id)) && !(op.op === "create_edge" && (dropped.has(op.src) || dropped.has(op.dst))),
   );
-  return kept.length > 0 ? kept : [{ op: "noop", reason: "every task in the text closed before it" }];
+  return { operations: kept.length > 0 ? kept : [{ op: "noop", reason: "every task in the text closed before it" }], skipped };
 }
 
 /** Longest task window (open day to close day), in days, unless the text states the open. */
 const MAX_WINDOW_DAYS = 28;
 
 const MONTHS = ["january", "february", "march", "april", "may", "june", "july", "august", "september", "october", "november", "december"];
+
+const WEEKDAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
 
 /** True when `text` names the date `day` (`YYYY-MM-DD`): ISO, `M/D`, `Nov 13`, `November 13th`, or `13 Nov`. */
 export function statesDate(text: string, day: string): boolean {
@@ -277,52 +255,82 @@ export function statesDate(text: string, day: string): boolean {
 }
 
 /**
- * windowClaims returns the batch's created tasks whose open `text` does not state and that fall
- * outside what an unstated open may be: before the local day the text is from (a deadline Ankur
- * gives opens the day he says it), or more than {@link MAX_WINDOW_DAYS} days before the close.
+ * True when `text` says which past local day `day` is, from the local day `today` it was written
+ * on: {@link statesDate}, "yesterday" or "last night" for the day before, or that weekday's name
+ * within the week before `today`.
  */
-export function windowClaims(operations: Operation[], text: string, occurredAt: string, timeZone: string): Operation[] {
-  const today = localDate(new Date(occurredAt), timeZone);
-  return operations.filter((op) => {
-    if (op.op !== "create_node" || op.kind !== "task") {
-      return false;
-    }
-    const { opens_on: opens, closes_at: closes } = (op.detail ?? {}) as { opens_on?: unknown; closes_at?: unknown };
-    if (typeof opens !== "string" || typeof closes !== "string" || statesDate(text, opens)) {
-      return false;
-    }
-    const lead = (Date.parse(`${localDate(new Date(closes), timeZone)}T00:00:00Z`) - Date.parse(`${opens}T00:00:00Z`)) / 86_400_000;
-    return opens < today || lead > MAX_WINDOW_DAYS;
-  });
+export function statesPastDay(text: string, day: string, today: string): boolean {
+  if (statesDate(text, day)) {
+    return true;
+  }
+  const ago = daysBetween(day, today);
+  if (ago === 1 && /\b(?:yesterday|last night)\b/i.test(text)) {
+    return true;
+  }
+  const name = WEEKDAYS[new Date(`${day}T12:00:00Z`).getUTCDay()] ?? "";
+  return ago >= 1 && ago <= 7 && new RegExp(`\\b(?:${name}|${name.slice(0, 3)})\\b`, "i").test(text);
 }
 
-/** Rejects a batch whose second pass still has an unstated open outside its bounds (see {@link windowClaims}). */
-export function rejectWindowClaims(operations: Operation[], text: string, occurredAt: string, timeZone: string): void {
-  const claims = windowClaims(operations, text, occurredAt, timeZone);
-  if (claims.length > 0) {
-    throw new YaadError(
-      422,
-      "unsourced_window",
-      `the text does not state these tasks' open days, and they open before the text's day or more than ${MAX_WINDOW_DAYS} days before the close: ${claims.map((op) => JSON.stringify(op)).join(", ")}`,
-    );
-  }
+/** One open day `clampWindows` moved: the node (temp_id or node id), the open before and after, and the rule. */
+export type ClampedWindow = { node: string; from: string | null; to: string; rule: "open_before_text" | "open_over_28_days" | "open_missing" };
+
+/**
+ * clampWindows returns `operations` with every created task's open day, and every updated task's
+ * open day it sets, brought within what Yaad allows and the changes it made as `clamped`. An open
+ * `text` does not state is never before the local day the text is from (read in `timeZone`; a
+ * close already past opens on its own day) and never more than {@link MAX_WINDOW_DAYS} days
+ * before the close; a stated open is never moved. A close with no open gets one by the same
+ * bounds. `storedOpens` maps each task an update names to its stored open, so an update that adds
+ * a close to a task with no open gets one too, and tells tasks from other nodes.
+ */
+export function clampWindows(
+  operations: Operation[],
+  context: { text: string; occurredAt: string; timeZone: string; storedOpens: Map<string, string | null> },
+): { operations: Operation[]; clamped: ClampedWindow[] } {
+  const today = localDate(new Date(context.occurredAt), context.timeZone);
+  const clamped: ClampedWindow[] = [];
+  const next = operations.map((op): Operation => {
+    const created = op.op === "create_node" && op.kind === "task";
+    const updated = op.op === "update_node" && context.storedOpens.has(op.node_id);
+    if (!created && !updated) {
+      return op;
+    }
+    const detail = (op.detail ?? {}) as { opens_on?: unknown; closes_at?: unknown };
+    const node = op.op === "create_node" ? op.temp_id : op.op === "update_node" ? op.node_id : "";
+    const closes = typeof detail.closes_at === "string" ? localDate(new Date(detail.closes_at), context.timeZone) : null;
+    const record = (from: string | null, to: string, rule: ClampedWindow["rule"]) => clamped.push({ node, from, to, rule });
+    let opens: string | null = typeof detail.opens_on === "string" ? detail.opens_on : null;
+    if (opens !== null && !statesDate(context.text, opens)) {
+      if (opens < today) {
+        const to = closes !== null && closes < today ? closes : today;
+        record(opens, to, "open_before_text");
+        opens = to;
+      }
+      if (closes !== null && daysBetween(opens, closes) > MAX_WINDOW_DAYS) {
+        const to = addDays(closes, -MAX_WINDOW_DAYS);
+        record(opens, to, "open_over_28_days");
+        opens = to;
+      }
+    } else if (opens === null && closes !== null && (created || detail.opens_on === null || context.storedOpens.get(op.op === "update_node" ? op.node_id : "") === null)) {
+      const earliest = addDays(closes, -MAX_WINDOW_DAYS);
+      const to = closes < today ? closes : earliest > today ? earliest : today;
+      record(null, to, "open_missing");
+      opens = to;
+    }
+    return opens === (typeof detail.opens_on === "string" ? detail.opens_on : null) ? op : { ...op, detail: { ...detail, opens_on: opens } };
+  });
+  return { operations: next, clamped };
 }
 
 /**
  * Checks on a batch extraction emitted for `text`: every `close_node` quotes the words
  * in the utterance that retract or contradict the node (a fact the utterance merely
- * leaves out is not a retraction), no node is recorded as submitted or done when the utterance
- * does not say so (see {@link statusClaims}), every created node has an edge in the batch, and no
- * create duplicates a live node or another create in the batch.
+ * leaves out is not a retraction), and every created node has an edge in the batch.
  */
-export async function validateExtraction(opts: {
-  db: Db;
+export function validateExtraction(opts: {
   operations: Operation[];
   text: string;
-  /** Ankur's own words, verbatim, when the caller has them: the only source of a `done_at`. */
-  sourceText?: string | undefined;
-  timeZone: string;
-}): Promise<void> {
+}): void {
   const haystack = normalizeQuote(opts.text);
   for (const op of opts.operations) {
     if (op.op !== "close_node") {
@@ -337,15 +345,6 @@ export async function validateExtraction(opts: {
       );
     }
   }
-  const claims = statusClaims(opts.operations, opts.text, opts.sourceText);
-  if (claims.length > 0) {
-    throw new YaadError(
-      422,
-      "unsourced_status",
-      `neither the text nor Ankur's own words say he submitted or finished anything, but the batch records it: ${claims.map((op) => JSON.stringify(op)).join(", ")}`,
-    );
-  }
-  await rejectDuplicates(opts.db, opts.operations, opts.timeZone);
   const unlinked = unlinkedCreates(opts.operations);
   if (unlinked.length > 0) {
     throw new YaadError(

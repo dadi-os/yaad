@@ -32,17 +32,8 @@ segment_limit = 12
 # ANN candidates per segment, on top of candidate_limit. Raise if items in long utterances
 # still get re-created; lower to keep the prompt small.
 segment_candidate_limit = 5
-# Tasks not done with no close, or closing within the last 14 days or the next 60, always shown as
-# candidates newest first; past this cap the oldest are dropped.
-# Raise if the list of tasks not done grows past it.
-open_item_limit = 40
 # Cap on current edges attached to candidates. Raise if the model keeps recreating known relationships.
 edge_context_limit = 50
-
-[plan]
-# Hard cap on the sessions one spawn_plans op creates. A malformed date list that would
-# create thousands of plans fails loudly instead of filling the table.
-max_sessions_per_spawn = 200
 
 [recall]
 # Minimum cosine similarity for a node to become an anchor. Raise to require a closer match.

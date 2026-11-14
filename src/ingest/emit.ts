@@ -38,14 +38,11 @@ function localIso(iso: string): string {
 /**
  * recheckNote tells extraction on its second pass what its first pass got wrong: it
  * created lookalikes of nodes it had not been shown (now added to candidates), or it
- * created nodes with no edge, or it recorded something as submitted or done that the
- * utterance does not say Ankur did, or gave a task an unstated open outside its bounds.
+ * created nodes with no edge.
  */
 export function recheckNote(opts: {
   lookalikes: boolean;
   unlinked: Extract<Operation, { op: "create_node" }>[];
-  status: boolean;
-  windows: boolean;
 }): string {
   const notes: string[] = [];
   if (opts.lookalikes) {
@@ -57,16 +54,6 @@ export function recheckNote(opts: {
     const titles = opts.unlinked.map((op) => `"${op.title}"`).join(", ");
     notes.push(
       `A first pass created nodes with no edge: ${titles}. Every node you create needs at least one edge in this batch, to its subject, its hub, or Ankur (§5.3); link each one, or leave it out if it is not worth storing.`,
-    );
-  }
-  if (opts.status) {
-    notes.push(
-      "A first pass wrote that something was submitted or done, but the text never says Ankur did it. Write where it is handed in as an instruction (\"Submit on Gradescope.\") and leave done_at unset.",
-    );
-  }
-  if (opts.windows) {
-    notes.push(
-      "A first pass gave a task an open day the text does not state that is before the day the text is from, or more than 28 days before its close. An open the text does not state is never earlier than the day the text is from and never more than 28 days before the close.",
     );
   }
   return notes.join(" ");
@@ -81,7 +68,7 @@ export async function emitOperations(opts: {
   config: Pick<Config, "serviceRoot">;
   occurredAt: string;
   text: string;
-  /** Ankur's own words, verbatim, when the caller has them; the only source of a `done_at`. */
+  /** Ankur's own words, verbatim, when the caller has them; what lets a task that closed before the text be stored. */
   sourceText?: string | undefined;
   candidates: CandidateState;
   route: DwarRoute;

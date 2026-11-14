@@ -34,7 +34,7 @@
             "detail": {
               "opens_on": "2026-09-23",
               "closes_at": "2026-10-01T03:59:00.000Z",
-              "done_at": null
+              "done": false
             }
           },
           {
@@ -46,7 +46,7 @@
             "detail": {
               "opens_on": "2026-09-28",
               "closes_at": "2026-10-03T03:59:00.000Z",
-              "done_at": null
+              "done": false
             }
           },
           {
@@ -58,7 +58,7 @@
             "detail": {
               "opens_on": "2026-09-28",
               "closes_at": "2026-10-03T03:59:00.000Z",
-              "done_at": null
+              "done": false
             }
           },
           {
@@ -70,7 +70,7 @@
             "detail": {
               "opens_on": "2026-09-28",
               "closes_at": "2026-10-03T03:59:00.000Z",
-              "done_at": null
+              "done": false
             }
           },
           {
@@ -82,7 +82,7 @@
             "detail": {
               "opens_on": "2026-09-28",
               "closes_at": "2026-10-03T03:59:00.000Z",
-              "done_at": null
+              "done": false
             }
           }
         ],
@@ -241,7 +241,7 @@
             "detail": {
               "opens_on": "2026-09-29",
               "closes_at": "2026-10-06T03:55:00.000Z",
-              "done_at": null
+              "done": false
             }
           },
           {
@@ -253,7 +253,7 @@
             "detail": {
               "opens_on": "2026-10-06",
               "closes_at": "2026-10-10T03:55:00.000Z",
-              "done_at": null
+              "done": false
             }
           }
         ],
@@ -1170,7 +1170,7 @@
             "detail": {
               "opens_on": "2026-10-15",
               "closes_at": "2026-10-16T03:59:00.000Z",
-              "done_at": null
+              "done": false
             }
           }
         ],
@@ -1798,7 +1798,7 @@
             "detail": {
               "opens_on": "2026-11-05",
               "closes_at": "2026-11-19T04:59:00.000Z",
-              "done_at": null
+              "done": false
             }
           }
         ],
@@ -1932,7 +1932,7 @@
             "detail": {
               "opens_on": "2026-11-05",
               "closes_at": "2026-11-19T04:59:00.000Z",
-              "done_at": null
+              "done": false
             }
           },
           {
@@ -1944,7 +1944,7 @@
             "detail": {
               "opens_on": "2026-11-11",
               "closes_at": "2026-11-26T04:59:00.000Z",
-              "done_at": "2026-11-13T03:23:00.000Z"
+              "done": true
             }
           }
         ],
@@ -1984,12 +1984,10 @@
           "match": {
             "op": "update_node",
             "node_id": "c4310000-0000-4000-8000-000000000055",
-            "sets": "done_at"
+            "sets": "done"
           },
           "check": {
-            "nulls": [
-              "done_at"
-            ]
+            "done_false": true
           },
           "why": "The correction clears the wrong done mark on the node it names"
         },
@@ -2017,7 +2015,8 @@
           },
           "why": "Q1 to Q4 is not what the correction is about"
         }
-      ]
+      ],
+      "source_text": "I never submitted Q5, it is still not handed in."
     },
     {
       "name": "course-syllabus-deadlines-open-in-turn",
@@ -2336,10 +2335,7 @@
               "all_day": false,
               "time_zone": null,
               "rsvp": null,
-              "outcome": null,
-              "outcome_at": null,
-              "actual_start": null,
-              "actual_end": null
+              "attended": null
             }
           }
         ],
@@ -2731,8 +2727,8 @@
       ]
     },
     {
-      "name": "missed-lecture-is-a-session-outcome",
-      "finding": "spec §12.1 (skipping one lecture is a missed outcome)",
+      "name": "missed-lecture-is-a-session-not-attended",
+      "finding": "spec §12.1 (skipping one lecture is not attended)",
       "occurred_at": "2026-10-22T21:00:00-04:00",
       "text": "Nightly review: Ankur missed today's CSE 431 lecture; he had no ride.",
       "candidates": {
@@ -2781,10 +2777,10 @@
               "to_date": "^2026-10-22$"
             },
             "set": {
-              "outcome": "^missed$"
+              "attended": "^false$"
             }
           },
-          "why": "Missing one lecture is that session's missed outcome"
+          "why": "Missing one lecture is that session not attended"
         },
         {
           "expect": "none",
@@ -2801,12 +2797,12 @@
             "kind": "memory",
             "title": "missed"
           },
-          "why": "The outcome itself is not a memory"
+          "why": "That he missed it is not a memory"
         }
       ]
     },
     {
-      "name": "missed-plan-outcome",
+      "name": "missed-plan-not-attended",
       "finding": "planner design 2026-10-25",
       "occurred_at": "2026-10-29T22:00:00-04:00",
       "text": "Nightly review: Ankur missed today's Lower Hypertrophy gym session because his knee was sore.",
@@ -2834,10 +2830,7 @@
               "all_day": false,
               "time_zone": null,
               "rsvp": null,
-              "outcome": null,
-              "outcome_at": null,
-              "actual_start": null,
-              "actual_end": null
+              "attended": null
             }
           }
         ],
@@ -2857,14 +2850,14 @@
           "match": {
             "op": "update_node",
             "node_id": "9d3c1b2a-7e6f-4a5b-9c8d-0e1f2a3b4c5d",
-            "sets": "outcome"
+            "sets": "attended"
           },
           "check": {
             "detail": {
-              "outcome": "^missed$"
+              "attended": "^false$"
             }
           },
-          "why": "A missed plan gets outcome missed on that plan"
+          "why": "A missed plan gets attended false on that plan"
         },
         {
           "expect": "none",
@@ -2886,7 +2879,7 @@
     },
     {
       "name": "submission-marks-the-task-done",
-      "finding": "audit 2026-10-24 (72 outcome memories)",
+      "finding": "audit 2026-10-24 (72 memories of how plans went)",
       "occurred_at": "2026-10-14T22:10:00-04:00",
       "text": "Ankur submitted CSE 431 HW3, all six questions, to Gradescope on Oct 14, 2026 at 10:05 PM.",
       "candidates": {
@@ -2918,7 +2911,7 @@
             "detail": {
               "opens_on": "2026-09-30",
               "closes_at": "2026-10-15T03:59:00.000Z",
-              "done_at": null
+              "done": false
             }
           }
         ],
@@ -2949,10 +2942,10 @@
           "match": {
             "op": "update_node",
             "node_id": "f8848eed-a71b-46b7-8378-5927827d11ce",
-            "sets": "done_at"
+            "sets": "done"
           },
           "check": {
-            "done_local_date": "2026-10-14"
+            "done_true": true
           },
           "why": "A stated submission marks the task done when it happened"
         },
@@ -2970,7 +2963,7 @@
             "node_id": "f8848eed-a71b-46b7-8378-5927827d11ce",
             "text": "submitted"
           },
-          "why": "Done lives in done_at, not the body"
+          "why": "Done lives in done, not the body"
         }
       ],
       "source_text": "I submitted CSE 431 HW3 to Gradescope tonight."
@@ -3009,7 +3002,7 @@
             "detail": {
               "opens_on": "2026-10-23",
               "closes_at": "2026-11-07T04:59:00.000Z",
-              "done_at": null
+              "done": false
             }
           }
         ],
@@ -3098,7 +3091,7 @@
             "detail": {
               "opens_on": "2026-10-22",
               "closes_at": "2026-11-05T04:59:00.000Z",
-              "done_at": null
+              "done": false
             }
           }
         ],
@@ -3254,10 +3247,7 @@
               "all_day": false,
               "time_zone": null,
               "rsvp": null,
-              "outcome": null,
-              "outcome_at": null,
-              "actual_start": null,
-              "actual_end": null
+              "attended": null
             }
           },
           {
@@ -3269,7 +3259,7 @@
             "detail": {
               "opens_on": "2026-11-11",
               "closes_at": "2026-11-19T04:59:00.000Z",
-              "done_at": null
+              "done": false
             }
           }
         ],
@@ -3353,7 +3343,7 @@
             "detail": {
               "opens_on": null,
               "closes_at": null,
-              "done_at": null
+              "done": false
             }
           },
           {
@@ -3406,10 +3396,10 @@
           "match": {
             "op": "update_node",
             "node_id": "82a29816-c6aa-45a9-9436-349e09b28731",
-            "sets": "done_at"
+            "sets": "done"
           },
           "check": {
-            "done_local_date": "2026-10-13"
+            "done_true": true
           },
           "why": "Applying is the Someday task done, dated when he applied (TL2)"
         },
@@ -3462,7 +3452,7 @@
             "detail": {
               "opens_on": null,
               "closes_at": null,
-              "done_at": null
+              "done": false
             }
           }
         ],
@@ -3482,10 +3472,10 @@
           "match": {
             "op": "update_node",
             "node_id": "3c5f0b12-8e47-4a6d-9b21-7d1e4f6a8c30",
-            "sets": "done_at"
+            "sets": "done"
           },
           "check": {
-            "done_local_date": "2026-10-21"
+            "done_true": true
           },
           "why": "The receipt settles the open task, done Oct 21"
         },
@@ -3535,7 +3525,7 @@
             "detail": {
               "opens_on": null,
               "closes_at": null,
-              "done_at": null
+              "done": false
             }
           }
         ],
@@ -3555,10 +3545,10 @@
           "match": {
             "op": "update_node",
             "node_id": "5a7d2e91-0c3b-4f68-8a14-2b9c6d0e1f47",
-            "sets": "done_at"
+            "sets": "done"
           },
           "check": {
-            "done_local_date": "2026-10-30"
+            "done_true": true
           },
           "why": "Finding the doctor marks the task done on the day reported"
         },
@@ -3608,7 +3598,7 @@
             "detail": {
               "opens_on": "2026-10-21",
               "closes_at": "2026-11-01T03:59:00.000Z",
-              "done_at": null
+              "done": false
             }
           }
         ],
@@ -3662,7 +3652,7 @@
           "match": {
             "op": "update_node",
             "node_id": "4b7e2a10-9c3d-4e5f-8a61-7d2c9b0e1f34",
-            "sets": "done_at"
+            "sets": "done"
           },
           "why": "Planning to take it is not having taken it"
         }
@@ -3853,7 +3843,7 @@
             "detail": {
               "opens_on": "2026-11-11",
               "closes_at": "2026-11-19T04:59:00.000Z",
-              "done_at": null
+              "done": false
             }
           }
         ],
@@ -3894,9 +3884,9 @@
           "expect": "none",
           "match": {
             "op": "update_node",
-            "sets": "done_at"
+            "sets": "done"
           },
-          "why": "A due-date list is not a completion"
+          "why": "A due-date list does not make a task done"
         },
         {
           "expect": "none",
@@ -3911,7 +3901,7 @@
     },
     {
       "name": "page-shows-upload-is-not-done",
-      "finding": "a8c49f7b T1 25390 (node a38b3647 done_at from a course-site upload)",
+      "finding": "a8c49f7b T1 25390 (node a38b3647 done from a course-site upload)",
       "occurred_at": "2026-11-13T09:00:00-05:00",
       "text": "The CSE 335 course site shows desaia11.zip uploaded Thursday, November 12, 2026 at 11:50 PM ET, before the 11:55 PM deadline.",
       "candidates": {
@@ -3943,7 +3933,7 @@
             "detail": {
               "opens_on": "2026-11-05",
               "closes_at": "2026-11-13T04:55:00.000Z",
-              "done_at": null
+              "done": false
             }
           }
         ],
@@ -3973,7 +3963,7 @@
           "expect": "none",
           "match": {
             "op": "update_node",
-            "sets": "done_at"
+            "sets": "done"
           },
           "why": "What a page shows is a record an agent can read again; only Ankur's word marks a task done"
         },
@@ -3991,8 +3981,8 @@
       ]
     },
     {
-      "name": "ankur-done-now-uses-utterance-time",
-      "finding": "a8c49f7b M7 (done_at 7 s before the statement, minute-rounded)",
+      "name": "ankur-done-now-sets-done",
+      "finding": "a8c49f7b M7 (done needs his words, no done time kept)",
       "occurred_at": "2026-11-13T16:47:07-05:00",
       "text": "Ankur sent in the scholarship essay.",
       "candidates": {
@@ -4017,7 +4007,7 @@
             "detail": {
               "opens_on": "2026-11-13",
               "closes_at": "2026-11-16T17:00:00.000Z",
-              "done_at": null
+              "done": false
             }
           }
         ],
@@ -4029,13 +4019,12 @@
           "match": {
             "op": "update_node",
             "node_id": "e5000000-0000-4000-8000-000000000c02",
-            "sets": "done_at"
+            "sets": "done"
           },
           "check": {
-            "done_local_date": "2026-11-13",
-            "done_at_is_utterance": true
+            "done_true": true
           },
-          "why": "Ankur said he did it now: done_at is the utterance time, to the second, never a rounded clock time"
+          "why": "Ankur said he did it: the task is done, his own words said it"
         }
       ],
       "source_text": "I sent in the scholarship essay."
@@ -4067,7 +4056,7 @@
             "detail": {
               "opens_on": "2026-11-23",
               "closes_at": "2026-12-11T22:00:00.000Z",
-              "done_at": null
+              "done": false
             }
           }
         ],
@@ -4123,7 +4112,7 @@
             "detail": {
               "opens_on": "2026-11-18",
               "closes_at": "2026-11-20T04:59:00.000Z",
-              "done_at": null
+              "done": false
             }
           }
         ],
@@ -4309,10 +4298,7 @@
               "all_day": false,
               "time_zone": null,
               "rsvp": "no",
-              "outcome": null,
-              "outcome_at": null,
-              "actual_start": null,
-              "actual_end": null
+              "attended": null
             }
           }
         ],
@@ -4372,8 +4358,8 @@
             "detail": {
               "opens_on": "2026-11-11",
               "closes_at": "2026-11-18T23:59:00-05:00",
-              "done_at": null,
-              "verified_at": "2026-11-05T09:00:00-05:00"
+              "verified_at": "2026-11-05T09:00:00-05:00",
+              "done": false
             }
           }
         ],
@@ -4693,12 +4679,12 @@
             "op": "create_node",
             "text": "submitted"
           },
-          "why": "Where it is handed in is an instruction, not a completion"
+          "why": "Where it is handed in is an instruction, not done"
         }
       ]
     },
     {
-      "name": "done-from-his-words-sets-done-at",
+      "name": "done-from-his-words-sets-done",
       "finding": "run 14c22f8f RC6 (done only from Ankur's own words)",
       "occurred_at": "2026-11-13T23:50:00-05:00",
       "text": "Ankur says he submitted the scholarship essay.",
@@ -4725,7 +4711,7 @@
             "detail": {
               "opens_on": "2026-11-13",
               "closes_at": "2026-11-16T17:00:00.000Z",
-              "done_at": null
+              "done": false
             }
           }
         ],
@@ -4737,10 +4723,10 @@
           "match": {
             "op": "update_node",
             "node_id": "e5ca0000-0000-4000-8000-000000000e01",
-            "sets": "done_at"
+            "sets": "done"
           },
           "check": {
-            "done_at_is_utterance": true
+            "done_true": true
           },
           "why": "His own words say he did it, so the task is done"
         }
@@ -4774,7 +4760,7 @@
             "detail": {
               "opens_on": "2026-11-13",
               "closes_at": "2026-11-16T17:00:00.000Z",
-              "done_at": null
+              "done": false
             }
           }
         ],
@@ -4788,7 +4774,7 @@
               "create_node",
               "update_node"
             ],
-            "sets": "done_at"
+            "sets": "done"
           },
           "why": "His words are an instruction to submit; the agent's paraphrase does not make it done"
         },
@@ -4806,8 +4792,8 @@
       ]
     },
     {
-      "name": "no-words-from-him-no-done-at",
-      "finding": "run 14c22f8f RC6 (agent text alone never sets done_at)",
+      "name": "no-words-from-him-no-done",
+      "finding": "run 14c22f8f RC6 (agent text alone never sets done)",
       "occurred_at": "2026-11-13T23:50:00-05:00",
       "text": "The helper reports the scholarship essay was submitted on the portal tonight.",
       "candidates": {
@@ -4832,7 +4818,7 @@
             "detail": {
               "opens_on": "2026-11-13",
               "closes_at": "2026-11-16T17:00:00.000Z",
-              "done_at": null
+              "done": false
             }
           }
         ],
@@ -4846,9 +4832,9 @@
               "create_node",
               "update_node"
             ],
-            "sets": "done_at"
+            "sets": "done"
           },
-          "why": "Without his own words nothing sets done_at"
+          "why": "Without his own words nothing sets done"
         }
       ]
     },
@@ -4960,10 +4946,7 @@
               "all_day": false,
               "time_zone": null,
               "rsvp": null,
-              "outcome": null,
-              "outcome_at": null,
-              "actual_start": null,
-              "actual_end": null
+              "attended": null
             }
           }
         ],
@@ -5055,10 +5038,7 @@
               "all_day": false,
               "time_zone": null,
               "rsvp": null,
-              "outcome": null,
-              "outcome_at": null,
-              "actual_start": null,
-              "actual_end": null
+              "attended": null
             }
           }
         ],
@@ -5150,10 +5130,7 @@
               "all_day": false,
               "time_zone": null,
               "rsvp": null,
-              "outcome": null,
-              "outcome_at": null,
-              "actual_start": null,
-              "actual_end": null
+              "attended": null
             }
           }
         ],
@@ -5354,10 +5331,7 @@
               "all_day": false,
               "time_zone": null,
               "rsvp": null,
-              "outcome": null,
-              "outcome_at": null,
-              "actual_start": null,
-              "actual_end": null
+              "attended": null
             }
           }
         ],
@@ -5433,7 +5407,7 @@
             "detail": {
               "opens_on": null,
               "closes_at": null,
-              "done_at": null
+              "done": false
             }
           }
         ],
@@ -5477,6 +5451,294 @@
             "node_id": "5b4a0000-0000-4000-8000-000000000003"
           },
           "why": "The Someday item is closed or updated, not left beside the plan"
+        }
+      ]
+    },
+    {
+      "name": "his-short-words-set-done",
+      "finding": "cycle 14 Y2 (done needs his words, not a word list)",
+      "occurred_at": "2026-11-13T23:50:00-05:00",
+      "text": "Ankur says the scholarship essay is in.",
+      "source_text": "essay's in",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "e5ca0000-0000-4000-8000-000000000e01",
+            "kind": "task",
+            "title": "Engineering scholarship essay",
+            "body": "Submit on the portal.",
+            "occurred_at": null,
+            "detail": {
+              "opens_on": "2026-11-13",
+              "closes_at": "2026-11-16T17:00:00.000Z",
+              "done": false
+            }
+          }
+        ],
+        "edges": []
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": "update_node",
+            "node_id": "e5ca0000-0000-4000-8000-000000000e01",
+            "sets": "done"
+          },
+          "check": {
+            "done_true": true
+          },
+          "why": "Any words of his that say it is done count, and the task is marked done"
+        }
+      ]
+    },
+    {
+      "name": "his-yes-to-the-act-sets-done",
+      "finding": "cycle 14 Y2 (an agent did it at his yes)",
+      "occurred_at": "2026-11-13T23:55:00-05:00",
+      "text": "Ankur said yes to submitting the scholarship essay. The helper submitted it on the portal at 11:52 PM ET and the portal shows a receipt.",
+      "source_text": "yes, submit it",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "e5ca0000-0000-4000-8000-000000000e01",
+            "kind": "task",
+            "title": "Engineering scholarship essay",
+            "body": "Submit on the portal.",
+            "occurred_at": null,
+            "detail": {
+              "opens_on": "2026-11-13",
+              "closes_at": "2026-11-16T17:00:00.000Z",
+              "done": false
+            }
+          }
+        ],
+        "edges": []
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": "update_node",
+            "node_id": "e5ca0000-0000-4000-8000-000000000e01",
+            "sets": "done"
+          },
+          "check": {
+            "done_true": true
+          },
+          "why": "His yes for the act that did it is done"
+        }
+      ]
+    },
+    {
+      "name": "stated-31-day-window-is-kept",
+      "finding": "cycle 14 Y3 (a stated open is never clamped)",
+      "occurred_at": "2026-10-20T09:00:00-04:00",
+      "text": "CSE 300 Kritik Essay 3 runs Oct 14 to Nov 14, 2026, closing 11:59 PM ET.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "c3000000-0000-4000-8000-000000000e03",
+            "kind": "memory",
+            "title": "CSE 300 class",
+            "body": null,
+            "occurred_at": null
+          }
+        ],
+        "edges": [
+          {
+            "id": "00000304-0000-4000-8000-000000000304",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "c3000000-0000-4000-8000-000000000e03",
+            "type": "ENROLLED_IN",
+            "properties": {
+              "status": "enrolled"
+            }
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "kind": "task",
+            "title": "Kritik Essay 3"
+          },
+          "check": {
+            "opens_on": "2026-10-14",
+            "closes_local_date": "2026-11-14",
+            "closes_local_time": "23:59"
+          },
+          "why": "An open Ankur states is the window, even when it is longer than 28 days"
+        }
+      ]
+    },
+    {
+      "name": "past-close-he-states-is-stored",
+      "finding": "cycle 14 Y3 (a past close Ankur states is stored)",
+      "occurred_at": "2026-11-13T09:00:00-05:00",
+      "text": "Ankur says he missed CSE 431 HW3, which was due Thu Nov 12, 2026 at 11:59 PM ET.",
+      "source_text": "I missed HW3, it was due yesterday",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "c4310000-0000-4000-8000-000000000e03",
+            "kind": "memory",
+            "title": "CSE 431 class",
+            "body": null,
+            "occurred_at": null
+          }
+        ],
+        "edges": [
+          {
+            "id": "00000305-0000-4000-8000-000000000305",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "c4310000-0000-4000-8000-000000000e03",
+            "type": "ENROLLED_IN",
+            "properties": {
+              "status": "enrolled"
+            }
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "kind": "task",
+            "title": "HW3"
+          },
+          "check": {
+            "closes_local_date": "2026-11-12",
+            "not_done": true
+          },
+          "why": "A close before the text that Ankur's own words state is stored, and not marked done"
+        }
+      ]
+    },
+    {
+      "name": "batch-with-a-live-duplicate-updates-it",
+      "finding": "cycle 14 Y4 (a duplicate never fails the batch)",
+      "occurred_at": "2026-11-17T12:00:00-05:00",
+      "text": "Jake confirmed gym on Fri Nov 20 at 6:00 PM. Ankur joined the Planet Fitness on Grand River Ave. Ankur wants to try bouldering sometime.",
+      "candidates": {
+        "nodes": [
+          {
+            "id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "kind": "person",
+            "title": "Ankur Desai",
+            "detail": {
+              "birthday": "2005-11-25",
+              "aliases": [
+                "Ankur"
+              ]
+            }
+          },
+          {
+            "id": "a1b20000-0000-4000-8000-000000000001",
+            "kind": "person",
+            "title": "Jake Moreno",
+            "body": null,
+            "occurred_at": null,
+            "detail": {
+              "birthday": null,
+              "aliases": []
+            }
+          },
+          {
+            "id": "a1b20000-0000-4000-8000-000000000002",
+            "kind": "plan",
+            "title": "Gym with Jake",
+            "body": null,
+            "occurred_at": "2026-11-20T18:00:00-05:00",
+            "detail": {
+              "end_at": null,
+              "all_day": false,
+              "time_zone": null,
+              "rsvp": null,
+              "attended": null
+            }
+          }
+        ],
+        "edges": [
+          {
+            "id": "a1b20000-0000-4000-8000-0000000000e1",
+            "src_id": "fa32da87-278a-4f65-a106-b947c0b7724d",
+            "dst_id": "a1b20000-0000-4000-8000-000000000002",
+            "type": "PARTICIPANT",
+            "properties": {}
+          },
+          {
+            "id": "a1b20000-0000-4000-8000-0000000000e2",
+            "src_id": "a1b20000-0000-4000-8000-000000000001",
+            "dst_id": "a1b20000-0000-4000-8000-000000000002",
+            "type": "PARTICIPANT",
+            "properties": {}
+          }
+        ]
+      },
+      "expectations": [
+        {
+          "expect": "none",
+          "match": {
+            "op": "create_node",
+            "kind": "plan"
+          },
+          "why": "The stored gym plan is reused; the confirmation never creates a second one"
+        },
+        {
+          "expect": "some",
+          "match": {
+            "op": "create_node",
+            "text": "Planet Fitness"
+          },
+          "why": "The other facts in the batch are still stored"
         }
       ]
     }

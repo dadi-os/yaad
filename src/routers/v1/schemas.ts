@@ -2,7 +2,7 @@
 
 import { z, type ZodError, type ZodType } from "zod";
 import { YaadError } from "../../errors.js";
-import { OUTCOMES, RSVPS, TIMELINE_VIEWS } from "../../types/timeline.js";
+import { RSVPS, TIMELINE_VIEWS } from "../../types/timeline.js";
 
 /** Parse with zod; map failures to `422 invalid_request`. */
 export function parse<T>(schema: ZodType<T>, data: unknown): T {
@@ -41,9 +41,7 @@ const timeZone = z
 const planOptionalFields = {
   time_zone: timeZone.nullable().optional(),
   rsvp: z.enum(RSVPS).nullable().optional(),
-  outcome: z.enum(OUTCOMES).nullable().optional(),
-  actual_start: instant.nullable().optional(),
-  actual_end: instant.nullable().optional(),
+  attended: z.boolean().nullable().optional(),
 };
 
 /**
@@ -60,13 +58,14 @@ export const planDetailBody = z
 
 /**
  * A task's detail: relevant from `opens_on` until `closes_at`, with neither it is Someday, and a
- * close needs an open. `done_at` is Ankur's tick.
+ * close needs an open. `done` says whether it is done; it is set like any other field, and
+ * a create that does not state it is not done.
  */
 export const taskDetailBody = z
   .object({
     opens_on: z.string().date().nullable().optional(),
     closes_at: instant.nullable().optional(),
-    done_at: instant.nullable().optional(),
+    done: z.boolean().optional(),
   })
   .strict();
 
@@ -134,7 +133,7 @@ export const createEdgeBody = z
 
 const ingestFields = {
   text: z.string().min(1),
-  /** Ankur's own words, verbatim: the only source of a task's `done_at`. Omit when there are none. */
+  /** Ankur's own words, verbatim: what lets a task that closed before the text be stored when he states its date. Omit when there are none. */
   source_text: z.string().min(1).optional(),
   occurred_at: z.string().datetime({ offset: true }),
   participant_ids: z.array(z.string().uuid()).optional(),
@@ -165,6 +164,9 @@ const nodeFilterFields = {
   occurred_from: z.string().datetime({ offset: true }).optional(),
   occurred_to: z.string().datetime({ offset: true }).optional(),
   relevant_on: z.string().date().optional(),
+  hub: z.string().min(1).optional(),
+  closes_from: z.string().date().optional(),
+  closes_to: z.string().date().optional(),
 };
 
 export const queryBody = z
@@ -202,9 +204,9 @@ export const timelineBody = z
   .strict()
   .refine((body) => Date.parse(body.from) < Date.parse(body.to), "from must be before to");
 
-/** `PUT /timeline/outcome` — Ankur marks one plan done or missed, or takes the mark back (null). */
-export const outcomeBody = z
-  .object({ plan_id: z.string().uuid(), outcome: z.enum(OUTCOMES).nullable() })
+/** `PUT /timeline/attended` — Ankur says whether he was at one plan (true or false), or takes the mark back (null). */
+export const attendedBody = z
+  .object({ plan_id: z.string().uuid(), attended: z.boolean().nullable() })
   .strict();
 
 /** `PUT /timeline/rsvp` — Ankur says whether he is going to one plan, or clears the answer (null). */
@@ -218,5 +220,8 @@ export const tasksBody = z
   .strict()
   .refine((body) => (body.on === undefined) !== (body.someday === undefined), "send exactly one of on or someday");
 
-/** `PUT /tasks/done` — Ankur ticks one task (`done: true`) or takes the tick back. */
+/** `POST /tasks/verify` — Ankur's agent restates these tasks as still true, with no extraction. */
+export const tasksVerifyBody = z.object({ node_ids: z.array(z.string().uuid()).min(1) }).strict();
+
+/** `PUT /tasks/done` — Ankur marks one task done (`done: true`) or not done (`done: false`). */
 export const taskDoneBody = z.object({ task_id: z.string().uuid(), done: z.boolean() }).strict();

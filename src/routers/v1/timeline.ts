@@ -3,7 +3,7 @@
  * /timeline` reads `[from, to)` through one view: `planner` (timed plans with a start and an end,
  * for the day and week grid), `month` (all-day and multi-day plans, and plans that are not a
  * session of a course) and `tile` (every plan, for the home ribbon). Declined plans
- * are kept and marked, never hidden; a plan called off is closed and gone. `PUT /timeline/outcome` and `PUT /timeline/rsvp` are
+ * are kept and marked, never hidden; a plan called off is closed and gone. `PUT /timeline/attended` and `PUT /timeline/rsvp` are
  * the writes Ankur makes by hand on a plan.
  */
 
@@ -23,7 +23,7 @@ import {
   type TimelinePlace,
   type TimelineView,
 } from "../../types/timeline.js";
-import { outcomeBody, parse, rsvpBody, timelineBody } from "./schemas.js";
+import { attendedBody, parse, rsvpBody, timelineBody } from "./schemas.js";
 
 /** A plan with its detail, as the views read it. */
 type PlanRow = { node: typeof node.$inferSelect; detail: typeof planDetail.$inferSelect };
@@ -44,12 +44,11 @@ export async function registerTimeline(app: FastifyInstance): Promise<void> {
     return { items: await timeline(app.db, new Date(body.from), new Date(body.to), body.view, app.config.env.timezone) };
   });
 
-  app.put("/timeline/outcome", async (request) => {
-    const body = parse(outcomeBody, request.body);
+  app.put("/timeline/attended", async (request) => {
+    const body = parse(attendedBody, request.body);
     await requirePlan(app.db, body.plan_id);
-    const outcomeAt = body.outcome === null ? null : new Date();
-    await app.db.update(planDetail).set({ outcome: body.outcome, outcomeAt }).where(eq(planDetail.nodeId, body.plan_id));
-    return { plan_id: body.plan_id, outcome: body.outcome, outcome_at: outcomeAt?.toISOString() ?? null };
+    await app.db.update(planDetail).set({ attended: body.attended }).where(eq(planDetail.nodeId, body.plan_id));
+    return { plan_id: body.plan_id, attended: body.attended };
   });
 
   app.put("/timeline/rsvp", async (request) => {
@@ -158,10 +157,7 @@ async function toItems(db: Db, shown: PlanRow[], hubs: Awaited<ReturnType<typeof
       end_at: plain.end_at,
       all_day: plain.all_day,
       time_zone: plain.time_zone,
-      outcome: plain.outcome,
-      outcome_at: plain.outcome_at,
-      actual_start: plain.actual_start,
-      actual_end: plain.actual_end,
+      attended: plain.attended,
       place: places.get(plan.id) ?? null,
       hub: hubs.get(plan.id) ?? null,
       owner: plan.agentId ?? plan.source,

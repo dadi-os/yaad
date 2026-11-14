@@ -27,7 +27,7 @@ export async function annSearch(opts: {
     return tx<AnnRow[]>`
       SELECT
         id, kind, title, body, embedding,
-        occurred_at AS "occurredAt", expires_at AS "expiresAt",
+        occurred_at AS "occurredAt", expires_at AS "expiresAt", verified_at AS "verifiedAt",
         access_count AS "accessCount",
         last_accessed_at AS "lastAccessedAt", source, agent_id AS "agentId",
         created_at AS "createdAt", updated_at AS "updatedAt",
@@ -98,6 +98,7 @@ function toNodeRow(row: AnnRow): NodeRow {
     embedding: row.embedding,
     occurredAt: toDate(row.occurredAt),
     expiresAt: toDate(row.expiresAt),
+    verifiedAt: toDate(row.verifiedAt),
     accessCount: Number(row.accessCount),
     lastAccessedAt: toDate(row.lastAccessedAt),
     source: row.source,

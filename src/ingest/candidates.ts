@@ -4,7 +4,8 @@ import { inArray } from "drizzle-orm";
 import type { Config } from "../config.js";
 import type { Db, Sql } from "../db/client.js";
 import { annSearch } from "../db/ann.js";
-import { openTasks } from "../db/tasks.js";
+import { hubsOf, openTasks, touchedHubs } from "../db/tasks.js";
+import { identifyingWords, normalizeTitle } from "./duplicates.js";
 import { getCurrentPersons, getIncidentEdgesForIds, getNode, getNodesByIds, HUB_DEGREE } from "../db/read.js";
 import {
   personDetail,
@@ -20,7 +21,7 @@ import {
 } from "../db/schema.js";
 import { YaadError } from "../errors.js";
 import { toEdgeRecord, toNodeRecord, toPersonDetail, toPlaceDetail, toPlanDetail, toTaskDetail } from "../serialize.js";
-import type { EdgeRecord, NodeRecord, PersonDetail, PlaceDetail, PlanDetail, TaskDetail } from "../types/domain.js";
+import type { EdgeRecord, NodeAuthor, NodeRecord, PersonDetail, PlaceDetail, PlanDetail, TaskDetail } from "../types/domain.js";
 import { SESSION_EDGE } from "../types/timeline.js";
 import { isExpired } from "./expiry.js";
 
@@ -82,10 +83,12 @@ function mentions(text: string, name: string): boolean {
 
 /**
  * Build the candidate graph shown to extraction: live nodes near the whole utterance and
- * near each of its segments, every recent or upcoming task not done, newest first (a task with a
- * terse title is not near a long update in meaning, so similarity alone never brings it, and the
- * model would create a second task instead of settling the first), every person named in the text, explicit participant ids,
- * and `extraIds` (lookalikes found after a first extraction, see findLookalikes).
+ * near each of its segments, the recent or upcoming tasks not done that the text may settle (a
+ * task with a terse title is not near a long update in meaning, so similarity alone never brings it,
+ * and the model would create a second task instead of settling the first): those under a course
+ * the text touches (a nearest node is it or one of its tasks) or that `author` wrote, and those
+ * sharing an identifying title word with the text; every person named in the text, explicit
+ * participant ids, and `extraIds` (lookalikes found after a first extraction, see findLookalikes).
  */
 export async function assembleCandidates(opts: {
   db: Db;
@@ -96,6 +99,8 @@ export async function assembleCandidates(opts: {
   /** One embedding per entry of segmentsOf(text), in the same order. */
   segmentEmbeddings: number[][];
   participantIds: string[];
+  /** Who is writing: the courses an agent wrote count as touched by its text. */
+  author: NodeAuthor;
   extraIds: string[];
 }): Promise<CandidateState> {
   const byId = new Map<string, NodeRow>();
@@ -121,8 +126,15 @@ export async function assembleCandidates(opts: {
     }
   }
 
-  for (const { node: open } of await openTasks(opts.db, opts.config.ingest.open_item_limit, new Date())) {
-    byId.set(open.id, open);
+  const open = await openTasks(opts.db, new Date());
+  const courses = await touchedHubs(opts.db, [...byId.keys()], opts.author.agentId);
+  const hubOf = await hubsOf(opts.db, open.map((row) => row.node.id), "HAS_ITEM");
+  const textWords = new Set(normalizeTitle(opts.text).split(" "));
+  for (const { node: task } of open) {
+    const hub = hubOf.get(task.id);
+    if ((hub !== undefined && courses.has(hub.id)) || [...identifyingWords(task.title)].some((word) => textWords.has(word))) {
+      byId.set(task.id, task);
+    }
   }
 
   const persons = await getCurrentPersons(opts.db);

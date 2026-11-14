@@ -105,7 +105,7 @@ test("query relevant_on lists the tasks not done whose open day has come, and re
   await resetGraph(handle.sql);
   const open = await insertTask(handle.db, { title: "HW 3", embedding: axisVector(dim, 0), opensOn: "2026-11-10", closesAt: new Date("2026-11-14T04:59:00.000Z") });
   await insertTask(handle.db, { title: "HW 4", embedding: axisVector(dim, 1), opensOn: "2026-11-13", closesAt: new Date("2026-11-20T04:59:00.000Z") });
-  await insertTask(handle.db, { title: "HW 2", embedding: axisVector(dim, 2), opensOn: "2026-11-01", closesAt: new Date("2026-11-05T04:59:00.000Z"), doneAt: new Date("2026-11-04T20:00:00.000Z") });
+  await insertTask(handle.db, { title: "HW 2", embedding: axisVector(dim, 2), opensOn: "2026-11-01", closesAt: new Date("2026-11-05T04:59:00.000Z"), done: true });
   const res = await query({ relevant_on: "2026-11-12" });
   assert.equal(res.statusCode, 200);
   assert.deepEqual(res.json().nodes.map((n: { id: string }) => n.id), [open]);

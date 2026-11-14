@@ -3,7 +3,9 @@
  * filter returns nodes whose time falls in the range, treating a plan with no end as an instant
  * at its start. `relevant_on` returns the tasks not done whose open day has come by that local
  * day and that have no close or closed within the last 14 days of it: closing on or after the day
- * first (soonest first), then the recently past due (latest first).
+ * first (soonest first), then the recently past due (latest first). `closes_from` and `closes_to`
+ * (local dates, inclusive) return tasks by close day, done ones included, and `hub` (a node id or an
+ * exact title) returns what that hub holds: its tasks and sessions.
  */
 
 import { and, asc, eq, gt, isNull, or, sql, type SQL } from "drizzle-orm";
@@ -22,6 +24,11 @@ export type NodeFilter = {
   occurred_to?: string | undefined;
   /** A local date: the tasks relevant that day. */
   relevant_on?: string | undefined;
+  /** A hub's id or exact title (compared case-insensitively): the nodes it holds by `HAS_ITEM` or `HAS_SESSION`. */
+  hub?: string | undefined;
+  /** Local dates, inclusive: tasks whose close day falls in the range. */
+  closes_from?: string | undefined;
+  closes_to?: string | undefined;
 };
 
 /** True when at least one filter field is set. */
@@ -31,14 +38,21 @@ export function hasFilter(filter: NodeFilter): boolean {
     filter.name !== undefined ||
     filter.occurred_from !== undefined ||
     filter.occurred_to !== undefined ||
-    filter.relevant_on !== undefined
+    filter.relevant_on !== undefined ||
+    filter.hub !== undefined ||
+    filter.closes_from !== undefined ||
+    filter.closes_to !== undefined
   );
 }
 
-/** Reject `relevant_on` combined with a non-task kind. */
+/** Reject a task-only filter combined with another kind, and `occurred_*` on tasks, which have no `occurred_at`. */
 export function assertFilterCoherent(filter: NodeFilter): void {
-  if (filter.relevant_on !== undefined && filter.kind !== undefined && filter.kind !== "task") {
-    throw new YaadError(422, "invalid_request", "relevant_on requires kind to be task or unset");
+  const taskOnly = filter.relevant_on !== undefined ? "relevant_on" : filter.closes_from !== undefined ? "closes_from" : filter.closes_to !== undefined ? "closes_to" : null;
+  if (taskOnly !== null && filter.kind !== undefined && filter.kind !== "task") {
+    throw new YaadError(422, "invalid_request", `${taskOnly} requires kind to be task or unset`);
+  }
+  if (filter.kind === "task" && (filter.occurred_from !== undefined || filter.occurred_to !== undefined)) {
+    throw new YaadError(422, "invalid_request", "tasks have no occurred_at; use relevant_on or closes_from/closes_to");
   }
 }
 
@@ -49,8 +63,24 @@ export async function filterNodes(db: Db, filter: NodeFilter, limit: number, off
 
   if (filter.kind !== undefined) {
     conditions.push(eq(node.kind, filter.kind));
-  } else if (filter.relevant_on !== undefined) {
+  } else if (filter.relevant_on !== undefined || filter.closes_from !== undefined || filter.closes_to !== undefined) {
     conditions.push(eq(node.kind, "task"));
+  }
+
+  if (filter.closes_from !== undefined) {
+    conditions.push(sql`${taskDetail.closesAt}::date >= ${filter.closes_from}::date`);
+  }
+  if (filter.closes_to !== undefined) {
+    conditions.push(sql`${taskDetail.closesAt}::date <= ${filter.closes_to}::date`);
+  }
+
+  if (filter.hub !== undefined) {
+    conditions.push(sql`${node.id} IN (
+      SELECT e.dst_id FROM edge AS e JOIN node AS h ON h.id = e.src_id
+      WHERE e.valid_to IS NULL AND e.type IN ('HAS_ITEM', 'HAS_SESSION')
+        AND (h.id::text = ${filter.hub} OR lower(h.title) = lower(${filter.hub}))
+        AND (h.expires_at IS NULL OR h.expires_at > now())
+    )`);
   }
 
   if (filter.relevant_on !== undefined) {

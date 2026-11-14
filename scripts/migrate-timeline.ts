@@ -94,7 +94,7 @@ try {
           const day = localDate(at, where);
           const done = overrides.find((row) => row.occurrence_date === day && row.outcome === "done");
           await tx`INSERT INTO node (id, kind, title, body, source, agent_id) VALUES (${id}, 'task', ${plan.title}, ${plan.body}, ${plan.source}, ${plan.agent_id})`;
-          await tx`INSERT INTO task_detail (node_id, opens_on, closes_at, done_at) VALUES (${id}, ${shift === null ? day : localDate(new Date(at.getTime() - shift), where)}, ${at}, ${done?.outcome_at ?? null})`;
+          await tx`INSERT INTO task_detail (node_id, opens_on, closes_at, done) VALUES (${id}, ${shift === null ? day : localDate(new Date(at.getTime() - shift), where)}, ${at}, ${done !== undefined})`;
           counts.tasks += 1;
         }
         await tx`DELETE FROM node WHERE id = ${plan.id}`;
@@ -118,9 +118,9 @@ try {
         const id = randomUUID();
         await tx`INSERT INTO node (id, kind, title, body, occurred_at, source, agent_id) VALUES (${id}, 'plan', ${plan.title}, ${plan.body}, ${start}, ${plan.source}, ${plan.agent_id})`;
         await tx`
-          INSERT INTO plan_detail (node_id, end_at, time_zone, rsvp, outcome, outcome_at, actual_start, actual_end)
+          INSERT INTO plan_detail (node_id, end_at, time_zone, rsvp, attended)
           VALUES (${id}, ${end}, ${plan.time_zone}, ${plan.hide_from_planner ? "no" : null},
-            ${row?.outcome ?? null}, ${row?.outcome_at ?? null}, ${row?.actual_start ?? null}, ${row?.actual_end ?? null})`;
+            ${row?.outcome === "done" ? true : row?.outcome === "missed" ? false : null})`;
         await tx`INSERT INTO edge (id, src_id, dst_id, type, properties, confidence) VALUES (${randomUUID()}, ${plan.id}, ${id}, 'HAS_SESSION', '{}', 1)`;
         for (const place of places) {
           await tx`INSERT INTO edge (id, src_id, dst_id, type, properties, confidence) VALUES (${randomUUID()}, ${id}, ${place.dst_id}, 'AT_LOCATION', ${tx.json(JSON.parse(JSON.stringify(place.properties)))}, 1)`;

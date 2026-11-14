@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
+import { eq } from "drizzle-orm";
 import { buildApp } from "../src/app.js";
+import { node } from "../src/db/schema.js";
 import { shouldStop } from "../src/recall/gate.js";
 import { recall } from "../src/recall/pipeline.js";
 import {
@@ -10,6 +12,7 @@ import {
   insertMemory,
   insertPerson,
   insertPlan,
+  insertTask,
   mockDwar,
   openTestDb,
   resetGraph,
@@ -235,4 +238,75 @@ test("a query walk does not expand out of a node with over 100 edges, but an exp
   assert.deepEqual(asked.nodes.map((item) => item.id), [ankur]);
   const from = await recall({ db: handle.db, sql: handle.sql, dwar, config: base, from: [ankur], hops: 1, limit: 200, debug: false });
   assert.equal(from.nodes.length, 102);
+});
+
+async function recallCall(payload: Record<string, unknown>) {
+  const app = await buildApp(base, { db: handle.db, sql: handle.sql, dwar: mockDwar({ dimension: dim, embedAxis: 0 }) });
+  const res = await app.inject({ method: "POST", url: "/recall", payload });
+  await app.close();
+  return res;
+}
+
+/** Two courses, each with open tasks, plus a task of the first that is done. */
+async function seedCourses() {
+  await resetGraph(handle.sql);
+  const cse = await insertMemory(handle.db, { title: "CSE 300", embedding: axisVector(dim, 1), agentId: "cse-300-specialist" });
+  const ibio = await insertMemory(handle.db, { title: "IBIO 150", embedding: axisVector(dim, 2) });
+  const hw = await insertTask(handle.db, { title: "HW4", embedding: axisVector(dim, 3), opensOn: "2026-11-10", closesAt: new Date("2026-11-19T04:59:00.000Z") });
+  const essay = await insertTask(handle.db, { title: "Essay", embedding: axisVector(dim, 4), opensOn: "2026-11-10", closesAt: new Date("2026-11-27T17:00:00.000Z"), done: true });
+  const lab = await insertTask(handle.db, { title: "Lab 9", embedding: axisVector(dim, 5), opensOn: "2026-11-10", closesAt: new Date("2026-11-21T04:59:00.000Z") });
+  await insertEdge(handle.db, { src: cse, dst: hw, type: "HAS_ITEM" });
+  await insertEdge(handle.db, { src: cse, dst: essay, type: "HAS_ITEM" });
+  await insertEdge(handle.db, { src: ibio, dst: lab, type: "HAS_ITEM" });
+  return { cse, ibio, hw, essay, lab };
+}
+
+test("a filtered recall returns exactly the filtered rows, even with a query, and expands only with hops", async () => {
+  const { cse, hw, lab } = await seedCourses();
+  const titles = async (payload: Record<string, unknown>) => ((await recallCall(payload)).json().nodes as Array<{ title: string }>).map((item) => item.title).sort();
+  assert.deepEqual(await titles({ query: "what is due", relevant_on: "2026-11-12" }), ["HW4", "Lab 9"]);
+  assert.deepEqual(await titles({ query: "what is due", relevant_on: "2026-11-12", hops: 1 }), ["CSE 300", "HW4", "IBIO 150", "Lab 9"]);
+  assert.equal((await recallCall({ query: "x", relevant_on: "2026-11-12" })).json().hops_taken, 0);
+  assert.ok(cse && hw && lab);
+});
+
+test("hub scopes a recall by id or exact title, and closes_from/closes_to return done tasks too", async () => {
+  const { cse } = await seedCourses();
+  const titles = async (payload: Record<string, unknown>) => ((await recallCall(payload)).json().nodes as Array<{ title: string }>).map((item) => item.title).sort();
+  assert.deepEqual(await titles({ hub: "CSE 300" }), ["Essay", "HW4"]);
+  assert.deepEqual(await titles({ hub: "cse 300", relevant_on: "2026-11-12" }), ["HW4"]);
+  assert.deepEqual(await titles({ hub: cse }), ["Essay", "HW4"]);
+  const range = (await recallCall({ closes_from: "2026-11-20", closes_to: "2026-11-24" })).json().nodes as Array<{ title: string; detail: { done: boolean } }>;
+  assert.deepEqual(range.map((item) => item.title), ["Lab 9"]);
+  const done = (await recallCall({ closes_from: "2026-11-26", closes_to: "2026-11-30" })).json().nodes as Array<{ title: string; detail: { done: boolean } }>;
+  assert.deepEqual(done.map((item) => [item.title, item.detail.done]), [["Essay", true]]);
+});
+
+test("a task recall with occurred_* is a 422 that points at relevant_on and closes_from", async () => {
+  const res = await recallCall({ kind: "task", occurred_from: "2026-11-01T00:00:00Z" });
+  assert.equal(res.statusCode, 422);
+  assert.match(res.json().error.message, /use relevant_on or closes_from/);
+});
+
+test("returned tasks carry local dates, a bucket against the asked day, an owner, and their course's freshness", async () => {
+  const { cse, hw } = await seedCourses();
+  const first = (await recallCall({ hub: "CSE 300", relevant_on: "2026-11-18" })).json();
+  const task = first.nodes[0];
+  assert.equal(task.title, "HW4");
+  assert.equal(task.detail.closes_local, "Wed 2026-11-18 23:59");
+  assert.equal(task.detail.opens_local, "Tue 2026-11-10");
+  assert.equal(task.detail.bucket, "due_on_day");
+  assert.equal(task.detail.owner, "cse-300-specialist");
+  assert.deepEqual(first.courses, { "CSE 300": { verified_at: null, verified_today: false, owner: "cse-300-specialist" } });
+  assert.equal((await recallCall({ hub: "CSE 300", relevant_on: "2026-11-12" })).json().nodes[0].detail.bucket, "upcoming");
+  assert.equal((await recallCall({ hub: "CSE 300", relevant_on: "2026-12-10" })).json().nodes.find((item: { title: string }) => item.title === "HW4"), undefined);
+
+  const now = new Date();
+  await handle.db.update(node).set({ verifiedAt: now }).where(eq(node.id, cse));
+  const fresh = (await recallCall({ hub: "CSE 300" })).json().courses["CSE 300"];
+  assert.equal(fresh.verified_today, true);
+  const yesterday = new Date(now.getTime() - 36 * 3_600_000);
+  await handle.db.update(node).set({ verifiedAt: yesterday }).where(eq(node.id, cse));
+  assert.equal((await recallCall({ hub: "CSE 300" })).json().courses["CSE 300"].verified_today, false);
+  assert.ok(hw);
 });

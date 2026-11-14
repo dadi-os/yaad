@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { eq } from "drizzle-orm";
-import { node, nodeHistory, planDetail } from "../src/db/schema.js";
+import { node, nodeHistory, planDetail, taskDetail } from "../src/db/schema.js";
 import { YaadError } from "../src/errors.js";
 import { applyOperations } from "../src/ingest/apply.js";
 import { assembleCandidates } from "../src/ingest/candidates.js";
-import { findLookalikes } from "../src/ingest/duplicates.js";
+import { findLookalikes, mergeDuplicates, rejectDuplicates } from "../src/ingest/duplicates.js";
 import type { Operation } from "../src/ingest/operations.js";
 import { ingest } from "../src/ingest/pipeline.js";
 import { validateExtraction, validateOperations } from "../src/ingest/validate.js";
+const ZONE = "America/New_York";
 import type { NodeAuthor } from "../src/types/domain.js";
 import {
   axisVector,
@@ -40,8 +41,8 @@ after(async () => {
 });
 
 /** Asserts that `run` rejects with a YaadError of this status and type. */
-async function rejectsWith(run: () => Promise<unknown>, status: number, type: string, message?: RegExp) {
-  await assert.rejects(run, (err: unknown) => {
+async function rejectsWith(run: () => unknown, status: number, type: string, message?: RegExp) {
+  await assert.rejects(async () => run(), (err: unknown) => {
     assert.ok(err instanceof YaadError);
     assert.equal(err.statusCode, status);
     assert.equal(err.type, type);
@@ -103,7 +104,8 @@ test("turning all_day on moves the existing start to midnight, and a plan needs 
   );
   await rejectsWith(
     () =>
-      validateOperations({ timeZone: config.env.timezone,
+      validateOperations({
+        timeZone: config.env.timezone,
         db: handle.db,
         operations: [{ op: "create_node", temp_id: "p", kind: "plan", title: "Someday", detail: { all_day: true } }],
       }),
@@ -119,25 +121,23 @@ test("close_node must quote the utterance words that retract the node", async ()
   const close = (evidence: string): Operation[] => [{ op: "close_node", node_id: id, reason: "retracted", evidence }];
 
   await rejectsWith(
-    () => validateExtraction({ timeZone: config.env.timezone, db: handle.db, text: "Design 5 is due Monday.", operations: close("Design 5 peer reviews were cancelled") }),
+    () => validateExtraction({ text: "Design 5 is due Monday.", operations: close("Design 5 peer reviews were cancelled") }),
     422,
     "invalid_request",
     /evidence must quote/,
   );
   await rejectsWith(
-    () => validateExtraction({ timeZone: config.env.timezone, db: handle.db, text: "Forget that, Vedant moved.", operations: close("forget") }),
+    () => validateExtraction({ text: "Forget that, Vedant moved.", operations: close("forget") }),
     422,
     "invalid_request",
     /evidence must quote/,
   );
-  await validateExtraction({ timeZone: config.env.timezone,
-    db: handle.db,
-    text: "Forget that — Vedant doesn’t   actually like orange juice.",
+  await validateExtraction({ text: "Forget that — Vedant doesn’t   actually like orange juice.",
     operations: close("Vedant doesn't actually like orange juice"),
   });
 });
 
-test("a created plan or memory that repeats a live one is rejected unless the batch closes it", async () => {
+test("a created plan or memory that repeats a live one is rejected by hand, and merged into an update by ingest", async () => {
   await resetGraph(handle.sql);
   const quiz = await insertPlan(handle.db, { title: QUIZ, embedding: axisVector(dim, 0), occurredAt: new Date(QUIZ_AT) });
   const term = await insertMemory(handle.db, { title: "CSE 300 — term: Fall 2026", embedding: axisVector(dim, 1), occurredAt: null });
@@ -152,55 +152,83 @@ test("a created plan or memory that repeats a live one is rejected unless the ba
   });
 
   await rejectsWith(
-    () =>
-      validateExtraction({ timeZone: config.env.timezone,
-        db: handle.db,
-        text: "quiz",
-        operations: [createQuiz("CSE 300 - Quiz: Source Citations (Kritik) due", "2026-10-03T00:30:00-04:00")],
-      }),
+    () => rejectDuplicates(handle.db, [createQuiz("CSE 300 - Quiz: Source Citations (Kritik) due", "2026-10-03T00:30:00-04:00")], ZONE),
     422,
     "duplicate_node",
     new RegExp(quiz),
   );
   await rejectsWith(
-    () =>
-      validateExtraction({ timeZone: config.env.timezone,
-        db: handle.db,
-        text: "term",
-        operations: [{ op: "create_node", temp_id: "term", kind: "memory", title: "CSE 300 — term: Fall 2026" }],
-      }),
+    () => rejectDuplicates(handle.db, [{ op: "create_node", temp_id: "term", kind: "memory", title: "CSE 300 — term: Fall 2026" }], ZONE),
     422,
     "duplicate_node",
   );
   await rejectsWith(
     () =>
-      validateExtraction({ timeZone: config.env.timezone,
-        db: handle.db,
-        text: "two",
-        operations: [
+      rejectDuplicates(
+        handle.db,
+        [
           { op: "create_node", temp_id: "a", kind: "memory", title: "Ankur Desai likes chai" },
           { op: "create_node", temp_id: "b", kind: "memory", title: "Ankur Desai likes chai." },
         ],
-      }),
+        ZONE,
+      ),
     422,
     "duplicate_node",
     /same batch/,
   );
+  await rejectDuplicates(handle.db, [createQuiz(QUIZ, "2026-10-09T23:59:00-04:00"), linkQuiz], ZONE);
+  await rejectDuplicates(
+    handle.db,
+    [{ op: "close_node", node_id: quiz, reason: "replaced", evidence: "the Source Citations quiz is replaced" }, createQuiz(QUIZ, QUIZ_AT), linkQuiz],
+    ZONE,
+  );
 
-  await validateExtraction({ timeZone: config.env.timezone,
-    db: handle.db,
-    text: "next week",
-    operations: [createQuiz(QUIZ, "2026-10-09T23:59:00-04:00"), linkQuiz],
-  });
-  await validateExtraction({ timeZone: config.env.timezone,
-    db: handle.db,
-    text: "Correction: the Source Citations quiz is replaced.",
-    operations: [
-      { op: "close_node", node_id: quiz, reason: "replaced", evidence: "the Source Citations quiz is replaced" },
-      createQuiz(QUIZ, QUIZ_AT),
-      linkQuiz,
+  const merged = await mergeDuplicates(handle.db, [createQuiz("CSE 300 - Quiz: Source Citations (Kritik) due", "2026-10-03T00:30:00-04:00"), linkQuiz], ZONE);
+  assert.deepEqual(merged.merged, [{ temp_id: "quiz", into: quiz }]);
+  assert.deepEqual(merged.operations, [
+    { op: "update_node", node_id: quiz, occurred_at: "2026-10-03T00:30:00-04:00" },
+    { op: "create_edge", src: term, dst: quiz, type: "RELATED_TO", confidence: 1 },
+  ]);
+  const twins = await mergeDuplicates(
+    handle.db,
+    [
+      { op: "create_node", temp_id: "a", kind: "memory", title: "Ankur Desai likes chai" },
+      { op: "create_node", temp_id: "b", kind: "memory", title: "Ankur Desai likes chai." },
+      { op: "create_edge", src: term, dst: "b", type: "ABOUT", confidence: 1 },
     ],
+    ZONE,
+  );
+  assert.deepEqual(twins.merged, [{ temp_id: "b", into: "a" }]);
+  assert.deepEqual(twins.operations.map((op) => op.op), ["create_node", "create_edge"]);
+  assert.equal(twins.operations[1]?.op === "create_edge" && twins.operations[1].dst, "a");
+});
+
+test("a batch with one duplicate of a live plan applies the other facts and updates the plan, rejecting nothing", async () => {
+  await resetGraph(handle.sql);
+  const ankur = await insertPerson(handle.db, { title: "Ankur Desai", embedding: axisVector(dim, 0) });
+  const gym = await insertPlan(handle.db, { title: "Gym with Jake", embedding: axisVector(dim, 2), occurredAt: new Date("2026-11-20T23:00:00Z") });
+  const operations: Operation[] = [
+    { op: "create_node", temp_id: "gym", kind: "plan", title: "Gym with Jake", occurred_at: "2026-11-20T18:00:00-05:00", detail: { rsvp: "yes" } },
+    { op: "create_edge", src: ankur, dst: "gym", type: "PARTICIPANT", confidence: 1 },
+    { op: "create_node", temp_id: "m1", kind: "memory", title: "Ankur joined the Planet Fitness on Grand River" },
+    { op: "create_edge", src: ankur, dst: "m1", type: "ABOUT", confidence: 1 },
+    { op: "create_node", temp_id: "m2", kind: "memory", title: "Ankur wants to try bouldering" },
+    { op: "create_edge", src: ankur, dst: "m2", type: "ABOUT", confidence: 1 },
+  ];
+  const result = await ingest({
+    db: handle.db,
+    sql: handle.sql,
+    dwar: mockDwar({ dimension: dim, embedAxis: 1, operations }),
+    config,
+    text: "Jake confirmed gym Fri Nov 20 at 6 PM. Ankur joined Planet Fitness. Ankur wants to try bouldering.",
+    occurredAt: "2026-11-17T12:00:00-05:00",
+    participantIds: [],
+    author: INGEST,
   });
+  assert.equal(result.counts.create_node, 2);
+  assert.equal(result.counts.update_node, 1);
+  assert.deepEqual(result.merged, [{ temp_id: "gym", into: gym }]);
+  assert.equal(await countCurrentNodes(handle.sql), 5);
 });
 
 test("every created node needs an edge in the batch; ingest re-extracts once naming the unlinked ones, then rejects", async () => {
@@ -216,12 +244,12 @@ test("every created node needs an edge in the batch; ingest re-extracts once nam
     confidence: 1,
   };
   await rejectsWith(
-    () => validateExtraction({ timeZone: config.env.timezone, db: handle.db, text: "lesson", operations: [lesson] }),
+    () => validateExtraction({ text: "lesson", operations: [lesson] }),
     422,
     "unlinked_node",
     /LinkedIn checkpoints need a phone tap/,
   );
-  await validateExtraction({ timeZone: config.env.timezone, db: handle.db, text: "lesson", operations: [lesson, link] });
+  await validateExtraction({ text: "lesson", operations: [lesson, link] });
 
   const run = (rounds: Operation[][], users: string[]) =>
     ingest({
@@ -247,7 +275,7 @@ test("every created node needs an edge in the batch; ingest re-extracts once nam
   assert.equal(await countCurrentNodes(handle.sql), 1);
 });
 
-test("ingest re-extracts once with a lookalike it was not shown, and fails if the second pass still duplicates it", async () => {
+test("ingest re-extracts once with a lookalike it was not shown, and merges it if the second pass still duplicates it", async () => {
   await resetGraph(handle.sql);
   const quiz = await insertPlan(handle.db, { title: QUIZ, embedding: axisVector(dim, 2), occurredAt: new Date(QUIZ_AT) });
   const create: Operation = {
@@ -279,7 +307,9 @@ test("ingest re-extracts once with a lookalike it was not shown, and fails if th
   assert.equal(result.counts.noop, 1);
   assert.equal(await countCurrentNodes(handle.sql), 1);
 
-  await rejectsWith(() => run([[create], [create]], []), 422, "duplicate_node");
+  const merged = await run([[create], [create]], []);
+  assert.deepEqual(merged.merged, [{ temp_id: "quiz", into: quiz }]);
+  assert.equal(merged.counts.create_node, 0);
   assert.equal(await countCurrentNodes(handle.sql), 1);
 });
 
@@ -296,6 +326,7 @@ test("candidates include a person the text names by first name only, as a whole 
       embedding: axisVector(dim, 1),
       segmentEmbeddings: [],
       participantIds: [],
+      author: INGEST,
       extraIds: [],
     });
     return candidates.nodes.map((candidate) => candidate.id);
@@ -326,7 +357,7 @@ test("candidates always include every task not done that is open now or closes w
     embedding: axisVector(dim, 8),
     opensOn: "2026-01-01",
     closesAt: new Date("2026-01-02T15:00:00Z"),
-    doneAt: new Date("2026-01-02T10:00:00Z"),
+    done: true,
   });
   const scheduled = await insertPlan(handle.db, {
     title: "Dentist",
@@ -341,6 +372,7 @@ test("candidates always include every task not done that is open now or closes w
     embedding: axisVector(dim, 1),
     segmentEmbeddings: [],
     participantIds: [],
+    author: INGEST,
     extraIds: [],
   });
   const ids = candidates.nodes.map((candidate) => candidate.id);
@@ -366,23 +398,40 @@ test("history attributes a change to whoever made it, not to the node's creator"
   assert.equal(row?.source, "manual");
 });
 
-test("candidates keep the newest open tasks when more are open than the cap", async () => {
+test("open tasks are candidates only under a course the text touches, an author's course, or by a shared title word", async () => {
   await resetGraph(handle.sql);
-  const oldest = await insertTask(handle.db, { title: "Oldest", embedding: axisVector(dim, 5) });
-  await new Promise((done) => setTimeout(done, 5));
-  const newest = await insertTask(handle.db, { title: "Newest", embedding: axisVector(dim, 6) });
-  const candidates = await assembleCandidates({
-    db: handle.db,
-    sql: handle.sql,
-    config: { ...config, ingest: { ...config.ingest, open_item_limit: 1, candidate_similarity_floor: 2 } },
-    text: "Something unrelated.",
-    embedding: axisVector(dim, 1),
-    segmentEmbeddings: [],
-    participantIds: [],
-    extraIds: [],
-  });
-  const ids = candidates.nodes.map((candidate) => candidate.id);
-  assert.ok(ids.includes(newest) && !ids.includes(oldest));
+  const touched = await insertMemory(handle.db, { title: "CSE 300 class", embedding: axisVector(dim, 1) });
+  const other = await insertMemory(handle.db, { title: "IBIO 150 class", embedding: axisVector(dim, 2) });
+  const owned = await insertMemory(handle.db, { title: "IAH 241 class", embedding: axisVector(dim, 3), agentId: "iah-241-specialist" });
+  const inTouched = await insertTask(handle.db, { title: "Quiz one", embedding: axisVector(dim, 4) });
+  const inOther = await insertTask(handle.db, { title: "Lab report", embedding: axisVector(dim, 5) });
+  const inOwned = await insertTask(handle.db, { title: "Reading", embedding: axisVector(dim, 6) });
+  const byWord = await insertTask(handle.db, { title: "Lease renewal", embedding: axisVector(dim, 7) });
+  await insertEdge(handle.db, { src: touched, dst: inTouched, type: "HAS_ITEM" });
+  await insertEdge(handle.db, { src: other, dst: inOther, type: "HAS_ITEM" });
+  await insertEdge(handle.db, { src: owned, dst: inOwned, type: "HAS_ITEM" });
+  const candidateIds = async (text: string, author: NodeAuthor, embedAxisIndex: number) =>
+    (
+      await assembleCandidates({
+        db: handle.db,
+        sql: handle.sql,
+        config: { ...config, ingest: { ...config.ingest, candidate_similarity_floor: 0.9 } },
+        text,
+        embedding: axisVector(dim, embedAxisIndex),
+        segmentEmbeddings: [],
+        participantIds: [],
+        author,
+        extraIds: [],
+      })
+    ).nodes.map((candidate) => candidate.id);
+
+  const advising = await candidateIds("Advising appointment moved.", INGEST, 20);
+  assert.ok(!advising.includes(inTouched) && !advising.includes(inOther) && !advising.includes(inOwned) && !advising.includes(byWord));
+  const course = await candidateIds("CSE 300 update.", INGEST, 1);
+  assert.ok(course.includes(inTouched) && !course.includes(inOther));
+  const agent = await candidateIds("Something unrelated.", { source: "agent", agentId: "iah-241-specialist" }, 20);
+  assert.ok(agent.includes(inOwned) && !agent.includes(inOther));
+  assert.ok((await candidateIds("The lease renewal is due.", INGEST, 20)).includes(byWord));
 });
 
 test("a task's HAS_ITEM edge is always shown, ahead of the edges of a hub with over 100", async () => {
@@ -403,6 +452,7 @@ test("a task's HAS_ITEM edge is always shown, ahead of the edges of a hub with o
     embedding: axisVector(dim, 1),
     segmentEmbeddings: [],
     participantIds: [],
+    author: INGEST,
     extraIds: [],
   });
   assert.ok(candidates.edges.some((edge) => edge.id === itemEdge));
@@ -463,36 +513,7 @@ test("lookalike plans need a shared title word; lookalike tasks close the same d
   assert.deepEqual(await findLookalikes(handle.db, createTask("2026-11-24T23:59:00-05:00"), new Set(), "America/New_York"), []);
 });
 
-test("a batch that records something as submitted or done without the text saying so is re-extracted once, then rejected", async () => {
-  await resetGraph(handle.sql);
-  const task = await insertTask(handle.db, {
-    title: "CSE 335 — Step 6",
-    embedding: axisVector(dim, 2),
-    opensOn: "2026-11-05",
-    closesAt: new Date("2026-11-13T04:55:00Z"),
-  });
-  const done: Operation = { op: "update_node", node_id: task, detail: { done_at: "2026-11-12T23:50:00-05:00" } };
-  const run = (rounds: Operation[][], users: string[]) =>
-    ingest({
-      db: handle.db,
-      sql: handle.sql,
-      dwar: mockDwar({ dimension: dim, embedAxis: 1, rounds, reasonUsers: users }),
-      config,
-      text: "The CSE 335 course site shows desaia11.zip uploaded Thursday at 11:50 PM.",
-      occurredAt: "2026-11-13T09:00:00-05:00",
-      participantIds: [],
-      author: INGEST,
-    });
-  const users: string[] = [];
-  const result = await run([[done], [{ op: "noop", reason: "a page record" }]], users);
-  assert.equal(users.length, 2);
-  assert.match(users[1] ?? "", /never says Ankur did it/);
-  assert.equal(result.counts.noop, 1);
-
-  await rejectsWith(() => run([[done], [done]], []), 422, "unsourced_status");
-});
-
-test("a done_at is accepted only when the caller's source_text says Ankur finished", async () => {
+test("done is applied as given, with a history row, and a restating noop never resets it", async () => {
   await resetGraph(handle.sql);
   const task = await insertTask(handle.db, {
     title: "Engineering scholarship essay",
@@ -500,80 +521,152 @@ test("a done_at is accepted only when the caller's source_text says Ankur finish
     opensOn: "2026-11-13",
     closesAt: new Date("2026-11-16T17:00:00Z"),
   });
-  const done: Operation = { op: "update_node", node_id: task, detail: { done_at: "2026-11-13T23:34:57-05:00" } };
-  const run = (sourceText: string | undefined, users: string[]) =>
+  const run = (operations: Operation[], users: string[]) =>
     ingest({
       db: handle.db,
       sql: handle.sql,
-      dwar: mockDwar({ dimension: dim, embedAxis: 1, rounds: [[done], [done]], reasonUsers: users }),
+      dwar: mockDwar({ dimension: dim, embedAxis: 1, operations, reasonUsers: users }),
       config,
-      text: "Ankur says the scholarship essay is submitted on the portal.",
-      sourceText,
+      text: "Ankur says he sent in the scholarship essay.",
       occurredAt: "2026-11-13T23:34:57-05:00",
       participantIds: [],
       author: INGEST,
     });
-  const users: string[] = [];
-  await rejectsWith(() => run("the essay is due Mon noon, submit on the portal", users), 422, "unsourced_status");
-  assert.equal(users.length, 2);
-  assert.ok(users[0]?.includes('"source_text"'));
+  const doneOf = async () => (await handle.db.select().from(taskDetail).where(eq(taskDetail.nodeId, task)))[0]?.done;
+  const history = async () =>
+    (await handle.db.select().from(nodeHistory).where(eq(nodeHistory.nodeId, task))).filter((row) => row.field === "done").map((row) => [row.oldValue, row.newValue]);
 
-  const result = await run("I submitted the scholarship essay.", []);
-  assert.equal(result.counts.update_node, 1);
+  const users: string[] = [];
+  await run([{ op: "update_node", node_id: task, detail: { done: true } }], users);
+  assert.equal(users.length, 1);
+  assert.equal(await doneOf(), true);
+  assert.deepEqual(await history(), [["false", "true"]]);
+
+  await run([{ op: "noop", reason: "restated", node_ids: [task] }], []);
+  await run([{ op: "update_node", node_id: task, body: "Submit on the portal." }], []);
+  assert.equal(await doneOf(), true);
+  assert.deepEqual(await history(), [["false", "true"]]);
+
+  await run([{ op: "update_node", node_id: task, detail: { done: false } }], []);
+  assert.equal(await doneOf(), false);
+  assert.deepEqual(await history(), [["false", "true"], ["true", "false"]]);
 });
 
-test("a task whose close is before the text is not stored, and its edge goes with it", async () => {
+test("a created task is not done unless the batch says so, and one that is stored done gets a history row", async () => {
+  await resetGraph(handle.sql);
+  const course = await insertMemory(handle.db, { title: "CSE 431 class", embedding: axisVector(dim, 0) });
+  const make = (temp_id: string, detail: Record<string, unknown>): Operation[] => [
+    { op: "create_node", temp_id, kind: "task", title: temp_id, detail: { opens_on: "2026-11-13", closes_at: "2026-11-16T12:00:00-05:00", ...detail } },
+    { op: "create_edge", src: course, dst: temp_id, type: "HAS_ITEM", confidence: 1 },
+  ];
+  const result = await applyOperations({
+    db: handle.db,
+    dwar: mockDwar({ dimension: dim }),
+    author: INGEST,
+    config,
+    operations: [...make("plain", {}), ...make("finished", { done: true })],
+  });
+  const rows = await handle.db.select().from(taskDetail);
+  assert.deepEqual(rows.map((row) => row.done).sort(), [false, true]);
+  assert.equal((await handle.db.select().from(nodeHistory)).filter((row) => row.field === "done").length, 1);
+  assert.equal(result.counts.create_node, 2);
+});
+
+test("a task closed before the text is skipped and reported with its edge, unless Ankur's words state the day", async () => {
   await resetGraph(handle.sql);
   const course = await insertMemory(handle.db, { title: "IBIO 355 class", embedding: axisVector(dim, 0) });
   const make = (temp_id: string, title: string, closes_at: string): Operation[] => [
     { op: "create_node", temp_id, kind: "task", title, detail: { opens_on: "2026-11-13", closes_at } },
     { op: "create_edge", src: course, dst: temp_id, type: "HAS_ITEM", confidence: 1 },
   ];
-  const result = await ingest({
-    db: handle.db,
-    sql: handle.sql,
-    dwar: mockDwar({
-      dimension: dim,
-      embedAxis: 1,
-      operations: [...make("old", "IBIO 355 — Class 2 Homework", "2026-09-04T23:59:00-04:00"), ...make("new", "IBIO 355 — Class 20 Homework", "2026-11-16T08:30:00-05:00")],
-    }),
-    config,
-    text: "IBIO 355 on Codon: Class 2 Homework due Sep 4, Class 20 Homework due Mon Nov 16 at 8:30 AM.",
-    occurredAt: "2026-11-13T23:07:46-05:00",
-    participantIds: [],
-    author: INGEST,
-  });
-  assert.equal(result.counts.create_node, 1);
-  assert.equal(result.counts.create_edge, 1);
-  const titles = (await handle.db.select({ title: node.title }).from(node)).map((row) => row.title);
-  assert.ok(titles.includes("IBIO 355 — Class 20 Homework"));
-  assert.ok(!titles.includes("IBIO 355 — Class 2 Homework"));
-});
-
-test("an unstated open outside its bounds is re-extracted once, then rejected as unsourced_window", async () => {
-  await resetGraph(handle.sql);
-  const course = await insertMemory(handle.db, { title: "IAH class", embedding: axisVector(dim, 0) });
-  const make = (opens_on: string, title = "IAH — Final Project Guidelines"): Operation[] => [
-    { op: "create_node", temp_id: "t", kind: "task", title, detail: { opens_on, closes_at: "2026-12-14T23:59:00-05:00" } },
-    { op: "create_edge", src: course, dst: "t", type: "HAS_ITEM", confidence: 1 },
-  ];
-  const run = (rounds: Operation[][], users: string[]) =>
+  const run = (operations: Operation[], text: string, sourceText?: string) =>
     ingest({
       db: handle.db,
       sql: handle.sql,
-      dwar: mockDwar({ dimension: dim, embedAxis: 1, rounds, reasonUsers: users }),
+      dwar: mockDwar({ dimension: dim, embedAxis: 1, operations }),
       config,
-      text: "IAH Final Project Guidelines are due Mon Dec 14, 2026 at 11:59 PM. The site first showed them tonight.",
+      text,
+      sourceText,
+      occurredAt: "2026-11-13T09:07:46-05:00",
+      participantIds: [],
+      author: INGEST,
+    });
+  const old = make("old", "IBIO 355 — Class 2 Homework", "2026-11-12T23:59:00-05:00");
+  const result = await run(
+    [...old, ...make("new", "IBIO 355 — Class 20 Homework", "2026-11-16T08:30:00-05:00")],
+    "IBIO 355 on Codon: Class 2 Homework closed Nov 12, Class 20 Homework due Mon Nov 16 at 8:30 AM.",
+  );
+  assert.equal(result.counts.create_node, 1);
+  assert.equal(result.counts.create_edge, 1);
+  assert.deepEqual(result.skipped, [
+    { title: "IBIO 355 — Class 2 Homework", closes_at: "2026-11-12T23:59:00-05:00", reason: "closed before the text and not stated by Ankur" },
+  ]);
+  const titles = (await handle.db.select({ title: node.title }).from(node)).map((row) => row.title);
+  assert.ok(titles.includes("IBIO 355 — Class 20 Homework") && !titles.includes("IBIO 355 — Class 2 Homework"));
+
+  const stated = await run(old, "Ankur missed Class 2 Homework, due Nov 12.", "I missed Class 2 Homework, it was due yesterday");
+  assert.equal(stated.counts.create_node, 1);
+  assert.deepEqual(stated.skipped, []);
+});
+
+test("an unstated open over 28 days before the close is clamped and reported, a stated one is kept, and a close gets an open", async () => {
+  await resetGraph(handle.sql);
+  const course = await insertMemory(handle.db, { title: "IAH class", embedding: axisVector(dim, 0) });
+  const make = (temp_id: string, detail: Record<string, unknown>): Operation[] => [
+    { op: "create_node", temp_id, kind: "task", title: temp_id, detail },
+    { op: "create_edge", src: course, dst: temp_id, type: "HAS_ITEM", confidence: 1 },
+  ];
+  const run = (operations: Operation[], text: string) =>
+    ingest({
+      db: handle.db,
+      sql: handle.sql,
+      dwar: mockDwar({ dimension: dim, embedAxis: 1, operations }),
+      config,
+      text,
       occurredAt: "2026-11-13T23:07:46-05:00",
       participantIds: [],
       author: INGEST,
     });
-  const users: string[] = [];
-  const result = await run([make("2026-11-13"), make("2026-11-16")], users);
-  assert.equal(users.length, 2);
-  assert.match(users[1] ?? "", /more than 28 days before its close/);
-  assert.equal(result.counts.create_node, 1);
+  const opensOf = async (title: string) => {
+    const [row] = await handle.db.select({ opensOn: taskDetail.opensOn }).from(taskDetail).innerJoin(node, eq(node.id, taskDetail.nodeId)).where(eq(node.title, title));
+    return row?.opensOn;
+  };
 
-  const other = "IAH — Final Project Rubric";
-  await rejectsWith(() => run([make("2026-11-13", other), make("2026-11-13", other)], []), 422, "unsourced_window");
+  const result = await run(
+    [
+      ...make("long", { opens_on: "2026-11-13", closes_at: "2026-12-14T23:59:00-05:00" }),
+      ...make("bare", { closes_at: "2026-11-16T12:00:00-05:00" }),
+      ...make("early", { opens_on: "2026-11-02", closes_at: "2026-11-16T12:00:00-05:00" }),
+      ...make("kritik", { opens_on: "2026-10-14", closes_at: "2026-11-14T23:59:00-05:00" }),
+    ],
+    "IAH Final Project Guidelines are due Mon Dec 14, 2026. The site first showed them tonight. Other items are due Mon Nov 16. Kritik runs Oct 14 to Nov 14.",
+  );
+  assert.equal(await opensOf("long"), "2026-11-16");
+  assert.equal(await opensOf("bare"), "2026-11-13");
+  assert.equal(await opensOf("early"), "2026-11-13");
+  assert.equal(await opensOf("kritik"), "2026-10-14");
+  assert.deepEqual(
+    result.clamped.map((clamp) => [clamp.rule, clamp.from, clamp.to]),
+    [
+      ["open_over_28_days", "2026-11-13", "2026-11-16"],
+      ["open_missing", null, "2026-11-13"],
+      ["open_before_text", "2026-11-02", "2026-11-13"],
+    ],
+  );
+});
+
+test("a plan's rsvp and attended Ankur set are not cleared by a merged duplicate that carries none", async () => {
+  await resetGraph(handle.sql);
+  const plan = await insertPlan(handle.db, { title: "Gym with Jake", embedding: axisVector(dim, 2), occurredAt: new Date("2026-11-20T23:00:00Z") });
+  await handle.db.update(planDetail).set({ rsvp: "yes", attended: true }).where(eq(planDetail.nodeId, plan));
+  const merged = await mergeDuplicates(
+    handle.db,
+    [{ op: "create_node", temp_id: "gym", kind: "plan", title: "Gym with Jake", occurred_at: "2026-11-20T18:00:00-05:00", detail: { rsvp: null, attended: null } }],
+    ZONE,
+  );
+  assert.deepEqual(merged.operations, [{ op: "update_node", node_id: plan, occurred_at: "2026-11-20T18:00:00-05:00" }]);
+  await applyOperations({ db: handle.db, dwar: mockDwar({ dimension: dim }), author: INGEST, config, operations: merged.operations });
+  const [row] = await handle.db.select().from(planDetail).where(eq(planDetail.nodeId, plan));
+  assert.equal(row?.rsvp, "yes");
+  assert.equal(row?.attended, true);
 });

@@ -36,7 +36,7 @@ export async function insertEdge(
 /**
  * Create one plan per date of `op`, each linked to `hubId` and, when given, `placeId`. The
  * plans carry no embedding, so semantic recall finds the hub and not every session. Returns
- * the new plan ids in date order; more than `maxSessions` dates is a 422.
+ * the new plan ids in date order.
  */
 export async function spawnSessions(
   tx: Tx,
@@ -46,14 +46,10 @@ export async function spawnSessions(
     placeId: string | null;
     author: NodeAuthor;
     timeZone: string;
-    maxSessions: number;
     at: Date;
   },
 ): Promise<string[]> {
   const { op, at } = opts;
-  if (op.dates.length > opts.maxSessions) {
-    throw new YaadError(422, "invalid_request", `spawn_plans ${op.temp_id}: ${op.dates.length} dates is more than max_sessions_per_spawn (${opts.maxSessions})`);
-  }
   const zone = op.time_zone ?? opts.timeZone;
   const ids: string[] = [];
   for (const date of [...op.dates].sort()) {
@@ -133,7 +129,7 @@ export async function changeSessions(
     }
     return { ids: sessions.map((row) => row.node.id), neighbors };
   }
-  const { body, rsvp, outcome, start_time: startTime, end_time: endTime, room } = op.set;
+  const { body, rsvp, attended, start_time: startTime, end_time: endTime, room } = op.set;
   for (const { node: session, detail } of sessions) {
     const start = session.occurredAt;
     if (start === null) {
@@ -153,7 +149,7 @@ export async function changeSessions(
       .set({
         endAt,
         ...(rsvp !== undefined ? { rsvp } : {}),
-        ...(outcome !== undefined ? { outcome, outcomeAt: outcome === null ? null : at } : {}),
+        ...(attended !== undefined ? { attended } : {}),
       })
       .where(eq(planDetail.nodeId, session.id));
   }

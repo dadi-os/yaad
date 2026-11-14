@@ -64,6 +64,20 @@
       "when": 1794652276713,
       "tag": "0008_drop_plan_status",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794738676713,
+      "tag": "0009_task_done",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794825076713,
+      "tag": "0010_hub_verified_at",
+      "breakpoints": true
     }
   ]
 }

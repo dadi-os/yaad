@@ -1,6 +1,6 @@
 /** API-facing domain types for the memory graph (nodes, edges, history). */
 
-import type { Outcome, Rsvp } from "./timeline.js";
+import type { Rsvp } from "./timeline.js";
 
 /** Graph node kind. */
 export type NodeKind = "person" | "memory" | "plan" | "place" | "task";
@@ -26,19 +26,16 @@ export type PlanDetail = {
   time_zone: string | null;
   /** Whether Ankur is going; null until he says. */
   rsvp: Rsvp | null;
-  outcome: Outcome | null;
-  outcome_at: string | null;
-  /** When the plan really ran, if that differed from its start and end. */
-  actual_start: string | null;
-  actual_end: string | null;
+  /** Whether Ankur was there: true attended, false did not; null until he says. */
+  attended: boolean | null;
 };
 
 /** A task's window: relevant from `opens_on` until `closes_at`; with neither it is Someday. `verified_at` is its freshness. */
 export type TaskDetail = {
   opens_on: string | null;
   closes_at: string | null;
-  done_at: string | null;
-  /** When the task was last created, changed, ticked, or restated true by an ingest; null for rows that predate it. */
+  done: boolean;
+  /** When the task was last created, changed, marked done or not done, or restated true by an ingest; null for rows that predate it. */
   verified_at: string | null;
 };
 
@@ -80,7 +77,7 @@ export type EdgeRecord = {
 export type NodeHistoryRecord = {
   id: string;
   node_id: string;
-  field: "title" | "body" | "occurred_at" | "deleted";
+  field: "title" | "body" | "occurred_at" | "deleted" | "done";
   old_value: string | null;
   new_value: string | null;
   changed_at: string;

@@ -15,7 +15,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { loadFileConfig } from "../config.js";
-import { OUTCOMES, RSVPS } from "../types/timeline.js";
+import { RSVPS } from "../types/timeline.js";
 
 const embeddingDimension = loadFileConfig().embedding.dimension;
 
@@ -34,6 +34,8 @@ export const node = pgTable(
     embedding: vector("embedding", { dimensions: embeddingDimension }),
     occurredAt: timestamptz("occurred_at"),
     expiresAt: timestamptz("expires_at"),
+    /** When a course hub's tasks were last created, changed, marked done or verified; null on every other node. */
+    verifiedAt: timestamptz("verified_at"),
     accessCount: integer("access_count").notNull().default(0),
     lastAccessedAt: timestamptz("last_accessed_at"),
     source: text("source").notNull(),
@@ -110,22 +112,17 @@ export const planDetail = pgTable(
     timeZone: text("time_zone"),
     /** Whether Ankur is going: yes or no; null while he has not said. */
     rsvp: text("rsvp"),
-    /** How the plan turned out; null while nobody has said. */
-    outcome: text("outcome"),
-    outcomeAt: timestamptz("outcome_at"),
-    /** When the plan really ran, if that differed from its start and end. */
-    actualStart: timestamptz("actual_start"),
-    actualEnd: timestamptz("actual_end"),
+    /** Whether Ankur was there: true attended, false did not; null while nobody has said. A plan called off is closed, not false. */
+    attended: boolean("attended"),
   },
   (table) => [
     check("plan_rsvp_check", sql`${table.rsvp} IS NULL OR ${table.rsvp} IN (${inList(RSVPS)})`),
-    check("plan_outcome_check", sql`${table.outcome} IS NULL OR ${table.outcome} IN (${inList(OUTCOMES)})`),
   ],
 );
 
 /**
  * A task: something to do, relevant from `opens_on` until `closes_at`. No window at all means
- * Someday. A close needs an open, and `done_at` is Ankur's tick.
+ * Someday. A close needs an open. `done` is stated by every insert; when it changed is in node_history.
  */
 export const taskDetail = pgTable(
   "task_detail",
@@ -135,7 +132,7 @@ export const taskDetail = pgTable(
       .references(() => node.id, { onDelete: "cascade" }),
     opensOn: date("opens_on", { mode: "string" }),
     closesAt: timestamptz("closes_at"),
-    doneAt: timestamptz("done_at"),
+    done: boolean("done").notNull(),
     verifiedAt: timestamptz("verified_at"),
   },
   (table) => [check("task_window_check", sql`${table.closesAt} IS NULL OR ${table.opensOn} IS NOT NULL`)],
@@ -166,7 +163,7 @@ export const nodeHistory = pgTable(
     agentId: text("agent_id"),
   },
   (table) => [
-    check("node_history_field_check", sql`${table.field} IN ('title', 'body', 'occurred_at', 'deleted')`),
+    check("node_history_field_check", sql`${table.field} IN ('title', 'body', 'occurred_at', 'deleted', 'done')`),
     check("node_history_source_check", sql`${table.source} IN ('manual', 'agent', 'ingest')`),
     check("node_history_agent_id_check", sql`${table.agentId} IS NULL OR ${table.source} = 'agent'`),
     index("node_history_node_id_idx").on(table.nodeId),

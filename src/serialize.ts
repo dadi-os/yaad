@@ -20,7 +20,7 @@ import type {
   TaskDetail,
 } from "./types/domain.js";
 import { YaadError } from "./errors.js";
-import { OUTCOMES, RSVPS } from "./types/timeline.js";
+import { RSVPS } from "./types/timeline.js";
 
 function iso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
@@ -50,7 +50,7 @@ export function parseKnown<T extends string>(values: readonly T[], value: string
 }
 
 function parseHistoryField(value: string): NodeHistoryRecord["field"] {
-  if (value === "title" || value === "body" || value === "occurred_at" || value === "deleted") {
+  if (value === "title" || value === "body" || value === "occurred_at" || value === "deleted" || value === "done") {
     return value;
   }
   throw new YaadError(500, "internal_error", `invalid node_history field in database: ${value}`);
@@ -113,10 +113,7 @@ export function toPlanDetail(row: PlanDetailRow): PlanDetail {
     all_day: row.allDay,
     time_zone: row.timeZone,
     rsvp: row.rsvp === null ? null : parseKnown(RSVPS, row.rsvp, "plan rsvp"),
-    outcome: row.outcome === null ? null : parseKnown(OUTCOMES, row.outcome, "plan outcome"),
-    outcome_at: iso(row.outcomeAt),
-    actual_start: iso(row.actualStart),
-    actual_end: iso(row.actualEnd),
+    attended: row.attended,
   };
 }
 
@@ -124,7 +121,7 @@ export function toTaskDetail(row: TaskDetailRow): TaskDetail {
   return {
     opens_on: row.opensOn,
     closes_at: iso(row.closesAt),
-    done_at: iso(row.doneAt),
+    done: row.done,
     verified_at: iso(row.verifiedAt),
   };
 }

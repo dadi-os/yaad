@@ -1,6 +1,9 @@
 /** Graph recall: anchors (ids, filters, or ANN) → hop expand → rank → coverage gate. */
 
 import { inArray, sql } from "drizzle-orm";
+import { hubRowsOf } from "../db/tasks.js";
+import { localDate, localTime, weekdayOf } from "../local-time.js";
+import type { CourseFreshness, TaskBucket, TaskReading } from "../types/task.js";
 import type { Config } from "../config.js";
 import type { Db, Sql } from "../db/client.js";
 import { filterNodes, hasFilter, type NodeFilter } from "../db/filter.js";
@@ -23,10 +26,10 @@ import { SESSION_EDGE } from "../types/timeline.js";
 import { findAnchors } from "./anchor.js";
 import { expandOneHop, initialWalk, type WalkNode } from "./expand.js";
 import { estimateTokens, shouldStop } from "./gate.js";
-import { maxAccess, scoreNode, semanticScore, type ScoreParts } from "./score.js";
+import { maxAccess, scoreNode, type ScoreParts } from "./score.js";
 
 export type RecallNode = NodeRecord & {
-  detail: PersonDetail | PlanDetail | PlaceDetail | TaskDetail | null;
+  detail: PersonDetail | PlanDetail | PlaceDetail | (TaskDetail & TaskReading) | null;
   hops: number;
   /** Weighted relevance to `query`; null when the request had no query. */
   score: number | null;
@@ -43,13 +46,16 @@ export type RecallResult = {
   sufficient: boolean | null;
   hops_taken: number;
   anchors: string[];
+  /** The course hub of each returned task, by title, with its freshness; empty when no task is returned. */
+  courses: Record<string, CourseFreshness>;
 };
 
 /**
  * Retrieve a subgraph. Anchors come from `from`, else `filter`, else ANN on `query`.
- * With `hops`, expansion runs exactly that deep; without it, expansion is gated on
- * relevance when `query` is set and skipped otherwise. With a query, nodes are ranked
- * by score; without one, by hop, then occurred_at, then created_at.
+ * A filter is a filter: the result is exactly the filtered rows, re-ranked by `query` when there is
+ * one, and expanded only with explicit `hops`. Otherwise, with `hops` expansion runs exactly that
+ * deep; without it, expansion is gated on relevance when `query` is set and skipped otherwise. With
+ * a query, nodes are ranked by score; without one, by hop, then occurred_at, then created_at.
  */
 export async function recall(opts: {
   db: Db;
@@ -76,13 +82,15 @@ export async function recall(opts: {
       sufficient: queryEmbedding ? 0 >= cfg.coverage_floor : null,
       hops_taken: 0,
       anchors: [],
+      courses: {},
     };
   }
 
   const walk = initialWalk(anchors.map((row) => row.id));
   const rows = new Map<string, NodeRow>(anchors.map((row) => [row.id, row]));
   const gated = opts.hops === undefined;
-  const hopLimit = opts.hops ?? (queryEmbedding ? cfg.hop_cap : 0);
+  const filtered = opts.from === undefined && opts.filter !== undefined && hasFilter(opts.filter);
+  const hopLimit = opts.hops ?? (queryEmbedding && !filtered ? cfg.hop_cap : 0);
   let hopsTaken = 0;
 
   while (hopsTaken < hopLimit && walk.frontier.length > 0) {
@@ -119,14 +127,19 @@ export async function recall(opts: {
 
   const ranked = queryEmbedding
     ? scoreAll(rows, walk.nodes, queryEmbedding, cfg, now).sort((a, b) => b.parts.total - a.parts.total)
-    : orderWithoutQuery(rows, walk.nodes, opts.filter?.relevant_on !== undefined).map((row) => ({ row, parts: null }));
+    : orderWithoutQuery(rows, walk.nodes, filtered).map((row) => ({ row, parts: null }));
   const top = ranked.slice(0, opts.limit);
 
+  const taskHubs = await hubRowsOf(opts.db, top.filter((item) => item.row.kind === "task").map((item) => item.row.id), "HAS_ITEM");
+  const timeZone = opts.config.env.timezone;
+  const day = opts.filter?.relevant_on ?? localDate(now, timeZone);
   const nodes: RecallNode[] = [];
   for (const item of top) {
+    const hub = taskHubs.get(item.row.id);
+    const detail = await loadDetail(opts.db, item.row);
     const record: RecallNode = {
       ...toNodeRecord(item.row),
-      detail: await loadDetail(opts.db, item.row),
+      detail: detail !== null && "closes_at" in detail ? { ...detail, ...readTask(detail, hub?.agentId ?? null, day, timeZone) } : detail,
       hops: requireWalkNode(walk.nodes, item.row.id).hop,
       score: item.parts ? item.parts.total : null,
     };
@@ -147,6 +160,15 @@ export async function recall(opts: {
     nodes.map((item) => item.id),
   );
 
+  const courses: Record<string, CourseFreshness> = {};
+  for (const hub of new Set(taskHubs.values())) {
+    courses[hub.title] = {
+      verified_at: hub.verifiedAt ? hub.verifiedAt.toISOString() : null,
+      verified_today: hub.verifiedAt !== null && localDate(hub.verifiedAt, timeZone) === localDate(now, timeZone),
+      owner: hub.agentId,
+    };
+  }
+
   return {
     nodes,
     edges: edges.map(toEdgeRecord),
@@ -154,6 +176,23 @@ export async function recall(opts: {
     sufficient: coverage === null ? null : coverage >= cfg.coverage_floor,
     hops_taken: hopsTaken,
     anchors: anchors.map((row) => row.id),
+    courses,
+  };
+}
+
+/** A task's local dates, bucket against the local `day`, and owner (see {@link TaskReading}). */
+function readTask(detail: TaskDetail, owner: string | null, day: string, timeZone: string): TaskReading {
+  const closes = detail.closes_at === null ? null : new Date(detail.closes_at);
+  const closeDay = closes === null ? null : localDate(closes, timeZone);
+  let bucket: TaskBucket | null = null;
+  if (closeDay !== null) {
+    bucket = closeDay === day ? "due_on_day" : closeDay > day ? "upcoming" : detail.done ? null : "past_due";
+  }
+  return {
+    closes_local: closes === null || closeDay === null ? null : `${weekdayOf(closeDay)} ${closeDay} ${localTime(closes, timeZone)}`,
+    opens_local: detail.opens_on === null ? null : `${weekdayOf(detail.opens_on)} ${detail.opens_on}`,
+    bucket,
+    owner,
   };
 }
 
@@ -178,8 +217,7 @@ async function embedQuery(dwar: DwarClient, query: string): Promise<number[]> {
 
 /**
  * Anchor rows for a request: every `from` id (404 when one is unknown or expired),
- * else the filter matches (ranked by similarity and capped at anchor_limit when a
- * query is set, capped at `limit` otherwise), else the plans and tasks the query's title
+ * else every filter match (up to page.max_size when a query will re-rank them, `limit` otherwise), else the plans and tasks the query's title
  * words name followed by ANN hits above the floor (see findAnchors).
  */
 async function selectAnchorRows(
@@ -207,15 +245,7 @@ async function selectAnchorRows(
     });
   }
   if (opts.filter !== undefined && hasFilter(opts.filter)) {
-    if (!queryEmbedding) {
-      return filterNodes(opts.db, opts.filter, opts.limit, 0);
-    }
-    const matches = await filterNodes(opts.db, opts.filter, opts.config.page.max_size, 0);
-    return matches
-      .map((row) => ({ row, similarity: semanticScore(queryEmbedding, row.embedding) }))
-      .sort((a, b) => b.similarity - a.similarity)
-      .slice(0, opts.config.recall.anchor_limit)
-      .map((item) => item.row);
+    return filterNodes(opts.db, opts.filter, queryEmbedding ? opts.config.page.max_size : opts.limit, 0);
   }
   if (!queryEmbedding || opts.query === undefined) {
     throw new YaadError(422, "invalid_request", "query, from, or a filter is required");

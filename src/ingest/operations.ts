@@ -1,7 +1,7 @@
 /** Zod shapes and JSON Schema for Dwar `emit_operations` tool calls. */
 
 import { z } from "zod";
-import { OUTCOMES, RSVPS } from "../types/timeline.js";
+import { RSVPS } from "../types/timeline.js";
 import {
   personDetailBody,
   planDetailBody,
@@ -102,7 +102,7 @@ const sessionChange = z
   .object({
     body: z.string().nullable().optional(),
     rsvp: z.enum(RSVPS).nullable().optional(),
-    outcome: z.enum(OUTCOMES).nullable().optional(),
+    attended: z.boolean().nullable().optional(),
     start_time: localTime.optional(),
     end_time: localTime.nullable().optional(),
     room: z.string().min(1).nullable().optional(),
@@ -226,9 +226,7 @@ export const emitOperationsToolSchema = {
                   all_day: { type: "boolean" },
                   time_zone: nullableString,
                   rsvp: { type: ["string", "null"], enum: [...RSVPS, null] },
-                  outcome: { type: ["string", "null"], enum: [...OUTCOMES, null] },
-                  actual_start: nullableString,
-                  actual_end: nullableString,
+                  attended: { type: ["boolean", "null"] },
                 },
               },
             },
@@ -246,7 +244,7 @@ export const emitOperationsToolSchema = {
                 properties: {
                   opens_on: nullableString,
                   closes_at: nullableString,
-                  done_at: nullableString,
+                  done: { type: "boolean" },
                 },
               },
             },
@@ -351,7 +349,7 @@ export const emitOperationsToolSchema = {
                 properties: {
                   body: nullableString,
                   rsvp: { type: ["string", "null"], enum: [...RSVPS, null] },
-                  outcome: { type: ["string", "null"], enum: [...OUTCOMES, null] },
+                  attended: { type: ["boolean", "null"] },
                   start_time: { type: "string" },
                   end_time: nullableString,
                   room: nullableString,

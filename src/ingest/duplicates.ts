@@ -1,8 +1,8 @@
 /**
  * Duplicate detection for node creation. Extraction only sees the candidates it was
  * shown, so a create can repeat something already stored; ingest re-extracts once with
- * any lookalikes it missed, and every creation (ingest or by hand) is rejected when it
- * still duplicates a live node.
+ * any lookalikes it missed and then merges what still duplicates a live node into an update of
+ * it, while a creation by hand is rejected.
  */
 
 import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
@@ -39,7 +39,7 @@ export const normalizedTitleSql = sql<string>`trim(regexp_replace(regexp_replace
 const GENERIC_TITLE_WORDS = new Set(["class", "session", "with", "meeting"]);
 
 /** The words of a normalized title that identify it: four letters or more, and not a generic word. */
-function identifyingWords(title: string): Set<string> {
+export function identifyingWords(title: string): Set<string> {
   return new Set(normalizeTitle(title).split(" ").filter((word) => word.length >= 4 && !GENERIC_TITLE_WORDS.has(word)));
 }
 
@@ -140,16 +140,23 @@ function sameStart(left: Date | null, right: Date | null): boolean {
   return Math.abs(left.getTime() - right.getTime()) <= DUPLICATE_WINDOW_MS;
 }
 
+type SpawnPlansOperation = Extract<Operation, { op: "spawn_plans" }>;
+
+/** A create that repeats another create in the batch (`into` is that create's temp_id) or a live node (`into` is its id). */
+type CreateTwin = { op: CreateNodeOperation; message: string; into: string };
+
+/** A session a `spawn_plans` would stamp on a date that a live plan (`into`) already holds. */
+type SpawnTwin = { op: SpawnPlansOperation; date: string; message: string; into: string };
+
 /**
- * rejectDuplicates fails the batch with `422 duplicate_node` when a created memory, plan or task
- * repeats another create in the batch or a live node: same kind and normalized title, and for
- * plans a start (for tasks a close) within {@link DUPLICATE_WINDOW_MS}. Each session a
- * `spawn_plans` would create is checked the same way against live plans, so re-reading a syllabus
- * cannot stamp a course's sessions twice. A live node the same batch closes does not count, so a
- * close-and-replace still works. People and places are left to extraction, since two of them can
- * share a name. `timeZone` is the box's zone, in which a spawn's local times are read.
+ * findDuplicates returns the batch's memory, plan and task creates that repeat another create in
+ * the batch or a live node (same kind and normalized title, and for plans a start, for tasks a
+ * close, within {@link DUPLICATE_WINDOW_MS}), and the sessions each `spawn_plans` would create that
+ * a live plan already holds. A live node the same batch closes does not count, so a close-and-replace
+ * still works. People and places are left to extraction, since two of them can share a name.
+ * `timeZone` is the box's zone, in which a spawn's local times are read.
  */
-export async function rejectDuplicates(db: Db, operations: Operation[], timeZone: string): Promise<void> {
+async function findDuplicates(db: Db, operations: Operation[], timeZone: string): Promise<{ creates: CreateTwin[]; spawns: SpawnTwin[] }> {
   const closing = new Set(
     operations.flatMap((op) => (op.op === "close_node" ? [op.node_id] : [])),
   );
@@ -158,6 +165,7 @@ export async function rejectDuplicates(db: Db, operations: Operation[], timeZone
       op.op === "create_node" && (op.kind === "memory" || op.kind === "plan" || op.kind === "task"),
   );
   const seen: Array<{ op: CreateNodeOperation; title: string; start: Date | null }> = [];
+  const createTwins: CreateTwin[] = [];
   for (const op of creates) {
     const title = normalizeTitle(op.title);
     const start = timeOf(op);
@@ -167,15 +175,15 @@ export async function rejectDuplicates(db: Db, operations: Operation[], timeZone
         other.title === title &&
         (op.kind === "memory" || sameStart(other.start, start)),
     );
-    if (twin) {
-      throw new YaadError(
-        422,
-        "duplicate_node",
-        `create_node ${op.temp_id} "${op.title}" repeats create_node ${twin.op.temp_id} in the same batch`,
-      );
-    }
     seen.push({ op, title, start });
-
+    if (twin) {
+      createTwins.push({
+        op,
+        message: `create_node ${op.temp_id} "${op.title}" repeats create_node ${twin.op.temp_id} in the same batch`,
+        into: twin.op.temp_id,
+      });
+      continue;
+    }
     const existing = await db
       .select({ id: node.id, title: node.title, occurredAt: node.occurredAt, closesAt: taskDetail.closesAt })
       .from(node)
@@ -185,13 +193,14 @@ export async function rejectDuplicates(db: Db, operations: Operation[], timeZone
       (row) => !closing.has(row.id) && (op.kind === "memory" || sameStart(row.occurredAt ?? row.closesAt, start)),
     );
     if (duplicate) {
-      throw new YaadError(
-        422,
-        "duplicate_node",
-        `create_node ${op.temp_id} "${op.title}" duplicates live node ${duplicate.id} "${duplicate.title}"; update that node instead`,
-      );
+      createTwins.push({
+        op,
+        message: `create_node ${op.temp_id} "${op.title}" duplicates live node ${duplicate.id} "${duplicate.title}"; update that node instead`,
+        into: duplicate.id,
+      });
     }
   }
+  const spawnTwins: SpawnTwin[] = [];
   for (const op of operations) {
     if (op.op !== "spawn_plans") {
       continue;
@@ -213,12 +222,108 @@ export async function rejectDuplicates(db: Db, operations: Operation[], timeZone
         .limit(1);
       const duplicate = existing[0];
       if (duplicate) {
-        throw new YaadError(
-          422,
-          "duplicate_node",
-          `spawn_plans ${op.temp_id} "${op.title}" on ${date} duplicates live plan ${duplicate.id} "${duplicate.title}"`,
-        );
+        spawnTwins.push({
+          op,
+          date,
+          message: `spawn_plans ${op.temp_id} "${op.title}" on ${date} duplicates live plan ${duplicate.id} "${duplicate.title}"`,
+          into: duplicate.id,
+        });
       }
     }
   }
+  return { creates: createTwins, spawns: spawnTwins };
+}
+
+/**
+ * rejectDuplicates fails the batch with `422 duplicate_node` on the first create or spawned session
+ * that {@link findDuplicates} finds. It is for a person creating by hand, who should be told; ingest
+ * merges instead ({@link mergeDuplicates}).
+ */
+export async function rejectDuplicates(db: Db, operations: Operation[], timeZone: string): Promise<void> {
+  const { creates, spawns } = await findDuplicates(db, operations, timeZone);
+  const first = creates[0] ?? spawns[0];
+  if (first) {
+    throw new YaadError(422, "duplicate_node", first.message);
+  }
+}
+
+/** A create that was applied as an update (or dropped) because it duplicated `into`: a live node id, or another create's temp_id. */
+export type MergedDuplicate = { temp_id: string; into: string };
+
+/**
+ * mergeDuplicates returns `operations` with every create that {@link findDuplicates} finds turned
+ * into an `update_node` of the live node it repeats, carrying the create's body, time, ttl and
+ * detail (never its title, and never a `done: false`, a null `rsvp` or a null `attended`, which a create only implies and which would clear what Ankur set), with the edges
+ * that named the create retargeted to that node. A create that repeats an earlier create in the
+ * batch is dropped and its edges retargeted to the earlier one. A spawned session a live plan
+ * already holds is left out, and a spawn left with no dates is dropped. `merged` lists each.
+ */
+export async function mergeDuplicates(
+  db: Db,
+  operations: Operation[],
+  timeZone: string,
+): Promise<{ operations: Operation[]; merged: MergedDuplicate[] }> {
+  const { creates, spawns } = await findDuplicates(db, operations, timeZone);
+  if (creates.length === 0 && spawns.length === 0) {
+    return { operations, merged: [] };
+  }
+  const target = new Map(creates.map((twin) => [twin.op.temp_id, twin.into]));
+  const resolve = (id: string): string => {
+    let current = id;
+    for (let into = target.get(current); into !== undefined; into = target.get(current)) {
+      current = into;
+    }
+    return current;
+  };
+  const merged: MergedDuplicate[] = creates.map((twin) => ({ temp_id: twin.op.temp_id, into: resolve(twin.op.temp_id) }));
+  const heldDates = new Map<string, Set<string>>();
+  for (const twin of spawns) {
+    heldDates.set(twin.op.temp_id, (heldDates.get(twin.op.temp_id) ?? new Set()).add(twin.date));
+    if (!merged.some((entry) => entry.temp_id === twin.op.temp_id)) {
+      merged.push({ temp_id: twin.op.temp_id, into: twin.into });
+    }
+  }
+  const out: Operation[] = [];
+  for (const op of operations) {
+    if (op.op === "create_node" && target.has(op.temp_id)) {
+      const into = resolve(op.temp_id);
+      if (!isLiveId(into, operations)) {
+        continue;
+      }
+      const { done, rsvp, attended, ...rest } = (op.detail ?? {}) as Record<string, unknown>;
+      const detail = {
+        ...rest,
+        ...(done === true ? { done } : {}),
+        ...(rsvp !== undefined && rsvp !== null ? { rsvp } : {}),
+        ...(attended !== undefined && attended !== null ? { attended } : {}),
+      };
+      out.push({
+        op: "update_node",
+        node_id: into,
+        ...(op.body !== undefined ? { body: op.body } : {}),
+        ...(op.occurred_at !== undefined ? { occurred_at: op.occurred_at } : {}),
+        ...(op.ttl_days !== undefined ? { ttl_days: op.ttl_days } : {}),
+        ...(Object.keys(detail).length > 0 ? { detail } : {}),
+      });
+    } else if (op.op === "create_edge") {
+      const src = resolve(op.src);
+      const dst = resolve(op.dst);
+      if (src !== dst) {
+        out.push({ ...op, src, dst });
+      }
+    } else if (op.op === "spawn_plans" && heldDates.has(op.temp_id)) {
+      const dates = op.dates.filter((date) => !heldDates.get(op.temp_id)?.has(date));
+      if (dates.length > 0) {
+        out.push({ ...op, dates });
+      }
+    } else {
+      out.push(op);
+    }
+  }
+  return { operations: out, merged };
+}
+
+/** True when `id` is not the temp_id of a create in `operations`, so it names a live node. */
+function isLiveId(id: string, operations: Operation[]): boolean {
+  return !operations.some((op) => op.op === "create_node" && op.temp_id === id);
 }

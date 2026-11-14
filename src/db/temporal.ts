@@ -126,6 +126,21 @@ export async function updateNode(
   return next;
 }
 
+/** Appends the `done` history row for a task whose flag became `done`, attributed to `author`. */
+export async function recordDone(tx: Tx, id: string, done: boolean, at: Date, author: NodeAuthor): Promise<void> {
+  await tx.insert(nodeHistory).values({
+    id: randomUUID(),
+    nodeId: id,
+    field: "done",
+    oldValue: String(!done),
+    newValue: String(done),
+    embedding: null,
+    changedAt: at,
+    source: author.source,
+    agentId: author.agentId,
+  });
+}
+
 /**
  * Hard-delete a node, log a deleted history row attributed to `author`, and soft-close
  * open edges touching it so edge history remains. Returns the neighbors those closed

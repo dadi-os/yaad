@@ -1,38 +1,39 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Operation } from "../src/ingest/operations.js";
-import { dropClosedTasks, rejectWindowClaims, statesDate, windowClaims } from "../src/ingest/validate.js";
+import { clampWindows, pastCloses, statesDate, statesPastDay } from "../src/ingest/validate.js";
 
 const ZONE = "America/New_York";
 const AT = "2026-11-13T23:34:00-05:00";
 const hub = "00000000-0000-4000-8000-000000000001";
 
-const task = (temp_id: string, opens_on: string, closes_at: string): Operation => ({
-  op: "create_node",
-  temp_id,
-  kind: "task",
-  title: temp_id,
-  detail: { opens_on, closes_at },
-});
+const task = (temp_id: string, detail: Record<string, unknown>): Operation => ({ op: "create_node", temp_id, kind: "task", title: temp_id, detail });
 const link = (dst: string): Operation => ({ op: "create_edge", src: hub, dst, type: "HAS_ITEM", confidence: 1 });
+const clamp = (operations: Operation[], text: string, storedOpens = new Map<string, string | null>()) =>
+  clampWindows(operations, { text, occurredAt: AT, timeZone: ZONE, storedOpens });
 
-test("a task whose close is before the text is dropped with its edges; the rest stays", () => {
-  const ops = [task("old", "2026-09-01", "2026-09-04T23:59:00-04:00"), link("old"), task("new", "2026-11-13", "2026-11-16T12:00:00-05:00"), link("new")];
-  assert.deepEqual(dropClosedTasks(ops, AT), [ops[2], ops[3]]);
-  assert.equal(dropClosedTasks([ops[2] as Operation], AT).length, 1);
+test("a task whose close is before the text's day is skipped with its edges and reported; the rest stays", () => {
+  const ops = [task("old", { opens_on: "2026-09-01", closes_at: "2026-09-04T23:59:00-04:00" }), link("old"), task("new", { opens_on: "2026-11-13", closes_at: "2026-11-16T12:00:00-05:00" }), link("new")];
+  const result = pastCloses(ops, AT, undefined, ZONE);
+  assert.deepEqual(result.operations, [ops[2], ops[3]]);
+  assert.deepEqual(result.skipped, [{ title: "old", closes_at: "2026-09-04T23:59:00-04:00", reason: "closed before the text and not stated by Ankur" }]);
 });
 
-test("a task closing later tonight is kept, and a batch of only closed tasks becomes one noop", () => {
-  const tonight = task("tonight", "2026-11-13", "2026-11-13T23:59:00-05:00");
-  assert.deepEqual(dropClosedTasks([tonight, link("tonight")], AT), [tonight, link("tonight")]);
-  assert.deepEqual(dropClosedTasks([task("old", "2026-09-01", "2026-09-04T23:59:00-04:00"), link("old")], AT), [
-    { op: "noop", reason: "every task in the text closed before it" },
-  ]);
+test("a task closing earlier today is kept, and a batch of only closed tasks becomes one noop", () => {
+  const today = task("today", { opens_on: "2026-11-10", closes_at: "2026-11-13T09:00:00-05:00" });
+  assert.deepEqual(pastCloses([today, link("today")], AT, undefined, ZONE).operations, [today, link("today")]);
+  const old = [task("old", { opens_on: "2026-09-01", closes_at: "2026-09-04T23:59:00-04:00" }), link("old")];
+  assert.deepEqual(pastCloses(old, AT, undefined, ZONE).operations, [{ op: "noop", reason: "every task in the text closed before it" }]);
 });
 
-test("an existing task's update is never dropped", () => {
+test("a past close Ankur's words state is kept, and an existing task's update is never skipped", () => {
+  const missed = [task("hw3", { opens_on: "2026-11-01", closes_at: "2026-11-12T23:59:00-05:00" }), link("hw3")];
+  const kept = pastCloses(missed, AT, "I missed HW3, it was due yesterday", ZONE);
+  assert.deepEqual(kept.operations, missed);
+  assert.deepEqual(kept.skipped, []);
+  assert.equal(pastCloses(missed, AT, "I turned in the essay", ZONE).skipped.length, 1);
   const update: Operation = { op: "update_node", node_id: hub, detail: { closes_at: "2026-09-04T23:59:00-04:00" } };
-  assert.deepEqual(dropClosedTasks([update], AT), [update]);
+  assert.deepEqual(pastCloses([update], AT, undefined, ZONE).operations, [update]);
 });
 
 test("statesDate reads ISO, M/D, month-name and day-first forms, and not another day", () => {
@@ -46,22 +47,53 @@ test("statesDate reads ISO, M/D, month-name and day-first forms, and not another
   assert.equal(statesDate("week of 11/19", "2026-11-09"), false);
 });
 
-test("an unstated open before the text's day, or over 28 days before the close, is a claim", () => {
-  const text = "Ankur says the essay is due Mon noon.";
-  const early = task("early", "2026-11-02", "2026-11-16T12:00:00-05:00");
-  const ok = task("ok", "2026-11-13", "2026-11-16T12:00:00-05:00");
-  const long = task("long", "2026-11-13", "2026-12-14T23:59:00-05:00");
-  const edge28 = task("edge", "2026-11-16", "2026-12-14T23:59:00-05:00");
-  assert.deepEqual(windowClaims([early, ok, long, edge28], text, AT, ZONE), [early, long]);
+test("statesPastDay reads yesterday, last night, and a weekday within the week before", () => {
+  assert.equal(statesPastDay("it was due yesterday", "2026-11-12", "2026-11-13"), true);
+  assert.equal(statesPastDay("it was due yesterday", "2026-11-10", "2026-11-13"), false);
+  assert.equal(statesPastDay("due last Tuesday", "2026-11-10", "2026-11-13"), true);
+  assert.equal(statesPastDay("due Tuesday", "2026-10-06", "2026-11-13"), false);
+  assert.equal(statesPastDay("due Nov 12", "2026-11-12", "2026-11-13"), true);
 });
 
-test("a stated open is never a claim, however early or long", () => {
-  const stated = task("stated", "2026-09-01", "2026-12-14T23:59:00-05:00");
-  assert.deepEqual(windowClaims([stated], "Final report opens Sep 1 and is due Dec 14.", AT, ZONE), []);
-  assert.throws(() => rejectWindowClaims([stated], "Final report is due Dec 14.", AT, ZONE), (err: unknown) => (err as { type?: string }).type === "unsourced_window");
+test("an unstated open over 28 days before the close is moved to 28 days and reported", () => {
+  const long = task("long", { opens_on: "2026-11-13", closes_at: "2026-12-14T23:59:00-05:00" });
+  const ok = task("ok", { opens_on: "2026-11-13", closes_at: "2026-11-16T12:00:00-05:00" });
+  const edge28 = task("edge", { opens_on: "2026-11-16", closes_at: "2026-12-14T23:59:00-05:00" });
+  const result = clamp([long, ok, edge28], "Ankur says the essay is due Mon noon.");
+  assert.deepEqual(result.operations, [task("long", { opens_on: "2026-11-16", closes_at: "2026-12-14T23:59:00-05:00" }), ok, edge28]);
+  assert.deepEqual(result.clamped, [{ node: "long", from: "2026-11-13", to: "2026-11-16", rule: "open_over_28_days" }]);
 });
 
-test("updates and non-task creates are not window claims", () => {
-  const update: Operation = { op: "update_node", node_id: hub, detail: { opens_on: "2026-01-01", closes_at: "2026-12-14T23:59:00-05:00" } };
-  assert.deepEqual(windowClaims([update], "x", AT, ZONE), []);
+test("an unstated open before the text's day moves to it, or to the close day when that is past", () => {
+  const early = task("early", { opens_on: "2026-11-02", closes_at: "2026-11-16T12:00:00-05:00" });
+  const past = task("past", { opens_on: "2026-11-01", closes_at: "2026-11-12T23:59:00-05:00" });
+  const result = clamp([early, past], "x");
+  assert.deepEqual(result.clamped, [
+    { node: "early", from: "2026-11-02", to: "2026-11-13", rule: "open_before_text" },
+    { node: "past", from: "2026-11-01", to: "2026-11-12", rule: "open_before_text" },
+  ]);
+});
+
+test("a stated open is never clamped, however early or long", () => {
+  const stated = task("stated", { opens_on: "2026-09-01", closes_at: "2026-12-14T23:59:00-05:00" });
+  const kritik = task("kritik", { opens_on: "2026-10-14", closes_at: "2026-11-14T23:59:00-05:00" });
+  const result = clamp([stated, kritik], "Final report opens Sep 1 and is due Dec 14. Kritik runs Oct 14 to Nov 14.");
+  assert.deepEqual(result.operations, [stated, kritik]);
+  assert.deepEqual(result.clamped, []);
+});
+
+test("a close with no open gets one: the text's day, bounded by 28 days before the close", () => {
+  const near = task("near", { closes_at: "2026-11-16T12:00:00-05:00" });
+  const far = task("far", { closes_at: "2027-01-29T17:00:00-05:00" });
+  const result = clamp([near, far], "x");
+  assert.deepEqual(result.operations, [task("near", { closes_at: "2026-11-16T12:00:00-05:00", opens_on: "2026-11-13" }), task("far", { closes_at: "2027-01-29T17:00:00-05:00", opens_on: "2027-01-01" })]);
+  assert.deepEqual(result.clamped.map((entry) => entry.rule), ["open_missing", "open_missing"]);
+});
+
+test("an update that adds a close to a task with no open gets one, and one on a task with an open does not", () => {
+  const give: Operation = { op: "update_node", node_id: "a", detail: { closes_at: "2026-11-16T12:00:00-05:00" } };
+  const keep: Operation = { op: "update_node", node_id: "b", detail: { closes_at: "2026-11-16T12:00:00-05:00" } };
+  const memory: Operation = { op: "update_node", node_id: "c", detail: { closes_at: "2026-11-16T12:00:00-05:00" } };
+  const result = clamp([give, keep, memory], "x", new Map([["a", null], ["b", "2026-11-01"]]));
+  assert.deepEqual(result.operations, [{ ...give, detail: { closes_at: "2026-11-16T12:00:00-05:00", opens_on: "2026-11-13" } }, keep, memory]);
 });

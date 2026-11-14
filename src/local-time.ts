@@ -10,6 +10,16 @@ export function addDays(date: string, days: number): string {
   return new Date(Date.parse(`${date}T00:00:00Z`) + days * 86_400_000).toISOString().slice(0, 10);
 }
 
+/** Whole days from the local date `from` to the local date `to` (negative when `to` is earlier). */
+export function daysBetween(from: string, to: string): number {
+  return Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000);
+}
+
+/** Three-letter English weekday of the local `date` (YYYY-MM-DD). */
+export function weekdayOf(date: string): string {
+  return new Date(`${date}T12:00:00Z`).toLocaleDateString("en-US", { weekday: "short", timeZone: "UTC" });
+}
+
 /** The instant at which `timeZone` reads `time` (HH:MM) on the local `date` (YYYY-MM-DD). */
 export function localInstant(date: string, time: string, timeZone: string): Date {
   const wall = new Date(`${date}T${time}:00Z`);

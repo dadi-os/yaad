@@ -80,7 +80,7 @@ export async function resetGraph(sql: Sql): Promise<void> {
 
 export async function insertMemory(
   db: Db,
-  args: { title: string; embedding: number[]; expiresAt?: Date | null; occurredAt?: Date | null },
+  args: { title: string; embedding: number[]; expiresAt?: Date | null; occurredAt?: Date | null; agentId?: string },
 ): Promise<string> {
   const id = randomUUID();
   const now = new Date();
@@ -92,7 +92,8 @@ export async function insertMemory(
     embedding: args.embedding,
     occurredAt: args.occurredAt !== undefined ? args.occurredAt : now,
     expiresAt: args.expiresAt ?? null,
-    source: "manual",
+    source: args.agentId !== undefined ? "agent" : "manual",
+    agentId: args.agentId ?? null,
     createdAt: now,
     updatedAt: now,
   });
@@ -171,7 +172,7 @@ export async function insertTask(
     embedding: number[];
     opensOn?: string | null;
     closesAt?: Date | null;
-    doneAt?: Date | null;
+    done?: boolean;
     agentId?: string;
   },
 ): Promise<string> {
@@ -193,7 +194,7 @@ export async function insertTask(
     nodeId: id,
     opensOn: args.opensOn ?? null,
     closesAt: args.closesAt ?? null,
-    doneAt: args.doneAt ?? null,
+    done: args.done ?? false,
   });
   return id;
 }

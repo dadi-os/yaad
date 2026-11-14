@@ -4,7 +4,7 @@ This is Yaad's one statement of what memory is and how it is kept. Dadi's long-t
 
 ## What memory is and is not
 
-Memory is facts about Ankur's world and what became of them: his people, places, classes, deadlines, appointments, preferences, decisions, and the outcomes of things he did.
+Memory is facts about Ankur's world and what became of them: his people, places, classes, deadlines, appointments, preferences, decisions, and how the things he did turned out.
 
 **An agent's own working notes are not memory.** File paths, branches, commits, worktrees, where credentials are stored (Chaavi, a vault), and anything about "this agent", a wake, a worker, or an agent's own schedule or routine (a daily triage, a send run, an evening report) describe how an agent did its job, not Ankur's world. So does every lesson about how something works: how a site, page, login, second factor, account, tool, or repo behaves, what failed and what finally worked, the steps to get something done. Store none of it — not in a title and not in a body. A plain fact about Ankur's world that came with it stays: "Ankur's CSE 335 course site uses his College of Engineering login, not MSU SSO" is about his course; "the DECS login fills both fields in one call" is how-to.
 
@@ -33,7 +33,9 @@ Does it have a clock time on a given day that Ankur is at? Then it is a plan (a 
 - **A plan is something with a real time.** An invite or proposal that carries a time ("dinner Saturday at 7") is a plan with `rsvp` absent. A proposal with no time ("dinner sometime next week", "we should grab coffee") has no time, so it is not a plan: it is a Someday task (§3.8) or, when nothing is to be done, nothing. When the time is later fixed, the Someday item is closed or updated and the plan is created once; never leave both.
 - **`rsvp`** says whether Ankur is going: `"yes"`, `"no"`, or absent (unanswered; unanswered and yes plans block his free time, no does not). Set it only when the text says so: "Ankur is not going to the talk", "he does not plan to go to office hours" → `"no"`; "he will be there", "I'll go" → `"yes"`. A plan he declines **stays**: it still happens, so never close it for that; only `rsvp` changes. Never set rsvp on your own judgment of what he would want.
 - **Called off.** An event that is not happening ("Priya cancelled Saturday's dinner", "it's not happening") is closed (`close_node`; one session of a course: `update_plans` with `set: { "close": true }`). Closing keeps a history record. A plan that is only proposed, or whose time is confirmed later, is the same plan: update it, never create a second.
-- **`outcome`** says how a plan went, after the fact: `"done"` (attended, completed) or `"missed"` (skipped, did not go), with `actual_start` / `actual_end` when it really ran at other times. Set it only when the text says so.
+- **`attended`** says whether Ankur was there, after the fact: `true` (he went) or `false` (he did not go), absent until someone says. Set it only when the text says so. A plan that was called off is closed, never `attended: false`.
+- **Ankur may have set `rsvp` and `attended` by hand.** A value already stored is changed only when the text says it changed; a text that says nothing about them leaves them alone, and a create never sets them to null.
+- **An invite is a plan, and his answer is the rsvp.** Something that invites Ankur to a time (an invite, a proposal, "X wants to meet Thu 3") is one plan at the stated time with `rsvp` absent. A later "I'm in" or "skip it" updates that same plan's `rsvp`. A confirmation of a proposed time ("Jake confirmed gym Fri 6pm, I'm in") updates the plan; it never creates a second one. Whether it clashes with another plan is for the agent to tell Ankur; it is never stored.
 - **Only Ankur's life is stored.** A plan is something Ankur attends or does at a time he said: an appointment, a class session, "he will take the assessment Saturday 2:20–3:50 PM", a gym session he did. An agent's own routine — a daily inbox triage, an 8:00 AM send run, an evening report, a wake — is how agents work and is never stored. Time an agent proposes to lay out for him (a meal, a shower, a study block) is not stored either; nothing pre-lays his day. Someone else's availability — a professor's free hours to book, an advisor's drop-in slots, offered interview times — is not a plan until Ankur books one: it is one memory on that person or hub.
 - **Time set aside for a task** ("he will take the IBM assessment Saturday 2:20–3:50 PM; the link expires Oct 31 at 11:59 PM") is a plan at that time linked `—FOR→` the task. The task keeps its close; never move it to the sitting and never clear it.
 
@@ -43,9 +45,8 @@ A task says when it is relevant, not when to do it. Its only schedule is a windo
 
 **The close.** `closes_at` is the deadline as stated: "due Wed Nov 25 at 11:59 PM ET" → `"2026-11-25T23:59:00-05:00"`. A deadline with a date and no time closes at the end of that day, `23:59` local, and the body says `"Due time not stated."`; never invent another time. A moved deadline keeps its clock time unless the text gives a new one; `time not stated` never resets a moved close to `23:59`. A task with nothing to be done by (a Someday thing: "apply to IBM", "find a primary care doctor") has no close.
 
-**The open — the hardest call.** A close needs an open, and an open never falls after the close day. Choose `opens_on` per item, from what the source says or what you know about it, in this order:
+**The open — the hardest call.** A close needs an open, and an open never falls after the close day. Choose `opens_on` per item, from what the source says or what you know about it, in this order (Yaad brings an open the text does not state within bounds afterwards and reports it, so a close with no open is fine):
 
-0. **Never before the text, never over 28 days.** An open the text does not state is never earlier than the day the text is from, and no window is longer than 28 days unless the source states the open: `opens_on` is at least the close day minus 28, and that beats every rule below (a deadline 31 days out that was just posted opens 3 days after the text, not today). The rules below pick the open inside those bounds.
 1. **Stated.** An open, release, or availability date ("opens Mon Oct 12", "Oct 1 2:00am – Oct 9") or a stated lead ("homework is released one week before it is due", "start the taxes in January") is the open.
 2. **Already out.** An item the text says is posted, released, open, or assigned now ("was posted today", "is open on Codon", a list of what is due now) opens on the day it came out when the text states that day, else the day the text is from ("first seen tonight" is the day the text is from). A deadline Ankur states as his own, with no open, opens on the day he says it. An item in a term's schedule is not out just because the schedule is.
 3. **One day.** Something taken or handed in on one day with no clock time to be at — a quiz, an exam, a form "on Friday" — opens on that day: `opens_on` = the close day.
@@ -56,9 +57,15 @@ A Someday task is something Ankur himself means to do ("apply to IBM", "find a p
 
 A thing to prepare for a timed plan (studying for an exam, packing for a flight) is its own task closing when the plan starts, opening per the rules above, linked task `—FOR→` plan.
 
-**Done.** `done_at` is set only when `source_text` (Ankur's own words, verbatim, in the input) says he did it ("I submitted the essay"). The utterance `text` alone, an agent's paraphrase of him ("Ankur says it is submitted" for "submit on the portal"), or an agent's report never sets it; with no `source_text` there is no `done_at`. What a page, portal, gradebook or file listing shows (an upload, a `Submitted` badge, a score) is a record an agent can read again, never a done mark. Its value is the completion time Ankur stated; when he stated none, it is the utterance's `occurred_at`, to the second when it happened that day, else local midnight of the stated day. An agent's rounded clock time (`about 4:47 PM`) is not a stated time. A task is never done because of where it is handed in, because a draft is ready, or because an agent expects it to be done.
+**Done.** A task is done when Ankur says he did it, or an agent did it at his yes ("I sent in the scholarship essay", "yes, submit it" followed by the agent's report that it did). That is `detail.done: true`, set like any other field. `done: false` only when the text says it is not done ("I didn't actually send it", "Correction: Q5 is not submitted"). Restating a task never changes `done`: leave it out. None of these says Ankur did it:
+- an agent's paraphrase or report that carries no word of his ("Ankur says it is submitted" for "submit on the portal")
+- a page, portal, gradebook or file listing (an upload, a `Submitted` badge, a score)
+- where the task is handed in
+- a draft that is ready, or an agent expecting it to be done
 
-**Already closed.** An item whose close is before the day the text is from is never created, whatever the text calls it (submitted, shown, listed); a site list of old items stores only the ones still ahead. Only an existing task may be updated.
+Yaad records when the flag changed. Never write a done time into the body.
+
+**Already closed.** An item that closed before the day of the text is stored only when Ankur's own words state it ("I missed HW3, it was due yesterday"). A site list of old items is a record, not his deadlines; Yaad reports what it leaves out.
 
 **One task per deliverable.** Weekly homework is one task per assignment, as the syllabus lists them; there are no repeating tasks.
 
@@ -66,8 +73,8 @@ Only Ankur's own deliverables are tasks. A stage the instructor or the system ru
 
 ## Say exactly what the source says
 
-- **A venue is where, never whether.** "(Gradescope)", "on D2L", "submit via CLion", "in person" say where something is handed in or happens. They never mean it was submitted or done. Write where it is handed in as an instruction (`"Submit on Gradescope."`) in the body. Never write `submitted`, `uploaded`, `turned in` or `done` in a title or body unless this utterance says Ankur did it; a past participle of where it goes reads as done. A task is done only when the text says Ankur did it.
-- **Say exactly what the source says, never more.** Being enrolled in something is not attending or completing it. Being listed in a portal is not participating. Planning to go is not having gone. A venue is not a submission. Upgrading the verb invents a fact.
+- **A venue is where, never whether.** "(Gradescope)", "on D2L", "submit via CLion", "in person" say where something is handed in or happens. They never mean it was submitted or done. Write where it is handed in as an instruction (`"Submit on Gradescope."`) in the body. Never write `submitted`, `uploaded`, `turned in` or `done` in a title or body unless this utterance says Ankur did it; a past participle of where it goes reads as done. A task is done only when the text says Ankur did it or an agent did it at his yes.
+- **Say exactly what the source says, never more.** Being enrolled in something is not attending or doing it. Being listed in a portal is not participating. Planning to go is not having gone. A venue is not a submission. Upgrading the verb invents a fact.
 
 ## Corrections
 
@@ -75,6 +82,10 @@ Only Ankur's own deliverables are tasks. A stage the instructor or the system ru
 
 ## Freshness
 
-A fact about Ankur's world stays true until someone says otherwise, with one exception: a task. A task's state (open or done, its close, whether it was submitted) changes in the world without anyone telling memory. So a task carries when it was last verified, `verified_at`: set when it is created, changed, ticked done or undone, or restated true by an ingest that changed nothing else. It is not the same as `updated_at`, which moves only when the task's own text changes.
+A fact about Ankur's world stays true until someone says otherwise, with one exception: a task. A task's state (open or done, its close) changes in the world without anyone telling memory. So each task carries `verified_at`, which changes when the task is:
+- created
+- changed
+- marked done or not done
+- restated as still true (through a noop's `node_ids` or `POST /tasks/verify`)
 
-Read it like this: a task verified today is current. A task last verified before today is stale when the answer depends on it: check the source (the course site, the portal, Ankur) and ingest what changed, or restate it as still true if nothing did. A stale task is still the best lead, never a reason to say nothing is known.
+Each course hub also carries a `verified_at`. Any store or verify touching a task under it stamps it. Recall reports the hub as `verified_today`. A course whose hub is not verified today is stale for "what is due". Whoever reads its source refreshes it, and anyone else asks the course's owner. A stale task is still the best lead, never a reason to say nothing is known.

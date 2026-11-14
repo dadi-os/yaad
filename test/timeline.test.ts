@@ -142,7 +142,7 @@ test("an all-day plan covers its day and not the next one", async () => {
   assert.deepEqual(await view("month", "2026-10-24T04:00:00.000Z", "2026-10-25T04:00:00.000Z"), []);
 });
 
-test("PUT /timeline/outcome marks a plan done or missed and takes the mark back", async () => {
+test("PUT /timeline/attended says whether he was there and takes the mark back", async () => {
   await resetGraph(handle.sql);
   const id = await insertPlan(handle.db, {
     title: "Gym",
@@ -150,17 +150,17 @@ test("PUT /timeline/outcome marks a plan done or missed and takes the mark back"
     occurredAt: new Date("2026-10-21T15:00:00.000Z"),
     endAt: new Date("2026-10-21T16:00:00.000Z"),
   });
-  const done = await call("PUT", "/timeline/outcome", { plan_id: id, outcome: "done" });
-  assert.equal(done.statusCode, 200, done.body);
-  assert.equal(done.json().outcome, "done");
-  assert.ok(done.json().outcome_at);
+  const went = await call("PUT", "/timeline/attended", { plan_id: id, attended: true });
+  assert.equal(went.statusCode, 200, went.body);
+  assert.deepEqual(went.json(), { plan_id: id, attended: true });
   const [marked] = await view("planner", WEEK.from, WEEK.to);
-  assert.equal(marked?.outcome, "done");
+  assert.equal(marked?.attended, true);
 
-  const cleared = await call("PUT", "/timeline/outcome", { plan_id: id, outcome: null });
-  assert.equal(cleared.json().outcome_at, null);
+  assert.equal((await call("PUT", "/timeline/attended", { plan_id: id, attended: false })).json().attended, false);
+  const cleared = await call("PUT", "/timeline/attended", { plan_id: id, attended: null });
+  assert.equal(cleared.json().attended, null);
   const [after] = await view("planner", WEEK.from, WEEK.to);
-  assert.equal(after?.outcome, null);
+  assert.equal(after?.attended, null);
 });
 
 test("PUT /timeline/rsvp sets yes or no and clears the answer; an unknown id is 404 and a task is 422", async () => {

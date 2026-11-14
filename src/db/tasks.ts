@@ -1,11 +1,11 @@
 /** Reads of live tasks shared by the task routes, recall's `relevant_on` filter, and ingest candidates. */
 
-import { and, asc, desc, eq, gt, gte, inArray, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import { addDays, dayStart } from "../local-time.js";
 import type { TaskItem } from "../types/task.js";
 import { SESSION_EDGE, type TimelineHub } from "../types/timeline.js";
 import type { Db } from "./client.js";
-import { edge, node, taskDetail } from "./schema.js";
+import { edge, node, nodeHistory, taskDetail, type NodeRow } from "./schema.js";
 
 /** Live tasks with their detail, narrowed by `where`. */
 export function tasksWhere(db: Pick<Db, "select">, ...where: SQL[]) {
@@ -18,7 +18,7 @@ export function tasksWhere(db: Pick<Db, "select">, ...where: SQL[]) {
 
 /** Not done and open by the local `date`: its open day has come, whether it is still open or already past due. */
 export function relevantOn(date: string): SQL {
-  return and(isNull(taskDetail.doneAt), isNotNull(taskDetail.opensOn), lte(taskDetail.opensOn, date))!;
+  return and(eq(taskDetail.done, false), isNotNull(taskDetail.opensOn), lte(taskDetail.opensOn, date))!;
 }
 
 /**
@@ -46,7 +46,7 @@ export function relevantOrder(date: string): SQL[] {
 
 /** Not done and with no window: it is relevant on no particular day. */
 export function isSomeday(): SQL {
-  return and(isNull(taskDetail.doneAt), isNull(taskDetail.opensOn))!;
+  return and(eq(taskDetail.done, false), isNull(taskDetail.opensOn))!;
 }
 
 /** How far back from now (or from a recalled day) a task may have closed and still count as open. */
@@ -55,20 +55,45 @@ export const OPEN_TASK_PAST_DAYS = 14;
 const OPEN_TASK_AHEAD_DAYS = 60;
 
 /**
- * The `limit` newest tasks not done that ingest settles before creating anything new: those
- * with no close, or closing within {@link OPEN_TASK_PAST_DAYS} back and {@link OPEN_TASK_AHEAD_DAYS}
- * ahead of `now`. Newest first, so a task just created is never the one dropped at the cap.
+ * The tasks not done that ingest settles before creating anything new: those with no close, or
+ * closing within {@link OPEN_TASK_PAST_DAYS} back and {@link OPEN_TASK_AHEAD_DAYS} ahead of `now`.
  */
-export function openTasks(db: Pick<Db, "select">, limit: number, now: Date) {
+export function openTasks(db: Pick<Db, "select">, now: Date) {
   const from = new Date(now.getTime() - OPEN_TASK_PAST_DAYS * 86_400_000);
   const to = new Date(now.getTime() + OPEN_TASK_AHEAD_DAYS * 86_400_000);
   return tasksWhere(
     db,
-    isNull(taskDetail.doneAt),
+    eq(taskDetail.done, false),
     or(isNull(taskDetail.closesAt), and(gte(taskDetail.closesAt, from), lte(taskDetail.closesAt, to)))!,
-  )
-    .orderBy(desc(node.createdAt))
-    .limit(limit);
+  ).orderBy(asc(node.createdAt));
+}
+
+/**
+ * The course hubs a text may be about: the hubs among `ids`, the hubs of the tasks among `ids`,
+ * and every hub whose node `agentId` wrote (an agent's own courses).
+ */
+export async function touchedHubs(db: Pick<Db, "select">, ids: string[], agentId: string | null): Promise<Set<string>> {
+  const owned = agentId === null ? sql`false` : sql`${edge.srcId} IN (SELECT id FROM node WHERE agent_id = ${agentId})`;
+  const named = ids.length === 0 ? sql`false` : or(inArray(edge.srcId, ids), inArray(edge.dstId, ids))!;
+  const links = await db
+    .select({ hub: edge.srcId })
+    .from(edge)
+    .where(and(eq(edge.type, "HAS_ITEM"), isNull(edge.validTo), or(named, owned)));
+  return new Set(links.map((link) => link.hub));
+}
+
+/** Stamps `verified_at` on the course hub of each task in `taskIds`: any task under a hub that changed makes the course fresh. */
+export async function stampHubs(db: Pick<Db, "select" | "update">, taskIds: string[], at: Date): Promise<void> {
+  const hubs = [...(await hubRowsOf(db, taskIds, "HAS_ITEM")).values()].map((hub) => hub.id);
+  if (hubs.length > 0) {
+    await db.update(node).set({ verifiedAt: at }).where(inArray(node.id, hubs));
+  }
+}
+
+/** Restates `taskIds` as still true with no extraction: stamps the tasks' and their hubs' `verified_at` with `at`. */
+export async function verifyTasks(db: Pick<Db, "select" | "update">, taskIds: string[], at: Date): Promise<void> {
+  await db.update(taskDetail).set({ verifiedAt: at }).where(inArray(taskDetail.nodeId, taskIds));
+  await stampHubs(db, taskIds, at);
 }
 
 /**
@@ -83,8 +108,12 @@ export async function tasksOn(db: Db, date: string, timeZone: string): Promise<T
     lte(taskDetail.opensOn, date),
     or(isNull(taskDetail.closesAt), sql`${taskDetail.closesAt} >= ${start.toISOString()}`),
   )!;
-  const doneThatDay = and(isNotNull(taskDetail.doneAt), sql`${taskDetail.doneAt} >= ${start.toISOString()}`, sql`${taskDetail.doneAt} < ${end.toISOString()}`)!;
-  const rows = await tasksWhere(db, or(relevantOn(date), and(isNotNull(taskDetail.doneAt), or(heldThatDay, doneThatDay)))!);
+  const doneThatDay = sql`EXISTS (
+    SELECT 1 FROM ${nodeHistory}
+    WHERE ${nodeHistory.nodeId} = ${node.id} AND ${nodeHistory.field} = 'done' AND ${nodeHistory.newValue} = 'true'
+      AND ${nodeHistory.changedAt} >= ${start.toISOString()} AND ${nodeHistory.changedAt} < ${end.toISOString()}
+  )`;
+  const rows = await tasksWhere(db, or(relevantOn(date), and(eq(taskDetail.done, true), or(heldThatDay, doneThatDay)))!);
   return toTaskItems(db, rows);
 }
 
@@ -103,11 +132,11 @@ export async function toTaskItems(db: Pick<Db, "select">, rows: Awaited<ReturnTy
     body: task.body,
     opens_on: detail.opensOn,
     closes_at: detail.closesAt ? detail.closesAt.toISOString() : null,
-    done_at: detail.doneAt ? detail.doneAt.toISOString() : null,
+    done: detail.done,
     verified_at: detail.verifiedAt ? detail.verifiedAt.toISOString() : null,
     created_at: task.createdAt.toISOString(),
     updated_at: task.updatedAt.toISOString(),
-    past_due: detail.doneAt === null && detail.closesAt !== null && detail.closesAt < now,
+    past_due: !detail.done && detail.closesAt !== null && detail.closesAt < now,
     hub: hubs.get(task.id) ?? null,
     owner: task.agentId ?? task.source,
   }));
@@ -125,7 +154,17 @@ export async function hubsOf(
   ids: string[],
   type: "HAS_ITEM" | typeof SESSION_EDGE,
 ): Promise<Map<string, TimelineHub>> {
-  const hubs = new Map<string, TimelineHub>();
+  const rows = await hubRowsOf(db, ids, type);
+  return new Map([...rows].map(([id, hub]) => [id, { id: hub.id, title: hub.title }]));
+}
+
+/** {@link hubsOf} with the hubs' whole rows, which carry their `verified_at` and `agent_id`. */
+export async function hubRowsOf(
+  db: Pick<Db, "select">,
+  ids: string[],
+  type: "HAS_ITEM" | typeof SESSION_EDGE,
+): Promise<Map<string, NodeRow>> {
+  const hubs = new Map<string, NodeRow>();
   if (ids.length === 0) {
     return hubs;
   }
@@ -137,7 +176,7 @@ export async function hubsOf(
     .orderBy(asc(edge.createdAt));
   for (const link of links) {
     if (!hubs.has(link.dst)) {
-      hubs.set(link.dst, { id: link.hub.id, title: link.hub.title });
+      hubs.set(link.dst, link.hub);
     }
   }
   return hubs;

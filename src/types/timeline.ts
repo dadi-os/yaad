@@ -5,11 +5,6 @@ export const RSVPS = ["yes", "no"] as const;
 
 export type Rsvp = (typeof RSVPS)[number];
 
-/** How a plan turned out; null while nobody has said. */
-export const OUTCOMES = ["done", "missed"] as const;
-
-export type Outcome = (typeof OUTCOMES)[number];
-
 /** The filters `POST /timeline` applies: `planner` (the day and week grid), `month`, and `tile` (the home ribbon). */
 export const TIMELINE_VIEWS = ["planner", "month", "tile"] as const;
 
@@ -38,10 +33,8 @@ export type TimelineItem = {
   all_day: boolean;
   /** IANA zone of the place, when it is not the box's; times stay instants. */
   time_zone: string | null;
-  outcome: Outcome | null;
-  outcome_at: string | null;
-  actual_start: string | null;
-  actual_end: string | null;
+  /** Whether Ankur was there: true attended, false did not; null until he says. */
+  attended: boolean | null;
   place: TimelinePlace | null;
   hub: TimelineHub | null;
   /** Who keeps it: the Hath agent that wrote it, or `manual` / `ingest`. */

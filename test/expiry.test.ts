@@ -397,6 +397,7 @@ test("assembleCandidates rejects expired participant_ids with 422", async () => 
         embedding: axisVector(dim, 0),
         segmentEmbeddings: [],
         participantIds: [id],
+        author: { source: "ingest", agentId: null },
         extraIds: [],
       }),
     (err: unknown) => {

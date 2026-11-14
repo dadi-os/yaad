@@ -36,11 +36,7 @@ const fileSchema = z.object({
     candidate_limit: z.number().int().positive(),
     segment_limit: z.number().int().positive(),
     segment_candidate_limit: z.number().int().positive(),
-    open_item_limit: z.number().int().positive(),
     edge_context_limit: z.number().int().positive(),
-  }),
-  plan: z.object({
-    max_sessions_per_spawn: z.number().int().positive(),
   }),
   recall: z.object({
     anchor_similarity_floor: z.number().min(0).max(2),
@@ -89,7 +85,6 @@ export type Config = {
   search: FileConfig["search"];
   dwar: FileConfig["dwar"];
   ingest: FileConfig["ingest"];
-  plan: FileConfig["plan"];
   recall: FileConfig["recall"];
 };
 
@@ -157,7 +152,6 @@ export function loadConfig(): Config {
     search: file.search,
     dwar: file.dwar,
     ingest: file.ingest,
-    plan: file.plan,
     recall: file.recall,
   };
   return cached;

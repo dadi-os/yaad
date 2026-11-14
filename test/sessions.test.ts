@@ -5,7 +5,8 @@ import { buildApp } from "../src/app.js";
 import { edge, node, nodeHistory, planDetail } from "../src/db/schema.js";
 import { applyOperations } from "../src/ingest/apply.js";
 import { emitOperationsInput, type Operation } from "../src/ingest/operations.js";
-import { validateExtraction, validateOperations } from "../src/ingest/validate.js";
+import { rejectDuplicates } from "../src/ingest/duplicates.js";
+import { validateOperations } from "../src/ingest/validate.js";
 import type { Config } from "../src/config.js";
 import { axisVector, insertMemory, insertPlace, mockDwar, openTestDb, resetGraph, testConfig } from "./helpers.js";
 
@@ -23,7 +24,7 @@ after(async () => {
 
 async function writes(operations: Operation[], cfg: Config = config) {
   await validateOperations({ timeZone: cfg.env.timezone, db: handle.db, operations });
-  await validateExtraction({ timeZone: cfg.env.timezone, db: handle.db, operations, text: "" });
+  await rejectDuplicates(handle.db, operations, cfg.env.timezone);
   return applyOperations({ db: handle.db, dwar: mockDwar({ dimension: dim }), operations, author: { source: "ingest", agentId: null }, config: cfg });
 }
 
@@ -98,15 +99,10 @@ test("spawn_plans rejects repeated dates, an end before the start, a room with n
   await rejects(spawn({ place: course }));
 });
 
-test("spawn_plans is refused past max_sessions_per_spawn, and re-spawning the same sessions is a duplicate", async () => {
+test("spawn_plans has no cap on dates, and re-spawning the same sessions by hand is a duplicate", async () => {
   await resetGraph(handle.sql);
-  const small: Config = { ...config, plan: { max_sessions_per_spawn: 2 } };
   const course = await insertMemory(handle.db, { title: "CSE 380", embedding: axisVector(dim, 0) });
   const spawn: Operation = { op: "spawn_plans", temp_id: "s", hub: course, title: "Lecture", dates: ["2026-10-27", "2026-10-29", "2026-11-03"], start_time: "10:20" };
-  await assert.rejects(
-    () => writes([spawn], small),
-    (err: unknown) => (err as { statusCode?: number }).statusCode === 422 && /max_sessions_per_spawn/.test((err as Error).message),
-  );
   await writes([spawn]);
   await assert.rejects(
     () => writes([{ ...spawn, temp_id: "again", dates: ["2026-10-29"] }]),
@@ -138,10 +134,9 @@ test("update_plans moves a course's later sessions, keeping each date and length
   await writes([{ op: "update_plans", hub, from_date: "2026-10-27", to_date: "2026-10-27", set: { end_time: "11:50" } }]);
   assert.equal((await sessionsOf(hub))[0]?.detail.endAt?.toISOString(), "2026-10-27T15:50:00.000Z");
 
-  await writes([{ op: "update_plans", hub, from_date: "2026-10-29", to_date: "2026-10-29", set: { outcome: "missed" } }]);
+  await writes([{ op: "update_plans", hub, from_date: "2026-10-29", to_date: "2026-10-29", set: { attended: false } }]);
   sessions = await sessionsOf(hub);
-  assert.deepEqual(sessions.map((row) => row.detail.outcome), [null, "missed", null]);
-  assert.ok(sessions[1]?.detail.outcomeAt instanceof Date);
+  assert.deepEqual(sessions.map((row) => row.detail.attended), [null, false, null]);
 });
 
 test("update_plans close closes the matched sessions like close_node, keeping a history row, and leaves the rest", async () => {

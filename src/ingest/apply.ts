@@ -6,13 +6,15 @@ import type { DwarClient } from "../dwar/client.js";
 import { embeddingText } from "../dwar/client.js";
 import type { Config } from "../config.js";
 import type { Db } from "../db/client.js";
-import { getEdge, getNode, getPlanDetail } from "../db/read.js";
+import { getEdge, getNode, getPlanDetail, getTaskDetail } from "../db/read.js";
 import { edge, node, personDetail, placeDetail, planDetail, taskDetail } from "../db/schema.js";
+import { stampHubs } from "../db/tasks.js";
 import {
   closeEdge,
   deleteNode,
   lockCurrentEdge,
   lockNode,
+  recordDone,
   sweepOrphans,
   updateNode,
   type Tx,
@@ -75,6 +77,7 @@ export async function applyOperations(opts: {
     let edgesSkipped = 0;
     const closedNodes = new Set<string>();
     const closedEdges = new Set<string>();
+    const touchedTasks = new Set<string>();
     const stranded: string[] = [];
     const at = new Date();
 
@@ -118,10 +121,7 @@ export async function applyOperations(opts: {
             allDay: detail.all_day ?? false,
             timeZone: detail.time_zone ?? null,
             rsvp: detail.rsvp ?? null,
-            outcome: detail.outcome ?? null,
-            outcomeAt: detail.outcome ? at : null,
-            actualStart: detail.actual_start ? new Date(detail.actual_start) : null,
-            actualEnd: detail.actual_end ? new Date(detail.actual_end) : null,
+            attended: detail.attended ?? null,
           });
         } else if (op.kind === "task") {
           const detail = parse(taskDetailBody, op.detail ?? {});
@@ -129,9 +129,13 @@ export async function applyOperations(opts: {
             nodeId: id,
             opensOn: detail.opens_on ?? null,
             closesAt: detail.closes_at ? new Date(detail.closes_at) : null,
-            doneAt: detail.done_at ? new Date(detail.done_at) : null,
+            done: detail.done ?? false,
             verifiedAt: at,
           });
+          if (detail.done === true) {
+            await recordDone(tx, id, true, at, opts.author);
+          }
+          touchedTasks.add(id);
         } else if (op.kind === "place") {
           const detail = parse(placeDetailBody, op.detail ?? {});
           await tx.insert(placeDetail).values({
@@ -154,7 +158,6 @@ export async function applyOperations(opts: {
           placeId: op.place === undefined ? null : resolve(op.place, tempIds),
           author: opts.author,
           timeZone: opts.config.env.timezone,
-          maxSessions: opts.config.plan.max_sessions_per_spawn,
           at,
         });
         spawned[op.temp_id] = ids;
@@ -184,22 +187,24 @@ export async function applyOperations(opts: {
                 ...(detail.all_day !== undefined ? { allDay: detail.all_day } : {}),
                 ...(detail.time_zone !== undefined ? { timeZone: detail.time_zone } : {}),
                 ...(detail.rsvp !== undefined ? { rsvp: detail.rsvp } : {}),
-                ...(detail.outcome !== undefined ? { outcome: detail.outcome, outcomeAt: detail.outcome ? at : null } : {}),
-                ...(detail.actual_start !== undefined ? { actualStart: detail.actual_start ? new Date(detail.actual_start) : null } : {}),
-                ...(detail.actual_end !== undefined ? { actualEnd: detail.actual_end ? new Date(detail.actual_end) : null } : {}),
+                ...(detail.attended !== undefined ? { attended: detail.attended } : {}),
               })
               .where(eq(planDetail.nodeId, op.node_id));
           } else if (current.kind === "task") {
             const detail = parse(patchTaskDetailBody, op.detail);
+            const stored = await getTaskDetail(tx, op.node_id);
             await tx
               .update(taskDetail)
               .set({
                 ...(detail.opens_on !== undefined ? { opensOn: detail.opens_on } : {}),
                 ...(detail.closes_at !== undefined ? { closesAt: detail.closes_at ? new Date(detail.closes_at) : null } : {}),
-                ...(detail.done_at !== undefined ? { doneAt: detail.done_at ? new Date(detail.done_at) : null } : {}),
+                ...(detail.done !== undefined ? { done: detail.done } : {}),
                 verifiedAt: at,
               })
               .where(eq(taskDetail.nodeId, op.node_id));
+            if (detail.done !== undefined && detail.done !== stored.done) {
+              await recordDone(tx, op.node_id, detail.done, at, opts.author);
+            }
           } else if (current.kind === "place") {
             const detail = parse(patchPlaceDetailBody, op.detail);
             await tx
@@ -212,8 +217,11 @@ export async function applyOperations(opts: {
               .where(eq(placeDetail.nodeId, op.node_id));
           }
         }
-        if (current.kind === "task" && op.detail === undefined) {
-          await tx.update(taskDetail).set({ verifiedAt: at }).where(eq(taskDetail.nodeId, op.node_id));
+        if (current.kind === "task") {
+          if (op.detail === undefined) {
+            await tx.update(taskDetail).set({ verifiedAt: at }).where(eq(taskDetail.nodeId, op.node_id));
+          }
+          touchedTasks.add(op.node_id);
         }
         const nextTitle = op.title ?? current.title;
         const nextBody = op.body !== undefined ? op.body : current.body;
@@ -317,11 +325,13 @@ export async function applyOperations(opts: {
       if (op.op === "noop") {
         if (op.node_ids !== undefined) {
           await tx.update(taskDetail).set({ verifiedAt: at }).where(inArray(taskDetail.nodeId, op.node_ids));
+          op.node_ids.forEach((id) => touchedTasks.add(id));
         }
         applied.push(op);
       }
     }
 
+    await stampHubs(tx, [...touchedTasks], at);
     await reverify(tx, referenced, closedNodes, closedEdges);
     const orphans = await sweepOrphans(tx, stranded, at, opts.author);
 
