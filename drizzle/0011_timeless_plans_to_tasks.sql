@@ -1,7 +1,7 @@
 -- Migration 0008 dropped plan_detail.status without converting `tentative`, so the placeholders the
 -- timeline migration made from untimed ideas ("Gym training split", "weekly average weigh-in") became
 -- real plans at 00:00. A plan is something with a real time: each plan that was `tentative`, starts at
--- 00:00 in its zone (the plan's time_zone, else the migrator session's) and has no end becomes a
+-- 00:00 in its zone (the plan's time_zone, else the migrator session's) and has no end and is not an all-day event becomes a
 -- Someday task (kind task, no window, not done), with an `occurred_at` node_history row for the start
 -- it gave up. The former status is not in the live schema; it is read from the archive copies of
 -- plan_detail taken before 0008 (plan_detail_evals0_v3 and plan_detail_evalb, each node_id and status),
@@ -18,7 +18,7 @@ BEGIN
           SELECT n."id", n."occurred_at" FROM "node" n
           JOIN "plan_detail" d ON d."node_id" = n."id"
           JOIN %I a ON a."node_id" = n."id"
-          WHERE n."kind" = 'plan' AND a."status" = 'tentative' AND d."end_at" IS NULL AND n."occurred_at" IS NOT NULL
+          WHERE n."kind" = 'plan' AND a."status" = 'tentative' AND d."end_at" IS NULL AND NOT d."all_day" AND n."occurred_at" IS NOT NULL
             AND (n."occurred_at" AT TIME ZONE COALESCE(d."time_zone", current_setting('TimeZone')))::time = '00:00'
         ), history AS (
           INSERT INTO "node_history" ("id", "node_id", "field", "old_value", "new_value", "changed_at", "source")

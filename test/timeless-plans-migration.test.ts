@@ -42,9 +42,11 @@ test("a former tentative plan at local midnight with no end becomes a Someday ta
   const timed = await plan("Dinner with Priya", 2, { at: "2026-11-18T22:00:00Z" });
   const ended = await plan("Reading day", 3, { at: "2026-11-19T05:00:00Z", endAt: "2026-11-20T05:00:00Z" });
   const confirmed = await plan("Advising", 4, { at: "2026-11-21T05:00:00Z" });
+  const allDay = await plan("Open house", 5, { at: "2026-11-22T05:00:00Z" });
+  await handle.db.update(planDetail).set({ allDay: true }).where(eq(planDetail.nodeId, allDay));
   await handle.sql`CREATE TABLE plan_detail_evals0_v3 (node_id uuid PRIMARY KEY, status text NOT NULL)`;
   await handle.sql`INSERT INTO plan_detail_evals0_v3 (node_id, status) VALUES
-    (${split}, 'tentative'), (${weighIn}, 'tentative'), (${timed}, 'tentative'), (${ended}, 'tentative'), (${confirmed}, 'confirmed')`;
+    (${split}, 'tentative'), (${weighIn}, 'tentative'), (${timed}, 'tentative'), (${ended}, 'tentative'), (${confirmed}, 'confirmed'), (${allDay}, 'tentative')`;
 
   await handle.sql.unsafe(MIGRATION);
   await handle.sql.unsafe(MIGRATION);
@@ -63,7 +65,7 @@ test("a former tentative plan at local midnight with no end becomes a Someday ta
   }
   const [splitHistory] = await handle.db.select().from(nodeHistory).where(eq(nodeHistory.nodeId, split));
   assert.equal(splitHistory?.oldValue, "2026-11-16T05:00:00.000Z");
-  for (const id of [timed, ended, confirmed]) {
+  for (const id of [timed, ended, confirmed, allDay]) {
     const [row] = await handle.db.select().from(node).where(eq(node.id, id));
     assert.equal(row?.kind, "plan");
     assert.equal((await handle.db.select().from(nodeHistory).where(eq(nodeHistory.nodeId, id))).length, 0);
