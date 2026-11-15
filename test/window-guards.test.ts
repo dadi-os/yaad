@@ -102,8 +102,8 @@ test("an update that moves only the close of a task with a stored open keeps the
   const move: Operation = { op: "update_node", node_id: "k", detail: { closes_at: "2026-11-15T04:59:00Z" } };
   const stored = new Map([["k", "2026-10-16"]]);
   const result = clamp([move], "Kritik Essay 3 closes Sat Nov 14, 11:59 PM", stored);
-  assert.deepEqual(result.operations, [{ ...move, detail: { closes_at: "2026-11-15T04:59:00Z", opens_on: "2026-10-18" } }]);
-  assert.deepEqual(result.clamped, [{ node: "k", from: "2026-10-16", to: "2026-10-18", rule: "open_over_28_days" }]);
+  assert.deepEqual(result.operations, [{ ...move, detail: { closes_at: "2026-11-15T04:59:00Z", opens_on: "2026-10-17" } }]);
+  assert.deepEqual(result.clamped, [{ node: "k", from: "2026-10-16", to: "2026-10-17", rule: "open_over_28_days" }]);
   const stated = clamp([move], "Kritik runs Oct 16 to Nov 14", stored);
   assert.deepEqual(stated.operations, [move]);
   assert.deepEqual(stated.clamped, []);
