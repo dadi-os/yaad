@@ -282,6 +282,31 @@ test("hub scopes a recall by id or exact title, and closes_from/closes_to return
   assert.deepEqual(done.map((item) => [item.title, item.detail.done]), [["Essay", true]]);
 });
 
+test("hub resolves a course label by normalized-title prefix, and an unmatched label is a 422 naming the closest hubs", async () => {
+  await resetGraph(handle.sql);
+  const cse300 = await insertMemory(handle.db, { title: "CSE 300 class", embedding: axisVector(dim, 1) });
+  const cse380 = await insertMemory(handle.db, { title: "CSE 380 lecture", embedding: axisVector(dim, 2) });
+  const hw = await insertTask(handle.db, { title: "HW4", embedding: axisVector(dim, 3), opensOn: "2026-11-10", closesAt: new Date("2026-11-19T04:59:00.000Z") });
+  const quiz = await insertTask(handle.db, { title: "Quiz 2", embedding: axisVector(dim, 4), opensOn: "2026-11-10", closesAt: new Date("2026-11-20T04:59:00.000Z") });
+  await insertEdge(handle.db, { src: cse300, dst: hw, type: "HAS_ITEM" });
+  await insertEdge(handle.db, { src: cse380, dst: quiz, type: "HAS_ITEM" });
+  const titles = async (payload: Record<string, unknown>) => ((await recallCall(payload)).json().nodes as Array<{ title: string }>).map((item) => item.title);
+  assert.deepEqual(await titles({ hub: "CSE 300" }), ["HW4"]);
+  assert.deepEqual(await titles({ hub: "cse-380" }), ["Quiz 2"]);
+  assert.deepEqual(await titles({ hub: "CSE 300 class" }), ["HW4"]);
+  assert.deepEqual(await titles({ hub: cse380 }), ["Quiz 2"]);
+
+  for (const label of ["CSE 30", "CSE 431"]) {
+    const res = await recallCall({ hub: label });
+    assert.equal(res.statusCode, 422);
+    assert.equal(res.json().error.type, "invalid_request");
+    assert.match(res.json().error.message, /closest hub titles: CSE 300 class; CSE 380 lecture/);
+  }
+  const none = await recallCall({ hub: "Zebra" });
+  assert.equal(none.statusCode, 422);
+  assert.match(none.json().error.message, /no hub shares a word/);
+});
+
 test("a task recall with occurred_* is a 422 that points at relevant_on and closes_from", async () => {
   const res = await recallCall({ kind: "task", occurred_from: "2026-11-01T00:00:00Z" });
   assert.equal(res.statusCode, 422);

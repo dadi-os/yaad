@@ -4,16 +4,21 @@
  * at its start. `relevant_on` returns the tasks not done whose open day has come by that local
  * day and that have no close or closed within the last 14 days of it: closing on or after the day
  * first (soonest first), then the recently past due (latest first). `closes_from` and `closes_to`
- * (local dates, inclusive) return tasks by close day, done ones included, and `hub` (a node id or an
- * exact title) returns what that hub holds: its tasks and sessions.
+ * (local dates, inclusive) return tasks by close day, done ones included, and `hub` (a node id, an
+ * exact title, or a course label that starts a hub's normalized title) returns what the hub holds:
+ * its tasks and sessions.
  */
 
-import { and, asc, eq, gt, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, asc, eq, gt, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
 import { YaadError } from "../errors.js";
 import type { NodeKind } from "../types/domain.js";
 import type { Db } from "./client.js";
-import { node, personDetail, planDetail, taskDetail, type NodeRow } from "./schema.js";
+import { edge, node, personDetail, planDetail, taskDetail, type NodeRow } from "./schema.js";
+import { normalizeTitle } from "../ingest/duplicates.js";
 import { relevantOrder, relevantRecently } from "./tasks.js";
+
+/** The most hub titles an unmatched `hub` filter names in its 422. */
+const CLOSEST_HUB_LIMIT = 5;
 
 /** Exact criteria over live nodes; unset fields do not constrain. */
 export type NodeFilter = {
@@ -24,7 +29,7 @@ export type NodeFilter = {
   occurred_to?: string | undefined;
   /** A local date: the tasks relevant that day. */
   relevant_on?: string | undefined;
-  /** A hub's id or exact title (compared case-insensitively): the nodes it holds by `HAS_ITEM` or `HAS_SESSION`. */
+  /** A hub's id, exact title (case-insensitive), or course label that starts a hub's normalized title ("CSE 300" for "CSE 300 class"): the nodes it holds by `HAS_ITEM` or `HAS_SESSION`. */
   hub?: string | undefined;
   /** Local dates, inclusive: tasks whose close day falls in the range. */
   closes_from?: string | undefined;
@@ -56,6 +61,40 @@ export function assertFilterCoherent(filter: NodeFilter): void {
   }
 }
 
+/**
+ * The ids of the live hubs a `hub` filter names: the hub with that id or exact title, else every hub whose
+ * normalized title is the label or starts with it as whole words. Throws a 422 naming the closest hub titles
+ * when none matches, so a wrong label is never an empty result.
+ */
+export async function resolveHubIds(db: Db, hub: string): Promise<string[]> {
+  const hubs = await db
+    .selectDistinct({ id: node.id, title: node.title })
+    .from(edge)
+    .innerJoin(node, eq(node.id, edge.srcId))
+    .where(and(isNull(edge.validTo), inArray(edge.type, ["HAS_ITEM", "HAS_SESSION"]), or(isNull(node.expiresAt), gt(node.expiresAt, new Date()))));
+  const exact = hubs.filter((row) => row.id === hub || row.title.toLowerCase() === hub.toLowerCase());
+  if (exact.length > 0) {
+    return exact.map((row) => row.id);
+  }
+  const label = normalizeTitle(hub);
+  const prefixed = hubs.filter((row) => {
+    const title = normalizeTitle(row.title);
+    return title === label || title.startsWith(`${label} `);
+  });
+  if (prefixed.length > 0) {
+    return prefixed.map((row) => row.id);
+  }
+  const labelWords = new Set(label.split(" "));
+  const closest = hubs
+    .map((row) => ({ title: row.title, shared: normalizeTitle(row.title).split(" ").filter((word) => labelWords.has(word)).length }))
+    .filter((row) => row.shared > 0)
+    .sort((a, b) => b.shared - a.shared || a.title.localeCompare(b.title))
+    .slice(0, CLOSEST_HUB_LIMIT)
+    .map((row) => row.title);
+  const named = closest.length > 0 ? `closest hub titles: ${closest.join("; ")}` : "no hub shares a word with it";
+  throw new YaadError(422, "invalid_request", `hub "${hub}" matches no hub title or id; ${named}`);
+}
+
 /** Live nodes matching every set filter, ordered by occurred_at then created_at (`relevant_on`: see {@link relevantOrder}). */
 export async function filterNodes(db: Db, filter: NodeFilter, limit: number, offset: number): Promise<NodeRow[]> {
   const needsPersonJoin = filter.name !== undefined && (filter.kind === undefined || filter.kind === "person");
@@ -75,11 +114,11 @@ export async function filterNodes(db: Db, filter: NodeFilter, limit: number, off
   }
 
   if (filter.hub !== undefined) {
+    const hubIds = await resolveHubIds(db, filter.hub);
     conditions.push(sql`${node.id} IN (
-      SELECT e.dst_id FROM edge AS e JOIN node AS h ON h.id = e.src_id
+      SELECT e.dst_id FROM edge AS e
       WHERE e.valid_to IS NULL AND e.type IN ('HAS_ITEM', 'HAS_SESSION')
-        AND (h.id::text = ${filter.hub} OR lower(h.title) = lower(${filter.hub}))
-        AND (h.expires_at IS NULL OR h.expires_at > now())
+        AND e.src_id IN (${sql.join(hubIds.map((id) => sql`${id}::uuid`), sql`, `)})
     )`);
   }
 
