@@ -16,7 +16,7 @@ import type { NodeAuthor } from "../types/domain.js";
 import { applyOperations, type ApplyResult } from "./apply.js";
 import { assembleCandidates, segmentsOf } from "./candidates.js";
 import { findLookalikes, mergeDuplicates, type MergedDuplicate } from "./duplicates.js";
-import { EXTRACTION_ROUTE, emitOperations, recheckNote } from "./emit.js";
+import { emitOperations, recheckNote } from "./emit.js";
 import type { Operation } from "./operations.js";
 import { clampWindows, pastCloses, unlinkedCreates, validateExtraction, validateOperations, type ClampedWindow, type SkippedTask } from "./validate.js";
 
@@ -62,7 +62,6 @@ export async function ingest(opts: {
       text: opts.text,
       sourceText: opts.sourceText,
       candidates,
-      route: EXTRACTION_ROUTE,
       recheck,
     });
     return { candidates, ...pastCloses(operations, opts.occurredAt, opts.sourceText, timeZone) };

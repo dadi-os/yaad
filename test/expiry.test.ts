@@ -199,7 +199,7 @@ test("expired node is excluded from ingest candidate payload", async () => {
     async embed(texts) {
       return texts.map(() => axisVector(dim, 0));
     },
-    async work(opts): Promise<DwarChatResponse> {
+    async chat(opts): Promise<DwarChatResponse> {
       capturedCandidates = JSON.parse(opts.user).candidates;
       return {
         stop_reason: "tool_use",

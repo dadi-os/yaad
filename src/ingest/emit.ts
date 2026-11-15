@@ -3,14 +3,11 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { Config } from "../config.js";
-import type { DwarClient, DwarRoute } from "../dwar/client.js";
+import type { DwarClient } from "../dwar/client.js";
 import { YaadError } from "../errors.js";
 import { formatZod } from "../routers/v1/schemas.js";
 import type { CandidateState } from "./candidates.js";
 import { emitOperationsInput, emitOperationsToolSchema, type Operation } from "./operations.js";
-
-/** The Dwar chat route extraction runs on; `complete` (one effort step lower) is only for the eval to measure. */
-export const EXTRACTION_ROUTE: DwarRoute = "work";
 
 /**
  * The extraction system prompt: the shared `prompts/memory.md` doctrine, then the write-path
@@ -60,7 +57,7 @@ export function recheckNote(opts: {
 }
 
 /**
- * Run one work-lane turn that must call `emit_operations` exactly once.
+ * Run one chat turn that must call `emit_operations` exactly once.
  * Rejects non-tool_use stops or wrong tool call counts.
  */
 export async function emitOperations(opts: {
@@ -71,7 +68,6 @@ export async function emitOperations(opts: {
   /** Ankur's own words, verbatim, when the caller has them; what lets a task that closed before the text be stored. */
   sourceText?: string | undefined;
   candidates: CandidateState;
-  route: DwarRoute;
   /** On the second pass, what the first pass got wrong (see {@link recheckNote}); null on the first. */
   recheck: string | null;
 }): Promise<Operation[]> {
@@ -83,7 +79,7 @@ export async function emitOperations(opts: {
     candidates: opts.candidates,
     ...(opts.recheck !== null ? { recheck: opts.recheck } : {}),
   });
-  const response = await opts.dwar.work({
+  const response = await opts.dwar.chat({
     system,
     user,
     tools: [
@@ -95,7 +91,6 @@ export async function emitOperations(opts: {
       },
     ],
     caller: "yaad/ingest",
-    route: opts.route,
   });
   if (response.stop_reason !== "tool_use") {
     throw new YaadError(

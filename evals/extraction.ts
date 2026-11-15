@@ -3,8 +3,7 @@
  * from real ingests that went wrong (see `extraction-cases.json`) and checks what it
  * emits. It writes nothing; it needs Dwar reachable at its mesh address and `TZ` set to
  * the box's zone. `npm run eval:extraction -- --runs=3` repeats each case to expose
- * flaky choices; `--case=<name>,<name>` runs only those cases; `--route=complete` runs
- * extraction on Dwar's `/chat/complete` (one effort step below `/chat/work`) to compare. A run fails when its
+ * flaky choices; `--case=<name>,<name>` runs only those cases. A run fails when its
  * extraction is malformed, when Yaad would reject or re-extract the batch (see
  * {@link rejections}), or when any expectation fails. Exits 1 when any run fails.
  */
@@ -14,10 +13,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { loadFileConfig } from "../src/config.js";
-import { createDwarClient, type DwarRoute } from "../src/dwar/client.js";
+import { createDwarClient } from "../src/dwar/client.js";
 import type { CandidateState } from "../src/ingest/candidates.js";
 import { YaadError } from "../src/errors.js";
-import { EXTRACTION_ROUTE, emitOperations } from "../src/ingest/emit.js";
+import { emitOperations } from "../src/ingest/emit.js";
 import {
   personDetailBody,
   placeDetailBody,
@@ -503,11 +502,6 @@ if (!Number.isInteger(runs) || runs < 1) {
   throw new Error(`--runs must be a positive integer, got ${runsArg}`);
 }
 const caseArg = process.argv.find((arg) => arg.startsWith("--case="));
-const routeArg = process.argv.find((arg) => arg.startsWith("--route="));
-const route = (routeArg ? routeArg.slice("--route=".length) : EXTRACTION_ROUTE) as DwarRoute;
-if (route !== "work" && route !== "complete") {
-  throw new Error(`--route must be work or complete, got ${routeArg}`);
-}
 const only = caseArg ? new Set(caseArg.slice("--case=".length).split(",")) : null;
 
 const fileConfig = loadFileConfig();
@@ -532,7 +526,6 @@ for (const testCase of cases) {
         text: testCase.text,
         sourceText: testCase.source_text,
         candidates: expandCandidates(testCase.candidates),
-        route,
         recheck: null,
       });
     } catch (err) {
