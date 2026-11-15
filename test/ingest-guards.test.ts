@@ -137,6 +137,16 @@ test("close_node must quote the utterance words that retract the node", async ()
   });
 });
 
+test("close_node evidence may quote the requester's verbatim source_text instead of the agent's paraphrase", async () => {
+  await resetGraph(handle.sql);
+  const id = await insertMemory(handle.db, { title: "Study group Wed", embedding: axisVector(dim, 0) });
+  const operations: Operation[] = [{ op: "close_node", node_id: id, reason: "called off", evidence: "study group Wed is off" }];
+  const text = "Correction: the study group with Priya on Wed Nov 18 is cancelled.";
+  await rejectsWith(() => validateExtraction({ text, operations }), 422, "invalid_request", /evidence must quote/);
+  await validateExtraction({ text, sourceText: "Study group Wed is off", operations });
+  await rejectsWith(() => validateExtraction({ text, sourceText: "Study group is on", operations }), 422, "invalid_request", /evidence must quote/);
+});
+
 test("a created plan or memory that repeats a live one is rejected by hand, and merged into an update by ingest", async () => {
   await resetGraph(handle.sql);
   const quiz = await insertPlan(handle.db, { title: QUIZ, embedding: axisVector(dim, 0), occurredAt: new Date(QUIZ_AT) });

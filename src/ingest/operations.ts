@@ -40,7 +40,7 @@ const updateNodeOp = z
   })
   .strict();
 
-/** `evidence` quotes the utterance words that retract or contradict the node; Yaad checks the quote. */
+/** `evidence` quotes the words, from the utterance or the requester's verbatim source_text, that retract or contradict the node; Yaad checks the quote. */
 const closeNodeOp = z
   .object({
     op: z.literal("close_node"),

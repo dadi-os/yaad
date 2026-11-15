@@ -98,6 +98,19 @@ test("an update that adds a close to a task with no open gets one, and one on a 
   assert.deepEqual(result.operations, [{ ...give, detail: { closes_at: "2026-11-16T12:00:00-05:00", opens_on: "2026-11-13" } }, keep, memory]);
 });
 
+test("an update that moves only the close of a task with a stored open keeps the 28-day bound unless the text states that open", () => {
+  const move: Operation = { op: "update_node", node_id: "k", detail: { closes_at: "2026-11-15T04:59:00Z" } };
+  const stored = new Map([["k", "2026-10-16"]]);
+  const result = clamp([move], "Kritik Essay 3 closes Sat Nov 14, 11:59 PM", stored);
+  assert.deepEqual(result.operations, [{ ...move, detail: { closes_at: "2026-11-15T04:59:00Z", opens_on: "2026-10-18" } }]);
+  assert.deepEqual(result.clamped, [{ node: "k", from: "2026-10-16", to: "2026-10-18", rule: "open_over_28_days" }]);
+  const stated = clamp([move], "Kritik runs Oct 16 to Nov 14", stored);
+  assert.deepEqual(stated.operations, [move]);
+  assert.deepEqual(stated.clamped, []);
+  const near = clamp([move], "x", new Map([["k", "2026-10-20"]]));
+  assert.deepEqual(near.operations, [move]);
+});
+
 test("an unstated open on the text's day after a close already past is moved to the close day", () => {
   const result = clamp([task("late", { opens_on: "2026-11-13", closes_at: "2026-11-12T23:59:00-05:00" })], "Class 2 Homework closed Nov 12.");
   assert.deepEqual(result.clamped, [{ node: "late", from: "2026-11-13", to: "2026-11-12", rule: "open_before_text" }]);

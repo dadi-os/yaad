@@ -281,7 +281,9 @@ export type ClampedWindow = { node: string; from: string | null; to: string; rul
  * close already past opens on its own day) and never more than {@link MAX_WINDOW_DAYS} days
  * before the close; a stated open is never moved. A close with no open gets one by the same
  * bounds. `storedOpens` maps each task an update names to its stored open, so an update that adds
- * a close to a task with no open gets one too, and tells tasks from other nodes.
+ * a close to a task with no open gets one too, an update that moves only the close of a task with a
+ * stored open keeps the 28-day bound (the stored open is moved unless `text` states it), and
+ * it tells tasks from other nodes.
  */
 export function clampWindows(
   operations: Operation[],
@@ -316,6 +318,13 @@ export function clampWindows(
       const to = closes < today ? closes : earliest > today ? earliest : today;
       record(null, to, "open_missing");
       opens = to;
+    } else if (updated && closes !== null && detail.opens_on === undefined) {
+      const stored = context.storedOpens.get(op.op === "update_node" ? op.node_id : "");
+      if (typeof stored === "string" && !statesDate(context.text, stored) && daysBetween(stored, closes) > MAX_WINDOW_DAYS) {
+        const to = addDays(closes, -MAX_WINDOW_DAYS);
+        record(stored, to, "open_over_28_days");
+        opens = to;
+      }
     }
     return opens === (typeof detail.opens_on === "string" ? detail.opens_on : null) ? op : { ...op, detail: { ...detail, opens_on: opens } };
   });
@@ -324,14 +333,16 @@ export function clampWindows(
 
 /**
  * Checks on a batch extraction emitted for `text`: every `close_node` quotes the words
- * in the utterance that retract or contradict the node (a fact the utterance merely
- * leaves out is not a retraction), and every created node has an edge in the batch.
+ * in the utterance, or in the requester's verbatim `sourceText`, that retract or contradict
+ * the node (a fact the utterance merely leaves out is not a retraction), and every created
+ * node has an edge in the batch.
  */
 export function validateExtraction(opts: {
   operations: Operation[];
   text: string;
+  sourceText?: string | undefined;
 }): void {
-  const haystack = normalizeQuote(opts.text);
+  const haystack = normalizeQuote(opts.sourceText === undefined ? opts.text : `${opts.text}\n${opts.sourceText}`);
   for (const op of opts.operations) {
     if (op.op !== "close_node") {
       continue;
@@ -341,7 +352,7 @@ export function validateExtraction(opts: {
       throw new YaadError(
         422,
         "invalid_request",
-        `close_node ${op.node_id}: evidence must quote the utterance words that retract it, got "${op.evidence}"`,
+        `close_node ${op.node_id}: evidence must quote the words that retract it, got "${op.evidence}"`,
       );
     }
   }

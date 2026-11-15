@@ -338,3 +338,22 @@ test("POST /edges draws an edge by hand and POST /edges/:id/close closes it, swe
   assert.equal(again.statusCode, 422);
   await app.close();
 });
+
+test("close_node ends the node's edges but keeps the people and places that were linked to it", async () => {
+  await resetGraph(handle.sql);
+  const group = await insertMemory(handle.db, { title: "Study group Wed", embedding: axisVector(dim, 0) });
+  const priya = await insertPerson(handle.db, { title: "Priya", embedding: axisVector(dim, 1) });
+  await insertEdge(handle.db, { src: group, dst: priya, type: "RELATED" });
+
+  const result = await applyOperations({
+    db: handle.db,
+    dwar: mockDwar({ dimension: dim }),
+    author: { source: "agent", agentId: "test-agent" },
+    config,
+    operations: [{ op: "close_node", node_id: group, reason: "called off", evidence: "study group Wed is off" }],
+  });
+
+  assert.deepEqual(result.orphans, []);
+  assert.equal((await handle.db.select().from(node).where(eq(node.id, priya))).length, 1);
+  assert.equal((await handle.db.select().from(node).where(eq(node.id, group))).length, 0);
+});

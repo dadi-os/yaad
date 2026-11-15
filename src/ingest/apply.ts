@@ -306,8 +306,7 @@ export async function applyOperations(opts: {
 
     for (const op of operations) {
       if (op.op === "close_node") {
-        const neighbors = await deleteNode(tx, op.node_id, at, opts.author);
-        stranded.push(...neighbors);
+        await deleteNode(tx, op.node_id, at, opts.author);
         closedNodes.add(op.node_id);
         applied.push(op);
       }

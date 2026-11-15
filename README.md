@@ -97,7 +97,7 @@ Corrections go through `POST /ingest` as `update_node` / `close_node`, or by han
 
 ## Orphans
 
-A node left with no current edge by a delete or a `close_edge` is deleted in the same transaction (with a `deleted` history row). Dated plans are kept: they stand on the timeline alone. `POST /ingest` and `DELETE /nodes/:id` return the swept ids as `orphans`. Nodes that were edgeless before the batch are not touched.
+A node left with no current edge by a `DELETE /nodes/:id` or a `close_edge` is deleted in the same transaction (with a `deleted` history row). Dated plans are kept: they stand on the timeline alone. `POST /ingest` and `DELETE /nodes/:id` return the swept ids as `orphans`. `close_node` does not sweep: a called-off plan leaves its people and places in the graph. Nodes that were edgeless before the batch are not touched.
 
 ## Expiry
 
@@ -170,7 +170,7 @@ Plans with `detail.all_day: true` have a date but no time of day: Yaad moves the
 | --- | --- |
 | `create_node` | `temp_id`, `kind`, `title`, `body?`, `occurred_at?`, `ttl_days?`, `detail?` |
 | `update_node` | `node_id`, `title?`, `body?`, `occurred_at?`, `ttl_days?`, `detail?` |
-| `close_node` | `node_id`, `reason`, `evidence` (the utterance words that retract it, quoted exactly) |
+| `close_node` | `node_id`, `reason`, `evidence` (the utterance or `source_text` words that retract it, quoted exactly) |
 | `create_edge` | `src`, `dst`, `type`, `properties?`, `confidence` |
 | `close_edge` | `edge_id`, `reason` |
 | `spawn_plans` | `temp_id`, `hub` (course id or temp_id), `title`, `body?`, `dates` (local dates), `start_time`, `end_time?` (local HH:MM), `time_zone?`, `rsvp?`, `place?`, `room?`; creates one plan per date; a session that duplicates a live plan is `duplicate_node` by hand and left out by ingest; the result's `spawned` maps `temp_id` to the new ids |

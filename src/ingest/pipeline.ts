@@ -86,7 +86,7 @@ export async function ingest(opts: {
   const merge = await mergeDuplicates(opts.db, clamp.operations, timeZone);
 
   await validateOperations({ db: opts.db, operations: merge.operations, timeZone });
-  validateExtraction({ operations: merge.operations, text: opts.text });
+  validateExtraction({ operations: merge.operations, text: opts.text, sourceText: opts.sourceText });
   const applied = await applyOperations({
     db: opts.db,
     dwar: opts.dwar,
