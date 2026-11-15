@@ -97,3 +97,9 @@ test("an update that adds a close to a task with no open gets one, and one on a 
   const result = clamp([give, keep, memory], "x", new Map([["a", null], ["b", "2026-11-01"]]));
   assert.deepEqual(result.operations, [{ ...give, detail: { closes_at: "2026-11-16T12:00:00-05:00", opens_on: "2026-11-13" } }, keep, memory]);
 });
+
+test("an unstated open on the text's day after a close already past is moved to the close day", () => {
+  const result = clamp([task("late", { opens_on: "2026-11-13", closes_at: "2026-11-12T23:59:00-05:00" })], "Class 2 Homework closed Nov 12.");
+  assert.deepEqual(result.clamped, [{ node: "late", from: "2026-11-13", to: "2026-11-12", rule: "open_before_text" }]);
+  assert.deepEqual((result.operations[0] as { detail: unknown }).detail, { opens_on: "2026-11-12", closes_at: "2026-11-12T23:59:00-05:00" });
+});

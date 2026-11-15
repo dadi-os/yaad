@@ -181,7 +181,7 @@ test("place ingest with AT_LOCATION edge; GET /nodes/:id shows the edge", async 
         kind: "plan",
         title: "coffee with Vedant",
         occurred_at: "2026-09-05T18:00:00.000Z",
-        detail: { status: "confirmed" },
+        detail: { rsvp: "yes" },
       },
       {
         op: "create_edge",

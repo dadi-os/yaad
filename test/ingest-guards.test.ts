@@ -228,7 +228,7 @@ test("a batch with one duplicate of a live plan applies the other facts and upda
   assert.equal(result.counts.create_node, 2);
   assert.equal(result.counts.update_node, 1);
   assert.deepEqual(result.merged, [{ temp_id: "gym", into: gym }]);
-  assert.equal(await countCurrentNodes(handle.sql), 5);
+  assert.equal(await countCurrentNodes(handle.sql), 4);
 });
 
 test("every created node needs an edge in the batch; ingest re-extracts once naming the unlinked ones, then rejects", async () => {
@@ -337,8 +337,9 @@ test("candidates include a person the text names by first name only, as a whole 
   assert.ok(!(await candidateIds("Ankur and Shahid met.")).includes(riya));
 });
 
-test("candidates always include every task not done that is open now or closes within the horizon, however far its title is from the text", async () => {
+test("candidates include every task not done under a touched course that is open now or closes within the horizon, however far its title is from the text", async () => {
   await resetGraph(handle.sql);
+  const course = await insertMemory(handle.db, { title: "Primary care", embedding: axisVector(dim, 1) });
   const idea = await insertTask(handle.db, { title: "Find a doctor", embedding: axisVector(dim, 5) });
   const untimed = await insertTask(handle.db, {
     title: "Renew the lease",
@@ -352,13 +353,16 @@ test("candidates always include every task not done that is open now or closes w
     opensOn: "2098-12-01",
     closesAt: new Date("2099-01-01T15:00:00Z"),
   });
-  await insertTask(handle.db, {
+  const finished = await insertTask(handle.db, {
     title: "Finished errand",
     embedding: axisVector(dim, 8),
     opensOn: "2026-01-01",
     closesAt: new Date("2026-01-02T15:00:00Z"),
     done: true,
   });
+  for (const task of [idea, untimed, faraway, finished]) {
+    await insertEdge(handle.db, { src: course, dst: task, type: "HAS_ITEM" });
+  }
   const scheduled = await insertPlan(handle.db, {
     title: "Dentist",
     embedding: axisVector(dim, 7),

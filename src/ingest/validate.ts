@@ -301,7 +301,7 @@ export function clampWindows(
     const record = (from: string | null, to: string, rule: ClampedWindow["rule"]) => clamped.push({ node, from, to, rule });
     let opens: string | null = typeof detail.opens_on === "string" ? detail.opens_on : null;
     if (opens !== null && !statesDate(context.text, opens)) {
-      if (opens < today) {
+      if (opens < today || (closes !== null && closes < today && closes < opens)) {
         const to = closes !== null && closes < today ? closes : today;
         record(opens, to, "open_before_text");
         opens = to;
