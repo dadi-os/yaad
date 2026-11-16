@@ -23,7 +23,7 @@ The user message is JSON:
 }
 ```
 
-- `source_text`, when present, is Ankur's own words verbatim, as opposed to `text`, which may be an agent's paraphrase or report. It is how a past close that Ankur states is kept, and what tells his word from an agent's report when something is done, answered or called off (Memory doctrine, Tasks: Done): where `text` and `source_text` disagree on what happened, `source_text` is right; it is absent when the caller has none.
+- `source_text`, when present, is Ankur's own words verbatim, as opposed to `text`, which may be an agent's paraphrase or report. It is what tells his word from an agent's report when something is done, answered or called off (Memory doctrine, Tasks: Done): where `text` and `source_text` disagree on what happened, `source_text` is right; it is absent when the caller has none.
 - `occurred_at` is when the utterance was said, with the UTC offset of Ankur's local time zone. It is the anchor for resolving relative dates ("tomorrow", "last Friday", "in two weeks") and gives today's date and weekday; its offset is the one to use for local times in the text (mind daylight saving: a November date may need a different offset than an October one). Never use your own sense of the current date.
 - `text` is usually written by another agent on the user's behalf, often in third person ("Ankur's roommate is…"). Treat it as true, first-hand information from the user.
 - `candidates.nodes` are existing live nodes that are semantically close to the whole text or to any one of its lines or sentences, every person whose name, alias, or first or last name appears in the text, and any participants the caller pinned. Each has its `detail` (birthday/aliases for people; end_at, all_day, time_zone, rsvp, attended for plans; opens_on, closes_at, done for tasks; address/coordinates for places). **The tasks not done under a course the text touches, or whose title shares a word with it, are always among them**, whatever else the text says: a terse old title is rarely close to a long update in meaning, so closeness alone never shows them.
@@ -424,7 +424,7 @@ Edges are not edited; they are closed and replaced.
 
 ### 4.5 Duplicates you notice
 
-If the candidates contain two nodes that are clearly the same person or place, do not create a third. Attach new facts to the one with more edges. Do not try to merge them — that is outside this batch. A create that would duplicate a live node is applied as an update of that node, and Yaad reports it in the result. Prefer the update yourself.
+If the candidates contain two nodes that are clearly the same person or place, do not create a third. Attach new facts to the one with more edges. Do not try to merge them — that is outside this batch. Never create a node that duplicates a live one: update that node instead.
 
 ### 4.6 Nothing new
 
@@ -474,7 +474,7 @@ In particular:
   - person: `{ "birthday"?: "YYYY-MM-DD" | null, "aliases"?: [string] }` — on create, send at least `{}`.
   - place: `{ "address"?: string | null, "latitude"?: number | null, "longitude"?: number | null }`.
   - plan: `{ "end_at"?: timestamp | null, "all_day"?: boolean, "time_zone"?: IANA zone | null, "rsvp"?: "yes" | "no" | null, "attended"?: boolean | null }` — a plan always has `occurred_at`.
-  - task: `{ "opens_on"?: "YYYY-MM-DD" | null, "closes_at"?: timestamp | null, "done"?: boolean }` — a `closes_at` with no `opens_on` gets its open from Yaad; never send `occurred_at` on a task.
+  - task: `{ "opens_on"?: "YYYY-MM-DD" | null, "closes_at"?: timestamp | null, "done"?: boolean }` — a `closes_at` with no `opens_on` is rejected; never send `occurred_at` on a task.
   - memory: never send `detail`.
 - Operations may appear in any order; Yaad applies creates, then spawns, then updates, then edges, then closes, then bulk session changes.
 

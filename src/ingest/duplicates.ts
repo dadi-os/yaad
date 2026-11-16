@@ -237,7 +237,7 @@ async function findDuplicates(db: Db, operations: Operation[], timeZone: string)
 /**
  * rejectDuplicates fails the batch with `422 duplicate_node` on the first create or spawned session
  * that {@link findDuplicates} finds. It is for a person creating by hand, who should be told; ingest
- * merges instead ({@link mergeDuplicates}).
+ * instead runs extraction again with the lookalike shown ({@link findLookalikes}).
  */
 export async function rejectDuplicates(db: Db, operations: Operation[], timeZone: string): Promise<void> {
   const { creates, spawns } = await findDuplicates(db, operations, timeZone);
@@ -245,85 +245,4 @@ export async function rejectDuplicates(db: Db, operations: Operation[], timeZone
   if (first) {
     throw new YaadError(422, "duplicate_node", first.message);
   }
-}
-
-/** A create that was applied as an update (or dropped) because it duplicated `into`: a live node id, or another create's temp_id. */
-export type MergedDuplicate = { temp_id: string; into: string };
-
-/**
- * mergeDuplicates returns `operations` with every create that {@link findDuplicates} finds turned
- * into an `update_node` of the live node it repeats, carrying the create's body, time, ttl and
- * detail (never its title, and never a `done: false`, a null `rsvp` or a null `attended`, which a create only implies and which would clear what Ankur set), with the edges
- * that named the create retargeted to that node. A create that repeats an earlier create in the
- * batch is dropped and its edges retargeted to the earlier one. A spawned session a live plan
- * already holds is left out, and a spawn left with no dates is dropped. `merged` lists each.
- */
-export async function mergeDuplicates(
-  db: Db,
-  operations: Operation[],
-  timeZone: string,
-): Promise<{ operations: Operation[]; merged: MergedDuplicate[] }> {
-  const { creates, spawns } = await findDuplicates(db, operations, timeZone);
-  if (creates.length === 0 && spawns.length === 0) {
-    return { operations, merged: [] };
-  }
-  const target = new Map(creates.map((twin) => [twin.op.temp_id, twin.into]));
-  const resolve = (id: string): string => {
-    let current = id;
-    for (let into = target.get(current); into !== undefined; into = target.get(current)) {
-      current = into;
-    }
-    return current;
-  };
-  const merged: MergedDuplicate[] = creates.map((twin) => ({ temp_id: twin.op.temp_id, into: resolve(twin.op.temp_id) }));
-  const heldDates = new Map<string, Set<string>>();
-  for (const twin of spawns) {
-    heldDates.set(twin.op.temp_id, (heldDates.get(twin.op.temp_id) ?? new Set()).add(twin.date));
-    if (!merged.some((entry) => entry.temp_id === twin.op.temp_id)) {
-      merged.push({ temp_id: twin.op.temp_id, into: twin.into });
-    }
-  }
-  const out: Operation[] = [];
-  for (const op of operations) {
-    if (op.op === "create_node" && target.has(op.temp_id)) {
-      const into = resolve(op.temp_id);
-      if (!isLiveId(into, operations)) {
-        continue;
-      }
-      const { done, rsvp, attended, ...rest } = (op.detail ?? {}) as Record<string, unknown>;
-      const detail = {
-        ...rest,
-        ...(done === true ? { done } : {}),
-        ...(rsvp !== undefined && rsvp !== null ? { rsvp } : {}),
-        ...(attended !== undefined && attended !== null ? { attended } : {}),
-      };
-      out.push({
-        op: "update_node",
-        node_id: into,
-        ...(op.body !== undefined ? { body: op.body } : {}),
-        ...(op.occurred_at !== undefined ? { occurred_at: op.occurred_at } : {}),
-        ...(op.ttl_days !== undefined ? { ttl_days: op.ttl_days } : {}),
-        ...(Object.keys(detail).length > 0 ? { detail } : {}),
-      });
-    } else if (op.op === "create_edge") {
-      const src = resolve(op.src);
-      const dst = resolve(op.dst);
-      if (src !== dst) {
-        out.push({ ...op, src, dst });
-      }
-    } else if (op.op === "spawn_plans" && heldDates.has(op.temp_id)) {
-      const dates = op.dates.filter((date) => !heldDates.get(op.temp_id)?.has(date));
-      if (dates.length > 0) {
-        out.push({ ...op, dates });
-      }
-    } else {
-      out.push(op);
-    }
-  }
-  return { operations: out, merged };
-}
-
-/** True when `id` is not the temp_id of a create in `operations`, so it names a live node. */
-function isLiveId(id: string, operations: Operation[]): boolean {
-  return !operations.some((op) => op.op === "create_node" && op.temp_id === id);
 }

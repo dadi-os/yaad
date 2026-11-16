@@ -1,27 +1,19 @@
 /**
  * End-to-end ingest: embed the utterance and its segments → candidates → Dwar extraction,
- * re-run once with any lookalikes the first pass missed, nodes it left without an edge → leave out created tasks that closed before the text's day
- * unless Ankur states it (reported as `skipped`) → bring task opens within bounds (reported as
- * `clamped`) → merge creates that duplicate a live node into updates (reported as `merged`) →
- * validate → apply.
+ * re-run once with any lookalikes the first pass missed, nodes it left without an edge →
+ * validate → apply. Nothing the model extracted is changed in code.
  */
 
-import { inArray } from "drizzle-orm";
 import type { Config } from "../config.js";
 import type { Db, Sql } from "../db/client.js";
-import { taskDetail } from "../db/schema.js";
 import type { DwarClient } from "../dwar/client.js";
 import { YaadError } from "../errors.js";
 import type { NodeAuthor } from "../types/domain.js";
 import { applyOperations, type ApplyResult } from "./apply.js";
 import { assembleCandidates, segmentsOf } from "./candidates.js";
-import { findLookalikes, mergeDuplicates, type MergedDuplicate } from "./duplicates.js";
+import { findLookalikes } from "./duplicates.js";
 import { emitOperations, recheckNote } from "./emit.js";
-import type { Operation } from "./operations.js";
-import { clampWindows, pastCloses, unlinkedCreates, validateExtraction, validateOperations, type ClampedWindow, type SkippedTask } from "./validate.js";
-
-/** What a stored batch reports beyond what it applied: windows it moved, closed tasks it left out, creates it merged. */
-export type IngestResult = ApplyResult & { clamped: ClampedWindow[]; skipped: SkippedTask[]; merged: MergedDuplicate[] };
+import { unlinkedCreates, validateExtraction, validateOperations } from "./validate.js";
 
 /** Extract memory ops from an utterance and apply them in one transaction. */
 export async function ingest(opts: {
@@ -30,12 +22,12 @@ export async function ingest(opts: {
   dwar: DwarClient;
   config: Config;
   text: string;
-  /** Ankur's own words, verbatim, when the caller has them; what lets a task that closed before the text be stored. */
+  /** Ankur's own words, verbatim, when the caller has them; what a `close_node` may quote beside the text. */
   sourceText?: string | undefined;
   occurredAt: string;
   participantIds: string[];
   author: NodeAuthor;
-}): Promise<IngestResult> {
+}): Promise<ApplyResult> {
   const segments = segmentsOf(opts.text, opts.config.ingest.segment_limit);
   const vectors = await opts.dwar.embed([opts.text, ...segments], "yaad/ingest");
   const [embedding, ...segmentEmbeddings] = vectors;
@@ -64,7 +56,7 @@ export async function ingest(opts: {
       candidates,
       recheck,
     });
-    return { candidates, ...pastCloses(operations, opts.occurredAt, opts.sourceText, timeZone) };
+    return { candidates, operations };
   };
 
   const first = await extract([], null);
@@ -80,29 +72,13 @@ export async function ingest(opts: {
       ? await extract(missed, recheckNote({ lookalikes: missed.length > 0, unlinked }))
       : first;
 
-  const stated = opts.sourceText === undefined ? opts.text : `${opts.text}\n${opts.sourceText}`;
-  const storedOpens = await storedTaskOpens(opts.db, extracted.operations);
-  const clamp = clampWindows(extracted.operations, { text: stated, occurredAt: opts.occurredAt, timeZone, storedOpens });
-  const merge = await mergeDuplicates(opts.db, clamp.operations, timeZone);
-
-  await validateOperations({ db: opts.db, operations: merge.operations, timeZone });
-  validateExtraction({ operations: merge.operations, text: opts.text, sourceText: opts.sourceText });
-  const applied = await applyOperations({
+  await validateOperations({ db: opts.db, operations: extracted.operations, timeZone });
+  validateExtraction({ operations: extracted.operations, text: opts.text, sourceText: opts.sourceText });
+  return applyOperations({
     db: opts.db,
     dwar: opts.dwar,
-    operations: merge.operations,
+    operations: extracted.operations,
     author: opts.author,
     config: opts.config,
   });
-  return { ...applied, clamped: clamp.clamped, skipped: extracted.skipped, merged: merge.merged };
-}
-
-/** The stored open day of each task that an `update_node` in `operations` names; other nodes are absent. */
-async function storedTaskOpens(db: Db, operations: Operation[]): Promise<Map<string, string | null>> {
-  const ids = operations.flatMap((op) => (op.op === "update_node" ? [op.node_id] : []));
-  if (ids.length === 0) {
-    return new Map();
-  }
-  const rows = await db.select({ id: taskDetail.nodeId, opensOn: taskDetail.opensOn }).from(taskDetail).where(inArray(taskDetail.nodeId, ids));
-  return new Map(rows.map((row) => [row.id, row.opensOn]));
 }

@@ -45,7 +45,7 @@ A task says when it is relevant, not when to do it. Its only schedule is a windo
 
 **The close.** `closes_at` is the deadline as stated: "due Wed Nov 25 at 11:59 PM ET" → `"2026-11-25T23:59:00-05:00"`. A deadline with a date and no time closes at the end of that day, `23:59` local, and the body says `"Due time not stated."`; never invent another time. A moved deadline keeps its clock time unless the text gives a new one; `time not stated` never resets a moved close to `23:59`. A task with nothing to be done by (a Someday thing: "apply to IBM", "find a primary care doctor") has no close.
 
-**The open — the hardest call.** A close needs an open, and an open never falls after the close day. Choose `opens_on` per item, from what the source says or what you know about it, in this order (Yaad brings an open the text does not state within bounds afterwards and reports it, so a close with no open is fine):
+**The open — the hardest call.** A close needs an open, and an open never falls after the close day. Choose `opens_on` per item, from what the source says or what you know about it, in this order:
 
 1. **Stated.** An open, release, or availability date ("opens Mon Oct 12", "Oct 1 2:00am – Oct 9") or a stated lead ("homework is released one week before it is due", "start the taxes in January") is the open.
 2. **Already out.** An item the text says is posted, released, open, or assigned now ("was posted today", "is open on Codon", a list of what is due now) opens on the day it came out when the text states that day, else the day the text is from ("first seen tonight" is the day the text is from). A deadline Ankur states as his own, with no open, opens on the day he says it. An item in a term's schedule is not out just because the schedule is.
@@ -65,7 +65,7 @@ A thing to prepare for a timed plan (studying for an exam, packing for a flight)
 
 Yaad records when the flag changed. Never write a done time into the body.
 
-**Already closed.** An item that closed before the day of the text is stored only when Ankur's own words state it ("I missed HW3, it was due yesterday"). A site list of old items is a record, not his deadlines; Yaad reports what it leaves out.
+**Already closed.** An item that closed before the day of the text is created only when Ankur's own words state it ("I missed HW3, it was due yesterday"); you leave it out otherwise. A site list of old items is a record, not his deadlines.
 
 **One task per deliverable.** Weekly homework is one task per assignment, as the syllabus lists them; there are no repeating tasks.
 

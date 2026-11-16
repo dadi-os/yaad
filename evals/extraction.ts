@@ -24,7 +24,7 @@ import {
   taskDetailBody,
   type Operation,
 } from "../src/ingest/operations.js";
-import { clampWindows, normalizeQuote, pastCloses, unlinkedCreates } from "../src/ingest/validate.js";
+import { normalizeQuote, unlinkedCreates } from "../src/ingest/validate.js";
 
 const serviceRoot = join(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -178,9 +178,6 @@ type Case = z.infer<typeof casesSchema>["cases"][number];
 
 /** Fixed metadata for candidate records; extraction decides from ids, titles, dates, and details. */
 const FIXTURE_AT = "2026-09-30T00:00:00.000Z";
-
-/** The process zone (`TZ`), in which the box reads local dates. */
-const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
 /** The case's candidate shorthand as the full records ingest hands extraction. */
 function expandCandidates(candidates: Case["candidates"]): CandidateState {
@@ -536,19 +533,10 @@ for (const testCase of cases) {
       console.log(`FAIL ${label}\n  ✗ extraction failed: ${err.message}`);
       continue;
     }
-    const stored = new Map(
-      testCase.candidates.nodes.flatMap((candidate) => (candidate.kind === "task" ? [[candidate.id, (candidate.detail?.opens_on as string | null | undefined) ?? null] as const] : [])),
-    );
-    const settled = clampWindows(pastCloses(operations, testCase.occurred_at, testCase.source_text, zone).operations, {
-      text: [testCase.text, testCase.source_text].filter((part) => part !== undefined).join("\n"),
-      occurredAt: testCase.occurred_at,
-      timeZone: zone,
-      storedOpens: stored,
-    }).operations;
     const failures = [
       ...rejections(operations, testCase).map((detail) => `  ✗ Yaad would not apply this batch\n      ${detail}`),
       ...testCase.expectations.flatMap((expectation) =>
-        evaluate(expectation, settled, testCase.occurred_at).map((detail) => `  ✗ ${expectation.why}\n      ${detail}`),
+        evaluate(expectation, operations, testCase.occurred_at).map((detail) => `  ✗ ${expectation.why}\n      ${detail}`),
       ),
     ];
     if (failures.length === 0) {
