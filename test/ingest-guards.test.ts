@@ -192,9 +192,6 @@ test("a created plan or memory that repeats a live one is rejected by hand", asy
     [{ op: "close_node", node_id: quiz, reason: "replaced", evidence: "the Source Citations quiz is replaced" }, createQuiz(QUIZ, QUIZ_AT), linkQuiz],
     ZONE,
   );
-
-});
-
 });
 
 test("every created node needs an edge in the batch; ingest re-extracts once naming the unlinked ones, then rejects", async () => {
