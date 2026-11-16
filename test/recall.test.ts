@@ -307,6 +307,16 @@ test("hub resolves a course label by normalized-title prefix, and an unmatched l
   assert.match(none.json().error.message, /no hub shares a word/);
 });
 
+test("returned plans carry their start and end in local time with the weekday, the date alone for an all-day plan", async () => {
+  await resetGraph(handle.sql);
+  await insertPlan(handle.db, { title: "Advising", embedding: axisVector(dim, 0), occurredAt: new Date("2026-11-17T20:30:00Z"), endAt: new Date("2026-11-17T21:30:00Z") });
+  await insertPlan(handle.db, { title: "Open house", embedding: axisVector(dim, 1), occurredAt: new Date("2026-11-22T05:00:00Z"), allDay: true });
+  const plans = (await recallCall({ kind: "plan" })).json().nodes;
+  const detail = (title: string) => plans.find((row: { title: string }) => row.title === title).detail;
+  assert.deepEqual([detail("Advising").starts_local, detail("Advising").ends_local], ["Tue 2026-11-17 15:30", "Tue 2026-11-17 16:30"]);
+  assert.deepEqual([detail("Open house").starts_local, detail("Open house").ends_local], ["Sun 2026-11-22", null]);
+});
+
 test("a task recall with occurred_* is a 422 that points at relevant_on and closes_from", async () => {
   const res = await recallCall({ kind: "task", occurred_from: "2026-11-01T00:00:00Z" });
   assert.equal(res.statusCode, 422);

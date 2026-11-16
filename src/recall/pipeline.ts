@@ -29,7 +29,7 @@ import { estimateTokens, shouldStop } from "./gate.js";
 import { maxAccess, scoreNode, type ScoreParts } from "./score.js";
 
 export type RecallNode = NodeRecord & {
-  detail: PersonDetail | PlanDetail | PlaceDetail | (TaskDetail & TaskReading) | null;
+  detail: PersonDetail | (PlanDetail & PlanReading) | PlaceDetail | (TaskDetail & TaskReading) | null;
   hops: number;
   /** Weighted relevance to `query`; null when the request had no query. */
   score: number | null;
@@ -139,7 +139,12 @@ export async function recall(opts: {
     const detail = await loadDetail(opts.db, item.row);
     const record: RecallNode = {
       ...toNodeRecord(item.row),
-      detail: detail !== null && "closes_at" in detail ? { ...detail, ...readTask(detail, hub?.agentId ?? null, day, timeZone) } : detail,
+      detail:
+        detail !== null && "closes_at" in detail
+          ? { ...detail, ...readTask(detail, hub?.agentId ?? null, day, timeZone) }
+          : detail !== null && "all_day" in detail
+            ? { ...detail, ...readPlan(item.row.occurredAt, detail, timeZone) }
+            : detail,
       hops: requireWalkNode(walk.nodes, item.row.id).hop,
       score: item.parts ? item.parts.total : null,
     };
@@ -194,6 +199,27 @@ function readTask(detail: TaskDetail, owner: string | null, day: string, timeZon
     bucket,
     owner,
   };
+}
+
+/** What recall adds to a plan's detail: its start and end in the plan's own time zone (the box's when it has none), with their weekday. */
+export type PlanReading = {
+  /** `Tue 2026-11-17 15:30`, or `Tue 2026-11-17` for an all-day plan; null with no start. */
+  starts_local: string | null;
+  /** The same for the end; null with no end. */
+  ends_local: string | null;
+};
+
+/** A plan's local start and end (see {@link PlanReading}). */
+function readPlan(startsAt: Date | null, detail: PlanDetail, boxZone: string): PlanReading {
+  const zone = detail.time_zone ?? boxZone;
+  const local = (instant: Date | null): string | null => {
+    if (instant === null) {
+      return null;
+    }
+    const day = localDate(instant, zone);
+    return detail.all_day ? `${weekdayOf(day)} ${day}` : `${weekdayOf(day)} ${day} ${localTime(instant, zone)}`;
+  };
+  return { starts_local: local(startsAt), ends_local: local(detail.end_at === null ? null : new Date(detail.end_at)) };
 }
 
 /** The frontier nodes with more than {@link HUB_DEGREE} live edges in `incident`: returned when reached, never walked out of. */
