@@ -20,13 +20,13 @@ import type {
   TaskDetail,
 } from "./types/domain.js";
 import { YaadError } from "./errors.js";
-import { RSVPS } from "./types/timeline.js";
+import { RSVPS } from "./types/planner.js";
 
 function iso(value: Date | null): string | null {
   return value ? value.toISOString() : null;
 }
 
-function parseKind(value: string): NodeKind {
+export function parseKind(value: string): NodeKind {
   if (value === "person" || value === "memory" || value === "plan" || value === "place" || value === "task") {
     return value;
   }

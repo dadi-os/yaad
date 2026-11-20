@@ -1,6 +1,6 @@
 /**
  * End-to-end ingest: embed the utterance and its segments → candidates → Dwar extraction,
- * re-run once with any lookalikes the first pass missed, nodes it left without an edge →
+ * re-run once with any lookalikes the first pass missed, nodes it left without an edge or edge types it may not use →
  * validate → apply. Nothing the model extracted is changed in code.
  */
 
@@ -13,7 +13,7 @@ import { applyOperations, type ApplyResult } from "./apply.js";
 import { assembleCandidates, segmentsOf } from "./candidates.js";
 import { findLookalikes } from "./duplicates.js";
 import { emitOperations, recheckNote } from "./emit.js";
-import { unlinkedCreates, validateExtraction, validateOperations } from "./validate.js";
+import { unknownEdgeTypes, unlinkedCreates, validateExtraction, validateOperations } from "./validate.js";
 
 /** Extract memory ops from an utterance and apply them in one transaction. */
 export async function ingest(opts: {
@@ -67,9 +67,10 @@ export async function ingest(opts: {
     timeZone,
   );
   const unlinked = unlinkedCreates(first.operations);
+  const edgeTypes = unknownEdgeTypes(first.operations);
   const extracted =
-    missed.length > 0 || unlinked.length > 0
-      ? await extract(missed, recheckNote({ lookalikes: missed.length > 0, unlinked }))
+    missed.length > 0 || unlinked.length > 0 || edgeTypes.length > 0
+      ? await extract(missed, recheckNote({ lookalikes: missed.length > 0, unlinked, edgeTypes }))
       : first;
 
   await validateOperations({ db: opts.db, operations: extracted.operations, timeZone });

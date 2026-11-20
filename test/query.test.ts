@@ -209,3 +209,17 @@ test("place ingest with AT_LOCATION edge; GET /nodes/:id shows the edge", async 
   assert.equal(body.edges.outgoing[0].dst_id, result.temp_ids.cafe);
   await app.close();
 });
+
+test("GET /counts counts live nodes of each kind and the total, leaving out expired ones", async () => {
+  await resetGraph(handle.sql);
+  await insertPerson(handle.db, { title: "Riya", embedding: axisVector(dim, 0) });
+  await insertMemory(handle.db, { title: "A fact", embedding: axisVector(dim, 1) });
+  await insertMemory(handle.db, { title: "Old fact", embedding: axisVector(dim, 2), expiresAt: new Date(Date.now() - 1000) });
+  await insertPlan(handle.db, { title: "Dinner", embedding: axisVector(dim, 3), occurredAt: new Date("2026-10-21T22:00:00.000Z") });
+  await insertTask(handle.db, { title: "HW", embedding: axisVector(dim, 4) });
+  const app = await buildApp(config, { db: handle.db, sql: handle.sql, dwar: mockDwar({ dimension: dim }) });
+  const res = await app.inject({ method: "GET", url: "/counts" });
+  await app.close();
+  assert.equal(res.statusCode, 200, res.body);
+  assert.deepEqual(res.json(), { total: 4, kinds: { person: 1, memory: 1, place: 0, plan: 1, task: 1 } });
+});

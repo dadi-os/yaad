@@ -1,6 +1,6 @@
 /** API-facing domain types for the memory graph (nodes, edges, history). */
 
-import type { Rsvp } from "./timeline.js";
+import type { Rsvp } from "./planner.js";
 
 /** Graph node kind. */
 export type NodeKind = "person" | "memory" | "plan" | "place" | "task";
@@ -99,7 +99,9 @@ export type LintRule =
   | "duplicate"
   | "unaliased_person"
   | "place_without_address"
-  | "floating";
+  | "floating"
+  | "no_agent"
+  | "unknown_edge_type";
 
 /** One `GET /lint` finding: the nodes it concerns and what to check. Lint never changes the graph. */
 export type LintFinding = {

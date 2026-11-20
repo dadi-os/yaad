@@ -3,17 +3,19 @@
  * wrong: status snapshots, agent working notes and instructions to agents stored as
  * permanent memory, plans at a placeholder noon, dated hubs, periods stored as plans,
  * duplicates, people missing their first-name alias, places
- * plans happen at that have no street address, and nodes with no current edge.
+ * plans happen at that have no street address, nodes with no current edge, nodes no agent keeps,
+ * and current edges whose type is not allowed.
  * It never changes the graph; someone reads the report and fixes what is really wrong.
  */
 
-import { and, asc, eq, gt, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, asc, eq, gt, isNotNull, isNull, notInArray, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { getCurrentPersons } from "../../db/read.js";
 import { alias } from "drizzle-orm/pg-core";
 import { edge, node, placeDetail, planDetail } from "../../db/schema.js";
 import { normalizedTitleSql } from "../../ingest/duplicates.js";
 import type { LintFinding } from "../../types/domain.js";
+import { EDGE_TYPES } from "../../types/edges.js";
 
 /** Status wording that stops being true: "as of", "not yet", "so far", "still needs", "no … found". */
 const STATUS_PATTERN = String.raw`\m(as of|not yet|so far|still needs?|unconfirmed)\M|\mno\M.{0,60}\m(found|posted|yet)\M`;
@@ -229,6 +231,35 @@ export async function registerLint(app: FastifyInstance): Promise<void> {
         node_ids: [row.id],
         title: row.title,
         note: "Has no current edge, so recall only reaches it by similarity; link it to its subject, hub, or Ankur, or delete it.",
+      });
+    }
+
+    const unattributed = await app.db
+      .select({ id: node.id, title: node.title })
+      .from(node)
+      .where(and(live, isNull(node.agentId)))
+      .orderBy(asc(node.createdAt));
+    if (unattributed.length > 0) {
+      findings.push({
+        rule: "no_agent",
+        node_ids: unattributed.map((row) => row.id),
+        title: unattributed[0]?.title ?? "",
+        note: `${unattributed.length} live node(s) have no agent, so Message agent has nobody to reach; give each the agent that owns its domain.`,
+      });
+    }
+
+    const stray = await app.db
+      .select({ id: edge.id, type: edge.type, src: edge.srcId, dst: edge.dstId })
+      .from(edge)
+      .where(and(isNull(edge.validTo), notInArray(edge.type, [...EDGE_TYPES])))
+      .orderBy(asc(edge.type));
+    for (const type of new Set(stray.map((row) => row.type))) {
+      const rows = stray.filter((row) => row.type === type);
+      findings.push({
+        rule: "unknown_edge_type",
+        node_ids: [...new Set(rows.flatMap((row) => [row.src, row.dst]))],
+        title: type,
+        note: `${rows.length} current edge(s) use ${type}, which is not an allowed edge type; close each and create it again with an allowed type.`,
       });
     }
 

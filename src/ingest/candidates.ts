@@ -22,7 +22,7 @@ import {
 import { YaadError } from "../errors.js";
 import { toEdgeRecord, toNodeRecord, toPersonDetail, toPlaceDetail, toPlanDetail, toTaskDetail } from "../serialize.js";
 import type { EdgeRecord, NodeAuthor, NodeRecord, PersonDetail, PlaceDetail, PlanDetail, TaskDetail } from "../types/domain.js";
-import { SESSION_EDGE } from "../types/timeline.js";
+import { PLAN_EDGE } from "../types/planner.js";
 import { isExpired } from "./expiry.js";
 
 export type CandidateNode = NodeRecord & {
@@ -168,7 +168,7 @@ export async function assembleCandidates(opts: {
 
   const nodes = [...byId.values()];
   const ids = nodes.map((row) => row.id);
-  const incident = (await getIncidentEdgesForIds(opts.db, ids)).filter((edge) => edge.type !== SESSION_EDGE);
+  const incident = (await getIncidentEdgesForIds(opts.db, ids)).filter((edge) => edge.type !== PLAN_EDGE);
   const idSet = new Set(ids);
   const degree = new Map<string, number>();
   for (const edge of incident) {

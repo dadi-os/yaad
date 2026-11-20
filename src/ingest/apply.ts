@@ -35,7 +35,7 @@ import {
   taskDetailBody,
   type Operation,
 } from "./operations.js";
-import { changeSessions, insertEdge, spawnSessions } from "./sessions.js";
+import { changePlans, insertEdge, spawnPlans } from "./plans.js";
 
 /** An applied operation, with the id a `create_node` made or the ids a `spawn_plans` made. */
 export type AppliedOperation = Operation & { id?: string; ids?: string[] };
@@ -152,7 +152,7 @@ export async function applyOperations(opts: {
 
     for (const op of operations) {
       if (op.op === "spawn_plans") {
-        const ids = await spawnSessions(tx, {
+        const ids = await spawnPlans(tx, {
           op,
           hubId: resolve(op.hub, tempIds),
           placeId: op.place === undefined ? null : resolve(op.place, tempIds),
@@ -314,7 +314,7 @@ export async function applyOperations(opts: {
 
     for (const op of operations) {
       if (op.op === "update_plans") {
-        const changed = await changeSessions(tx, { op, timeZone: opts.config.env.timezone, at, author: opts.author });
+        const changed = await changePlans(tx, { op, timeZone: opts.config.env.timezone, at, author: opts.author });
         stranded.push(...changed.neighbors);
         applied.push({ ...op, ids: changed.ids });
       }

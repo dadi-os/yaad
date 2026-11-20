@@ -7,6 +7,7 @@
 import type { Db } from "../db/client.js";
 import { getEdge, getNode, getTaskDetail } from "../db/read.js";
 import { localDate } from "../local-time.js";
+import { EDGE_TYPES, isEdgeType } from "../types/edges.js";
 import { YaadError } from "../errors.js";
 import { parse } from "../routers/v1/schemas.js";
 import {
@@ -78,6 +79,9 @@ export async function validateOperations(opts: {
       await resolveEndpoint(opts.db, op.dst, tempIds, "dst");
       if (op.src === op.dst) {
         throw new YaadError(422, "invalid_request", "create_edge src must not equal dst");
+      }
+      if (!isEdgeType(op.type)) {
+        throw new YaadError(422, "invalid_request", `create_edge type ${op.type} is not allowed; use one of ${EDGE_TYPES.join(", ")}`);
       }
     }
     if (op.op === "update_node") {
@@ -169,6 +173,12 @@ export async function validateOperations(opts: {
       }
     }
   }
+}
+
+/** The distinct edge types the batch's `create_edge` operations use that are not allowed. */
+export function unknownEdgeTypes(operations: Operation[]): string[] {
+  const unknown = operations.flatMap((op) => (op.op === "create_edge" && !isEdgeType(op.type) ? [op.type] : []));
+  return [...new Set(unknown)];
 }
 
 /**

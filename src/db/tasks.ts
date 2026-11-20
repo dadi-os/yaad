@@ -3,7 +3,7 @@
 import { and, asc, eq, gt, gte, inArray, isNotNull, isNull, lte, or, sql, type SQL } from "drizzle-orm";
 import { addDays, dayStart } from "../local-time.js";
 import type { TaskItem } from "../types/task.js";
-import { SESSION_EDGE, type TimelineHub } from "../types/timeline.js";
+import { PLAN_EDGE, type Hub } from "../types/planner.js";
 import type { Db } from "./client.js";
 import { edge, node, nodeHistory, taskDetail, type NodeRow } from "./schema.js";
 
@@ -148,12 +148,12 @@ export async function toTaskItems(db: Pick<Db, "select">, rows: Awaited<ReturnTy
   });
 }
 
-/** The hub each node belongs to: the source of its current `type` edge (`HAS_ITEM` for tasks, `HAS_SESSION` for sessions). */
+/** The hub each node belongs to: the source of its current `type` edge (`HAS_ITEM` for tasks, `HAS_PLAN` for sessions). */
 export async function hubsOf(
   db: Pick<Db, "select">,
   ids: string[],
-  type: "HAS_ITEM" | typeof SESSION_EDGE,
-): Promise<Map<string, TimelineHub>> {
+  type: "HAS_ITEM" | typeof PLAN_EDGE,
+): Promise<Map<string, Hub>> {
   const rows = await hubRowsOf(db, ids, type);
   return new Map([...rows].map(([id, hub]) => [id, { id: hub.id, title: hub.title }]));
 }
@@ -162,7 +162,7 @@ export async function hubsOf(
 export async function hubRowsOf(
   db: Pick<Db, "select">,
   ids: string[],
-  type: "HAS_ITEM" | typeof SESSION_EDGE,
+  type: "HAS_ITEM" | typeof PLAN_EDGE,
 ): Promise<Map<string, NodeRow>> {
   const hubs = new Map<string, NodeRow>();
   if (ids.length === 0) {

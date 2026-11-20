@@ -34,12 +34,13 @@ function localIso(iso: string): string {
 
 /**
  * recheckNote tells extraction on its second pass what its first pass got wrong: it
- * created lookalikes of nodes it had not been shown (now added to candidates), or it
- * created nodes with no edge.
+ * created lookalikes of nodes it had not been shown (now added to candidates), it
+ * created nodes with no edge, or it used edge types that are not allowed.
  */
 export function recheckNote(opts: {
   lookalikes: boolean;
   unlinked: Extract<Operation, { op: "create_node" }>[];
+  edgeTypes: string[];
 }): string {
   const notes: string[] = [];
   if (opts.lookalikes) {
@@ -51,6 +52,11 @@ export function recheckNote(opts: {
     const titles = opts.unlinked.map((op) => `"${op.title}"`).join(", ");
     notes.push(
       `A first pass created nodes with no edge: ${titles}. Every node you create needs at least one edge in this batch, to its subject, its hub, or Ankur (§5.3); link each one, or leave it out if it is not worth storing.`,
+    );
+  }
+  if (opts.edgeTypes.length > 0) {
+    notes.push(
+      `A first pass used edge types that are not allowed: ${opts.edgeTypes.join(", ")}. Use only the types in §2.3; when none fits, use RELATED_TO with a "relation" property.`,
     );
   }
   return notes.join(" ");

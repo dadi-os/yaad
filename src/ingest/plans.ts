@@ -1,6 +1,6 @@
 /**
  * Sessions of a hub (a course): plain plans stamped out from one template, and edited in bulk by
- * date. No rule is stored; each session is an ordinary plan row linked to its hub by `HAS_SESSION`.
+ * date. No rule is stored; each session is an ordinary plan row linked to its hub by `HAS_PLAN`.
  */
 
 import { randomUUID } from "node:crypto";
@@ -10,7 +10,7 @@ import { deleteNode, type Tx } from "../db/temporal.js";
 import { YaadError } from "../errors.js";
 import { addDays, dayStart, localDate, localInstant } from "../local-time.js";
 import type { NodeAuthor } from "../types/domain.js";
-import { SESSION_EDGE } from "../types/timeline.js";
+import { PLAN_EDGE } from "../types/planner.js";
 import type { SpawnPlansOp, UpdatePlansOp } from "./operations.js";
 
 /** Insert one current edge of confidence 1, valid from `at`; returns its id. */
@@ -38,7 +38,7 @@ export async function insertEdge(
  * plans carry no embedding, so semantic recall finds the hub and not every session. Returns
  * the new plan ids in date order.
  */
-export async function spawnSessions(
+export async function spawnPlans(
   tx: Tx,
   opts: {
     op: SpawnPlansOp;
@@ -74,7 +74,7 @@ export async function spawnSessions(
       timeZone: op.time_zone ?? null,
       rsvp: op.rsvp ?? null,
     });
-    await insertEdge(tx, { srcId: opts.hubId, dstId: id, type: SESSION_EDGE, properties: {}, confidence: 1, at });
+    await insertEdge(tx, { srcId: opts.hubId, dstId: id, type: PLAN_EDGE, properties: {}, confidence: 1, at });
     if (opts.placeId !== null) {
       await insertEdge(tx, {
         srcId: id,
@@ -98,7 +98,7 @@ export async function spawnSessions(
  * returns the nodes its edges joined as `neighbors`. Returns the ids changed; a change that
  * matches no session is a 422.
  */
-export async function changeSessions(
+export async function changePlans(
   tx: Tx,
   opts: { op: UpdatePlansOp; timeZone: string; at: Date; author: NodeAuthor },
 ): Promise<{ ids: string[]; neighbors: string[] }> {
@@ -112,7 +112,7 @@ export async function changeSessions(
     .where(
       and(
         eq(edge.srcId, op.hub),
-        eq(edge.type, SESSION_EDGE),
+        eq(edge.type, PLAN_EDGE),
         isNull(edge.validTo),
         or(isNull(node.expiresAt), gt(node.expiresAt, at)),
         gte(node.occurredAt, from),

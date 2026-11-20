@@ -5,7 +5,7 @@
  * Without `--apply` everything runs in a transaction that is rolled back, and the counts are printed.
  *
  * A recurring plan with a start becomes a hub (a memory) and one plan per occurrence from its start
- * through `--through`, each linked `HAS_SESSION`, with the hub's place, the matching `plan_occurrence`
+ * through `--through`, each linked `HAS_PLAN`, with the hub's place, the matching `plan_occurrence`
  * row (moved, outcome, actual times; a cancelled session is left out) and the matching `HAS_NOTE` notes. A recurring plan
  * anchored on a due (rent on the 1st) becomes one task per occurrence. Plans that have both a start and
  * a due, and routine-kind plans, are listed for a decision and left alone.
@@ -121,7 +121,7 @@ try {
           INSERT INTO plan_detail (node_id, end_at, time_zone, rsvp, attended)
           VALUES (${id}, ${end}, ${plan.time_zone}, ${plan.hide_from_planner ? "no" : null},
             ${row?.outcome === "done" ? true : row?.outcome === "missed" ? false : null})`;
-        await tx`INSERT INTO edge (id, src_id, dst_id, type, properties, confidence) VALUES (${randomUUID()}, ${plan.id}, ${id}, 'HAS_SESSION', '{}', 1)`;
+        await tx`INSERT INTO edge (id, src_id, dst_id, type, properties, confidence) VALUES (${randomUUID()}, ${plan.id}, ${id}, 'HAS_PLAN', '{}', 1)`;
         for (const place of places) {
           await tx`INSERT INTO edge (id, src_id, dst_id, type, properties, confidence) VALUES (${randomUUID()}, ${id}, ${place.dst_id}, 'AT_LOCATION', ${tx.json(JSON.parse(JSON.stringify(place.properties)))}, 1)`;
         }

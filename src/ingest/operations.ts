@@ -1,7 +1,8 @@
 /** Zod shapes and JSON Schema for Dwar `emit_operations` tool calls. */
 
 import { z } from "zod";
-import { RSVPS } from "../types/timeline.js";
+import { EDGE_TYPES } from "../types/edges.js";
+import { RSVPS } from "../types/planner.js";
 import {
   personDetailBody,
   planDetailBody,
@@ -76,7 +77,7 @@ const localTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, "a local time as
 /**
  * Stamps out one plan per date from a template: the same title, body, local start and end times,
  * RSVP and place on every date. Each plan is a plain stored plan with no rule, linked
- * to `hub` (a course) by `HAS_SESSION` and to `place` by `AT_LOCATION` with `room`. `hub` and
+ * to `hub` (a course) by `HAS_PLAN` and to `place` by `AT_LOCATION` with `room`. `hub` and
  * `place` are node ids or temp_ids of nodes created earlier in the batch; `temp_id` names the
  * group so the result can return the new ids.
  */
@@ -300,7 +301,7 @@ export const emitOperationsToolSchema = {
               op: { const: "create_edge" },
               src: { type: "string" },
               dst: { type: "string" },
-              type: { type: "string" },
+              type: { type: "string", enum: [...EDGE_TYPES] },
               properties: { type: "object" },
               confidence: { type: "number", minimum: 0, maximum: 1 },
             },

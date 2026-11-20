@@ -22,7 +22,7 @@ import type { DwarClient } from "../dwar/client.js";
 import { YaadError } from "../errors.js";
 import { toEdgeRecord, toNodeRecord, toPersonDetail, toPlaceDetail, toPlanDetail, toTaskDetail } from "../serialize.js";
 import type { EdgeRecord, NodeRecord, PersonDetail, PlaceDetail, PlanDetail, TaskDetail } from "../types/domain.js";
-import { SESSION_EDGE } from "../types/timeline.js";
+import { PLAN_EDGE } from "../types/planner.js";
 import { findAnchors } from "./anchor.js";
 import { expandOneHop, initialWalk, type WalkNode } from "./expand.js";
 import { estimateTokens, shouldStop } from "./gate.js";
@@ -94,7 +94,7 @@ export async function recall(opts: {
   let hopsTaken = 0;
 
   while (hopsTaken < hopLimit && walk.frontier.length > 0) {
-    const incident = (await getIncidentEdgesForIds(opts.db, walk.frontier)).filter((edge) => edge.type !== SESSION_EDGE);
+    const incident = (await getIncidentEdgesForIds(opts.db, walk.frontier)).filter((edge) => edge.type !== PLAN_EDGE);
     const hubs = opts.from === undefined ? hubsAmong(walk.frontier, incident) : new Set<string>();
     const expanded = expandOneHop({ nodes: walk.nodes, frontier: walk.frontier.filter((id) => !hubs.has(id)) }, incident);
     hopsTaken += 1;

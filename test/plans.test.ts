@@ -5,7 +5,6 @@ import { buildApp } from "../src/app.js";
 import { edge, node, nodeHistory, planDetail } from "../src/db/schema.js";
 import { applyOperations } from "../src/ingest/apply.js";
 import { emitOperationsInput, type Operation } from "../src/ingest/operations.js";
-import { rejectDuplicates } from "../src/ingest/duplicates.js";
 import { validateOperations } from "../src/ingest/validate.js";
 import type { Config } from "../src/config.js";
 import { axisVector, insertMemory, insertPlace, mockDwar, openTestDb, resetGraph, testConfig } from "./helpers.js";
@@ -24,8 +23,7 @@ after(async () => {
 
 async function writes(operations: Operation[], cfg: Config = config) {
   await validateOperations({ timeZone: cfg.env.timezone, db: handle.db, operations });
-  await rejectDuplicates(handle.db, operations, cfg.env.timezone);
-  return applyOperations({ db: handle.db, dwar: mockDwar({ dimension: dim }), operations, author: { source: "ingest", agentId: null }, config: cfg });
+  return applyOperations({ db: handle.db, dwar: mockDwar({ dimension: dim }), operations, author: { source: "agent", agentId: "education-specialist" }, config: cfg });
 }
 
 /** The hub's sessions in start order with their details. */
@@ -35,7 +33,7 @@ async function sessionsOf(hub: string) {
     .from(edge)
     .innerJoin(node, eq(node.id, edge.dstId))
     .innerJoin(planDetail, eq(planDetail.nodeId, node.id))
-    .where(and(eq(edge.srcId, hub), eq(edge.type, "HAS_SESSION"), isNull(edge.validTo)))
+    .where(and(eq(edge.srcId, hub), eq(edge.type, "HAS_PLAN"), isNull(edge.validTo)))
     .orderBy(asc(node.occurredAt));
 }
 
@@ -97,18 +95,6 @@ test("spawn_plans rejects repeated dates, an end before the start, a room with n
   await rejects(spawn({ end_time: "09:00" }));
   await rejects(spawn({ room: "1345" }));
   await rejects(spawn({ place: course }));
-});
-
-test("spawn_plans has no cap on dates, and re-spawning the same sessions by hand is a duplicate", async () => {
-  await resetGraph(handle.sql);
-  const course = await insertMemory(handle.db, { title: "CSE 380", embedding: axisVector(dim, 0) });
-  const spawn: Operation = { op: "spawn_plans", temp_id: "s", hub: course, title: "Lecture", dates: ["2026-10-27", "2026-10-29", "2026-11-03"], start_time: "10:20" };
-  await writes([spawn]);
-  await assert.rejects(
-    () => writes([{ ...spawn, temp_id: "again", dates: ["2026-10-29"] }]),
-    (err: unknown) => (err as { statusCode?: number; code?: string }).statusCode === 422 && /duplicates live plan/.test((err as Error).message),
-  );
-  assert.equal((await sessionsOf(course)).length, 3);
 });
 
 test("update_plans moves a course's later sessions, keeping each date and length, and changes room and rsvp in bulk", async () => {

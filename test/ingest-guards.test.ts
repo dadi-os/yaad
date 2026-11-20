@@ -5,7 +5,7 @@ import { node, nodeHistory, planDetail, taskDetail } from "../src/db/schema.js";
 import { YaadError } from "../src/errors.js";
 import { applyOperations } from "../src/ingest/apply.js";
 import { assembleCandidates } from "../src/ingest/candidates.js";
-import { findLookalikes, rejectDuplicates } from "../src/ingest/duplicates.js";
+import { findLookalikes } from "../src/ingest/duplicates.js";
 import type { Operation } from "../src/ingest/operations.js";
 import { ingest } from "../src/ingest/pipeline.js";
 import { validateExtraction, validateOperations } from "../src/ingest/validate.js";
@@ -147,53 +147,6 @@ test("close_node evidence may quote the requester's verbatim source_text instead
   await rejectsWith(() => validateExtraction({ text, sourceText: "Study group is on", operations }), 422, "invalid_request", /evidence must quote/);
 });
 
-test("a created plan or memory that repeats a live one is rejected by hand", async () => {
-  await resetGraph(handle.sql);
-  const quiz = await insertPlan(handle.db, { title: QUIZ, embedding: axisVector(dim, 0), occurredAt: new Date(QUIZ_AT) });
-  const term = await insertMemory(handle.db, { title: "CSE 300 — term: Fall 2026", embedding: axisVector(dim, 1), occurredAt: null });
-  const linkQuiz: Operation = { op: "create_edge", src: term, dst: "quiz", type: "RELATED_TO", confidence: 1 };
-  const createQuiz = (title: string, occurredAt: string): Operation => ({
-    op: "create_node",
-    temp_id: "quiz",
-    kind: "plan",
-    title,
-    occurred_at: occurredAt,
-    detail: {},
-  });
-
-  await rejectsWith(
-    () => rejectDuplicates(handle.db, [createQuiz("CSE 300 - Quiz: Source Citations (Kritik) due", "2026-10-03T00:30:00-04:00")], ZONE),
-    422,
-    "duplicate_node",
-    new RegExp(quiz),
-  );
-  await rejectsWith(
-    () => rejectDuplicates(handle.db, [{ op: "create_node", temp_id: "term", kind: "memory", title: "CSE 300 — term: Fall 2026" }], ZONE),
-    422,
-    "duplicate_node",
-  );
-  await rejectsWith(
-    () =>
-      rejectDuplicates(
-        handle.db,
-        [
-          { op: "create_node", temp_id: "a", kind: "memory", title: "Ankur Desai likes chai" },
-          { op: "create_node", temp_id: "b", kind: "memory", title: "Ankur Desai likes chai." },
-        ],
-        ZONE,
-      ),
-    422,
-    "duplicate_node",
-    /same batch/,
-  );
-  await rejectDuplicates(handle.db, [createQuiz(QUIZ, "2026-10-09T23:59:00-04:00"), linkQuiz], ZONE);
-  await rejectDuplicates(
-    handle.db,
-    [{ op: "close_node", node_id: quiz, reason: "replaced", evidence: "the Source Citations quiz is replaced" }, createQuiz(QUIZ, QUIZ_AT), linkQuiz],
-    ZONE,
-  );
-});
-
 test("every created node needs an edge in the batch; ingest re-extracts once naming the unlinked ones, then rejects", async () => {
   await resetGraph(handle.sql);
   const ankur = await insertPerson(handle.db, { title: "Ankur Desai", embedding: axisVector(dim, 0) });
@@ -236,6 +189,41 @@ test("every created node needs an edge in the batch; ingest re-extracts once nam
   await insertPerson(handle.db, { title: "Ankur Desai", embedding: axisVector(dim, 0) });
   await rejectsWith(() => run([[lesson], [lesson]], []), 422, "unlinked_node");
   assert.equal(await countCurrentNodes(handle.sql), 1);
+});
+
+test("an edge type outside the allowed list is a 422, and ingest re-extracts once naming it before it rejects", async () => {
+  await resetGraph(handle.sql);
+  const ankur = await insertPerson(handle.db, { title: "Ankur Desai", embedding: axisVector(dim, 0) });
+  const lesson: Operation = { op: "create_node", temp_id: "lesson", kind: "memory", title: "LinkedIn checkpoints need a phone tap" };
+  const edge = (type: string): Operation => ({ op: "create_edge", src: ankur, dst: "lesson", type, confidence: 1 });
+  await rejectsWith(
+    () => validateOperations({ timeZone: config.env.timezone, db: handle.db, operations: [lesson, edge("LEARNED_FROM")] }),
+    422,
+    "invalid_request",
+    /LEARNED_FROM is not allowed/,
+  );
+  await validateOperations({ timeZone: config.env.timezone, db: handle.db, operations: [lesson, edge("ABOUT")] });
+
+  const run = (rounds: Operation[][], users: string[]) =>
+    ingest({
+      db: handle.db,
+      sql: handle.sql,
+      dwar: mockDwar({ dimension: dim, embedAxis: 1, rounds, reasonUsers: users }),
+      config,
+      text: "LinkedIn checkpoints need a phone tap.",
+      occurredAt: "2026-10-08T09:00:00-04:00",
+      participantIds: [],
+      author: { source: "agent", agentId: "networking-specialist" },
+    });
+  const users: string[] = [];
+  const result = await run([[lesson, edge("LEARNED_FROM")], [lesson, edge("ABOUT")]], users);
+  assert.equal(users.length, 2);
+  assert.ok(users[1]?.includes("edge types that are not allowed: LEARNED_FROM"));
+  assert.equal(result.counts.create_edge, 1);
+
+  await resetGraph(handle.sql);
+  await insertPerson(handle.db, { title: "Ankur Desai", embedding: axisVector(dim, 0) });
+  await rejectsWith(() => run([[lesson, edge("LEARNED_FROM")], [lesson, edge("LEARNED_FROM")]], []), 422, "invalid_request");
 });
 
 test("ingest re-extracts once with a lookalike it was not shown", async () => {

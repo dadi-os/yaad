@@ -1,7 +1,7 @@
 /**
  * `POST /graph` — live subgraph for drawing the memory network.
  * Without `seed_ids` it returns every live node; with `seed_ids` it returns those seeds
- * plus all their live one-hop neighbors. Sessions of a course (the targets of `HAS_SESSION`) are
+ * plus all their live one-hop neighbors. Sessions of a course (the targets of `HAS_PLAN`) are
  * never drawn: they belong to the timeline, not the memory view. Edges are the current
  * edges among the returned nodes, so every edge endpoint is in `nodes`.
  */
@@ -18,7 +18,7 @@ import {
 import { edge, type NodeRow } from "../../db/schema.js";
 import { YaadError } from "../../errors.js";
 import { toEdgeRecord, toNodeRecord } from "../../serialize.js";
-import { SESSION_EDGE } from "../../types/timeline.js";
+import { PLAN_EDGE } from "../../types/planner.js";
 import { graphBody, parse } from "./schemas.js";
 
 export async function registerGraph(app: FastifyInstance): Promise<void> {
@@ -29,7 +29,7 @@ export async function registerGraph(app: FastifyInstance): Promise<void> {
         await app.db
           .select({ id: edge.dstId })
           .from(edge)
-          .where(and(eq(edge.type, SESSION_EDGE), isNull(edge.validTo)))
+          .where(and(eq(edge.type, PLAN_EDGE), isNull(edge.validTo)))
       ).map((row) => row.id),
     );
     if (body.seed_ids === undefined) {

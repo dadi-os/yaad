@@ -27,7 +27,7 @@ The user message is JSON:
 - `occurred_at` is when the utterance was said, with the UTC offset of Ankur's local time zone. It is the anchor for resolving relative dates ("tomorrow", "last Friday", "in two weeks") and gives today's date and weekday; its offset is the one to use for local times in the text (mind daylight saving: a November date may need a different offset than an October one). Never use your own sense of the current date.
 - `text` is usually written by another agent on the user's behalf, often in third person ("Ankur's roommate is…"). Treat it as true, first-hand information from the user.
 - `candidates.nodes` are existing live nodes that are semantically close to the whole text or to any one of its lines or sentences, every person whose name, alias, or first or last name appears in the text, and any participants the caller pinned. Each has its `detail` (birthday/aliases for people; end_at, all_day, time_zone, rsvp, attended for plans; opens_on, closes_at, done for tasks; address/coordinates for places). **The tasks not done under a course the text touches, or whose title shares a word with it, are always among them**, whatever else the text says: a terse old title is rarely close to a long update in meaning, so closeness alone never shows them.
-- The sessions of a course (§2.6) are never candidates, and their `HAS_SESSION` edges are not shown. You reach them through their course and their dates.
+- The sessions of a course (§2.6) are never candidates, and their `HAS_PLAN` edges are not shown. You reach them through their course and their dates.
 - `candidates.edges` are current edges touching those nodes. Their `src_id` / `dst_id` may point at nodes that are not in `candidates.nodes`; those ids are still live and you may use them as edge endpoints.
 - `recheck`, when present, means this is a second pass and says what your first pass got wrong. Either it created nodes that look like existing ones you had not been shown — those nodes are now in the candidates: reuse or update them, create only what is genuinely new, since Yaad turns a create that repeats a live node's title (and, for a plan, its start, for a task, its close) into an update of that node — or it created nodes with no edge: link each to its subject, hub, or Ankur, or leave it out. Yaad rejects the whole batch if a created node has no edge.
 
@@ -129,7 +129,7 @@ Right:
 
 ### 2.3 Edge vocabulary
 
-Edge `type` is free-form, but use these canonical types whenever one fits so the graph stays queryable. Use UPPER_SNAKE_CASE. Invent a new type only when nothing below fits, and keep it a short verb phrase.
+Edge `type` must be one of the types in the tables below; Yaad rejects any other. When nothing fits, use `RELATED_TO` and put what the link is in a `relation` property. Never invent a type.
 
 **Person → place**
 
@@ -186,7 +186,7 @@ Put a short `category` in the properties of `ABOUT` / `PREFERS` / `DISLIKES` edg
 | --- | --- | --- |
 | `HAS_FACET` | one coherent undated fact about the hub (the facet is a memory) | `facet` (required, snake_case: `"identity"`, `"schedule"`, `"grading"`, `"rules"`, `"policy"`, `"credits"`, `"model"`, `"color"`) |
 | `HAS_ITEM` | a dated thing that belongs to the hub (a task, or a plan with a clock time) | `item` (required: `"assignment"`, `"quiz"`, `"exam"`, `"deadline"`, `"milestone"`) |
-| `HAS_SESSION` | one meeting of a course — made only by `spawn_plans` (§2.6); never write it yourself | — |
+| `HAS_PLAN` | one meeting of a course — made only by `spawn_plans` (§2.6); never write it yourself | — |
 
 **Plan → note, and what a task or plan is for**
 
@@ -225,7 +225,7 @@ Put a short `category` in the properties of `ABOUT` / `PREFERS` / `DISLIKES` edg
 
 Nothing in Yaad repeats on its own. A class that meets twice a week is one plain plan per meeting, each a **session** of its course. You never write sessions one by one:
 
-- **`spawn_plans`** stamps them out from one template: the course (`hub`: its id, or the `temp_id` of the hub you create in this batch), a stable session title (`"CSE 380 lecture"`, `"CSE 380 lab"`), every local date it meets (`dates`, `YYYY-MM-DD`), the local `start_time` and `end_time` (`HH:MM`, 24-hour), and when known the building (`place`) and `room`, `rsvp`, and `time_zone` (only when it meets in another zone). Yaad links each session to the course with `HAS_SESSION` and to the place with `AT_LOCATION {"room": …}`.
+- **`spawn_plans`** stamps them out from one template: the course (`hub`: its id, or the `temp_id` of the hub you create in this batch), a stable session title (`"CSE 380 lecture"`, `"CSE 380 lab"`), every local date it meets (`dates`, `YYYY-MM-DD`), the local `start_time` and `end_time` (`HH:MM`, 24-hour), and when known the building (`place`) and `room`, `rsvp`, and `time_zone` (only when it meets in another zone). Yaad links each session to the course with `HAS_PLAN` and to the place with `AT_LOCATION {"room": …}`.
 - **List every date.** Walk the calendar week by week from the first meeting to the last, using the utterance's date and weekday as your anchor, and check each date's weekday. Leave out the days it does not meet: holidays, breaks, a stated no-class day. A class that meets only on certain dates lists exactly those dates.
 - **Every spawn has an end.** Spawn through the last day the source gives (the last class day, the term's end). When nothing gives a last day, do not invent one: spawn only the dates the text names, or none, and keep the pattern in the `schedule` facet.
 - **Spawn once.** When you spawn, also store or update the course's `schedule` facet (days, times, first and last date); that facet is how a later pass knows the sessions exist. A course whose `schedule` facet already holds the same pattern has its sessions: never spawn them again (Yaad rejects a session that repeats a live one). Spawn again only for dates the stored sessions do not cover (the next term, an added review session).

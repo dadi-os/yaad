@@ -92,6 +92,13 @@
       "when": 1794997876713,
       "tag": "0012_timeless_plans_by_shape",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1795149788509,
+      "tag": "0013_strict_edge_types",
+      "breakpoints": true
     }
   ]
 }

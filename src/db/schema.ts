@@ -15,7 +15,7 @@ import {
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import { loadFileConfig } from "../config.js";
-import { RSVPS } from "../types/timeline.js";
+import { RSVPS } from "../types/planner.js";
 
 const embeddingDimension = loadFileConfig().embedding.dimension;
 

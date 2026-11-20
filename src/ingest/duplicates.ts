@@ -1,22 +1,18 @@
 /**
  * Duplicate detection for node creation. Extraction only sees the candidates it was
  * shown, so a create can repeat something already stored; ingest re-extracts once with
- * any lookalikes it missed and then merges what still duplicates a live node into an update of
- * it, while a creation by hand is rejected.
+ * any lookalikes it missed.
  */
 
 import { and, eq, gt, isNull, or, sql } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { edge, node, taskDetail } from "../db/schema.js";
-import { YaadError } from "../errors.js";
 import { addDays, dayStart, localDate, localInstant } from "../local-time.js";
 import { parse, taskDetailBody } from "../routers/v1/schemas.js";
 import type { Operation } from "./operations.js";
 
 /** Plans this close in time to a created plan, and sharing a title word, are shown to extraction as possibly the same event. */
 const LOOKALIKE_WINDOW_MS = 12 * 3_600_000;
-/** A created plan this close in time to a live plan with the same normalized title is a duplicate. */
-const DUPLICATE_WINDOW_MS = 3_600_000;
 
 /**
  * normalizeTitle reduces a title to the words that identify it: lower case, parenthetical
@@ -130,119 +126,4 @@ function timeOf(op: CreateNodeOperation): Date | null {
   }
   const { closes_at } = parse(taskDetailBody, op.detail ?? {});
   return closes_at ? new Date(closes_at) : null;
-}
-
-/** True when two times are both unset, or within {@link DUPLICATE_WINDOW_MS}. */
-function sameStart(left: Date | null, right: Date | null): boolean {
-  if (left === null || right === null) {
-    return left === right;
-  }
-  return Math.abs(left.getTime() - right.getTime()) <= DUPLICATE_WINDOW_MS;
-}
-
-type SpawnPlansOperation = Extract<Operation, { op: "spawn_plans" }>;
-
-/** A create that repeats another create in the batch (`into` is that create's temp_id) or a live node (`into` is its id). */
-type CreateTwin = { op: CreateNodeOperation; message: string; into: string };
-
-/** A session a `spawn_plans` would stamp on a date that a live plan (`into`) already holds. */
-type SpawnTwin = { op: SpawnPlansOperation; date: string; message: string; into: string };
-
-/**
- * findDuplicates returns the batch's memory, plan and task creates that repeat another create in
- * the batch or a live node (same kind and normalized title, and for plans a start, for tasks a
- * close, within {@link DUPLICATE_WINDOW_MS}), and the sessions each `spawn_plans` would create that
- * a live plan already holds. A live node the same batch closes does not count, so a close-and-replace
- * still works. People and places are left to extraction, since two of them can share a name.
- * `timeZone` is the box's zone, in which a spawn's local times are read.
- */
-async function findDuplicates(db: Db, operations: Operation[], timeZone: string): Promise<{ creates: CreateTwin[]; spawns: SpawnTwin[] }> {
-  const closing = new Set(
-    operations.flatMap((op) => (op.op === "close_node" ? [op.node_id] : [])),
-  );
-  const creates = operations.filter(
-    (op): op is CreateNodeOperation =>
-      op.op === "create_node" && (op.kind === "memory" || op.kind === "plan" || op.kind === "task"),
-  );
-  const seen: Array<{ op: CreateNodeOperation; title: string; start: Date | null }> = [];
-  const createTwins: CreateTwin[] = [];
-  for (const op of creates) {
-    const title = normalizeTitle(op.title);
-    const start = timeOf(op);
-    const twin = seen.find(
-      (other) =>
-        other.op.kind === op.kind &&
-        other.title === title &&
-        (op.kind === "memory" || sameStart(other.start, start)),
-    );
-    seen.push({ op, title, start });
-    if (twin) {
-      createTwins.push({
-        op,
-        message: `create_node ${op.temp_id} "${op.title}" repeats create_node ${twin.op.temp_id} in the same batch`,
-        into: twin.op.temp_id,
-      });
-      continue;
-    }
-    const existing = await db
-      .select({ id: node.id, title: node.title, occurredAt: node.occurredAt, closesAt: taskDetail.closesAt })
-      .from(node)
-      .leftJoin(taskDetail, eq(taskDetail.nodeId, node.id))
-      .where(and(eq(node.kind, op.kind), live(), sql`${normalizedTitleSql} = ${title}`));
-    const duplicate = existing.find(
-      (row) => !closing.has(row.id) && (op.kind === "memory" || sameStart(row.occurredAt ?? row.closesAt, start)),
-    );
-    if (duplicate) {
-      createTwins.push({
-        op,
-        message: `create_node ${op.temp_id} "${op.title}" duplicates live node ${duplicate.id} "${duplicate.title}"; update that node instead`,
-        into: duplicate.id,
-      });
-    }
-  }
-  const spawnTwins: SpawnTwin[] = [];
-  for (const op of operations) {
-    if (op.op !== "spawn_plans") {
-      continue;
-    }
-    const zone = op.time_zone ?? timeZone;
-    for (const date of op.dates) {
-      const at = localInstant(date, op.start_time, zone);
-      const existing = await db
-        .select({ id: node.id, title: node.title })
-        .from(node)
-        .where(
-          and(
-            eq(node.kind, "plan"),
-            live(),
-            sql`${normalizedTitleSql} = ${normalizeTitle(op.title)}`,
-            sql`abs(extract(epoch from ${node.occurredAt}) - ${at.getTime() / 1000}) <= ${DUPLICATE_WINDOW_MS / 1000}`,
-          ),
-        )
-        .limit(1);
-      const duplicate = existing[0];
-      if (duplicate) {
-        spawnTwins.push({
-          op,
-          date,
-          message: `spawn_plans ${op.temp_id} "${op.title}" on ${date} duplicates live plan ${duplicate.id} "${duplicate.title}"`,
-          into: duplicate.id,
-        });
-      }
-    }
-  }
-  return { creates: createTwins, spawns: spawnTwins };
-}
-
-/**
- * rejectDuplicates fails the batch with `422 duplicate_node` on the first create or spawned session
- * that {@link findDuplicates} finds. It is for a person creating by hand, who should be told; ingest
- * instead runs extraction again with the lookalike shown ({@link findLookalikes}).
- */
-export async function rejectDuplicates(db: Db, operations: Operation[], timeZone: string): Promise<void> {
-  const { creates, spawns } = await findDuplicates(db, operations, timeZone);
-  const first = creates[0] ?? spawns[0];
-  if (first) {
-    throw new YaadError(422, "duplicate_node", first.message);
-  }
 }

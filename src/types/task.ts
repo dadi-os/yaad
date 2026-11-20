@@ -1,6 +1,6 @@
 /** API-facing types for tasks: things to do, each relevant from an open day until a close. */
 
-import type { TimelineHub } from "./timeline.js";
+import type { Hub } from "./planner.js";
 
 /** One task as the task reads show it. */
 export type TaskItem = {
@@ -17,7 +17,7 @@ export type TaskItem = {
   updated_at: string;
   /** True when the task closed before now and is not done. */
   past_due: boolean;
-  hub: TimelineHub | null;
+  hub: Hub | null;
   /** Who keeps it: the Hath agent that wrote it, or `manual` / `ingest`. */
   owner: string;
 };

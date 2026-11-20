@@ -1,16 +1,33 @@
-/** `POST /query` — exact/filter lookup over live nodes (kind, name, date range, tasks relevant on a day). */
+/**
+ * `POST /query` — exact/filter lookup over live nodes (kind, name, date range, tasks relevant on a day, a hub).
+ * `GET /counts` — how many live nodes of each kind Yaad holds, and the total: every node is a memory.
+ */
 
+import { gt, isNull, or, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import type { Db } from "../../db/client.js";
 import { assertFilterCoherent, filterNodes, hasFilter } from "../../db/filter.js";
 import { getPersonDetail, getPlaceDetail, getPlanDetail, getTaskDetail } from "../../db/read.js";
-import type { NodeRow } from "../../db/schema.js";
+import { node, type NodeRow } from "../../db/schema.js";
 import { YaadError } from "../../errors.js";
-import { toNodeRecord, toPersonDetail, toPlaceDetail, toPlanDetail, toTaskDetail } from "../../serialize.js";
-import type { PersonDetail, PlaceDetail, PlanDetail, TaskDetail } from "../../types/domain.js";
+import { parseKind, toNodeRecord, toPersonDetail, toPlaceDetail, toPlanDetail, toTaskDetail } from "../../serialize.js";
+import type { NodeKind, PersonDetail, PlaceDetail, PlanDetail, TaskDetail } from "../../types/domain.js";
 import { parse, queryBody } from "./schemas.js";
 
 export async function registerQuery(app: FastifyInstance): Promise<void> {
+  app.get("/counts", async () => {
+    const rows = await app.db
+      .select({ kind: node.kind, n: sql<number>`count(*)::int` })
+      .from(node)
+      .where(or(isNull(node.expiresAt), gt(node.expiresAt, new Date())))
+      .groupBy(node.kind);
+    const kinds: Record<NodeKind, number> = { person: 0, memory: 0, place: 0, plan: 0, task: 0 };
+    for (const row of rows) {
+      kinds[parseKind(row.kind)] = row.n;
+    }
+    return { total: Object.values(kinds).reduce((sum, n) => sum + n, 0), kinds };
+  });
+
   app.post("/query", async (request) => {
     const { limit: requestedLimit, offset: requestedOffset, ...filter } = parse(queryBody, request.body);
 

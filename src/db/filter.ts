@@ -29,7 +29,7 @@ export type NodeFilter = {
   occurred_to?: string | undefined;
   /** A local date: the tasks relevant that day. */
   relevant_on?: string | undefined;
-  /** A hub's id, exact title (case-insensitive), or course label that starts a hub's normalized title ("CSE 300" for "CSE 300 class"): the nodes it holds by `HAS_ITEM` or `HAS_SESSION`. */
+  /** A hub's id, exact title (case-insensitive), or course label that starts a hub's normalized title ("CSE 300" for "CSE 300 class"): the nodes it holds by `HAS_ITEM` or `HAS_PLAN`. */
   hub?: string | undefined;
   /** Local dates, inclusive: tasks whose close day falls in the range. */
   closes_from?: string | undefined;
@@ -71,7 +71,7 @@ export async function resolveHubIds(db: Db, hub: string): Promise<string[]> {
     .selectDistinct({ id: node.id, title: node.title })
     .from(edge)
     .innerJoin(node, eq(node.id, edge.srcId))
-    .where(and(isNull(edge.validTo), inArray(edge.type, ["HAS_ITEM", "HAS_SESSION"]), or(isNull(node.expiresAt), gt(node.expiresAt, new Date()))));
+    .where(and(isNull(edge.validTo), inArray(edge.type, ["HAS_ITEM", "HAS_PLAN"]), or(isNull(node.expiresAt), gt(node.expiresAt, new Date()))));
   const exact = hubs.filter((row) => row.id === hub || row.title.toLowerCase() === hub.toLowerCase());
   if (exact.length > 0) {
     return exact.map((row) => row.id);
@@ -117,7 +117,7 @@ export async function filterNodes(db: Db, filter: NodeFilter, limit: number, off
     const hubIds = await resolveHubIds(db, filter.hub);
     conditions.push(sql`${node.id} IN (
       SELECT e.dst_id FROM edge AS e
-      WHERE e.valid_to IS NULL AND e.type IN ('HAS_ITEM', 'HAS_SESSION')
+      WHERE e.valid_to IS NULL AND e.type IN ('HAS_ITEM', 'HAS_PLAN')
         AND e.src_id IN (${sql.join(hubIds.map((id) => sql`${id}::uuid`), sql`, `)})
     )`);
   }

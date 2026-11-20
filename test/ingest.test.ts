@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
+import { buildApp } from "../src/app.js";
 import { node } from "../src/db/schema.js";
 import { YaadError } from "../src/errors.js";
 import { applyOperations } from "../src/ingest/apply.js";
@@ -164,4 +165,15 @@ test("ingest fails with extraction_failed when the model emits a key its op does
     },
   );
   assert.equal(await countCurrentNodes(handle.sql), 0);
+});
+
+test("POST /ingest needs an agent: a request with no agent_id or source ingest is a 422 before extraction", async () => {
+  const app = await buildApp(config, { db: handle.db, sql: handle.sql, dwar: mockDwar({ dimension: dim }) });
+  const base = { text: "Ankur likes chai.", occurred_at: "2026-10-08T09:00:00-04:00" };
+  const noAgent = await app.inject({ method: "POST", url: "/ingest", payload: { ...base, source: "agent" } });
+  const viaIngest = await app.inject({ method: "POST", url: "/ingest", payload: { ...base, source: "ingest" } });
+  await app.close();
+  assert.equal(noAgent.statusCode, 422);
+  assert.equal(viaIngest.statusCode, 422);
+  assert.equal(viaIngest.json().error.type, "invalid_request");
 });

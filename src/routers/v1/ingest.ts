@@ -16,10 +16,7 @@ export async function registerIngest(app: FastifyInstance): Promise<void> {
       sourceText: body.source_text,
       occurredAt: body.occurred_at,
       participantIds: body.participant_ids ?? [],
-      author:
-        body.source === "agent"
-          ? { source: "agent", agentId: body.agent_id }
-          : { source: "ingest", agentId: null },
+      author: { source: "agent", agentId: body.agent_id },
     });
     if (result.orphans.length > 0) {
       request.log.info({ request_id: request.requestId, node_ids: result.orphans }, "orphans swept");
