@@ -163,7 +163,7 @@ export const nodeHistory = pgTable(
     agentId: text("agent_id"),
   },
   (table) => [
-    check("node_history_field_check", sql`${table.field} IN ('title', 'body', 'occurred_at', 'deleted', 'done')`),
+    check("node_history_field_check", sql`${table.field} IN ('title', 'body', 'occurred_at', 'deleted', 'done', 'agent_id')`),
     check("node_history_source_check", sql`${table.source} IN ('manual', 'agent', 'ingest')`),
     check("node_history_agent_id_check", sql`${table.agentId} IS NULL OR ${table.source} = 'agent'`),
     index("node_history_node_id_idx").on(table.nodeId),

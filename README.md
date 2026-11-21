@@ -97,7 +97,7 @@ Recurrence is not stored. A class that meets twice a week is one plain plan per 
 
 ## Corrections
 
-Only agents write memory, through `POST /ingest` (`update_node`, `close_node`, `create_edge`, `close_edge`). There are no routes to create, edit or delete a node or an edge by hand, and ingest takes no request without an `agent_id`, so a node a request creates is always kept by an agent. Ankur's only hand writes are two marks in the planner: a task done or not, and whether he attended a plan. Changed fields write `node_history`, attributed to whoever made the change (`source`, and `agent_id` for an agent), while the node keeps its creator's. Edges use `valid_from`/`valid_to`; to change one, close it and create its replacement.
+Only agents write memory, through `POST /ingest` (`update_node`, `close_node`, `create_edge`, `close_edge`). There are no routes to create, edit or delete a node or an edge by hand, and ingest takes no request without an `agent_id`, so a node a request creates is always kept by an agent. Ankur's only hand writes are two marks in the planner: a task done or not, and whether he attended a plan. Changed fields write `node_history` (title, body, occurred_at, done, deleted, and `agent_id` when a node is handed to another agent), attributed to whoever made the change (`source`, and `agent_id` for an agent), while the node keeps its creator's until it is handed over. Edges use `valid_from`/`valid_to`; to change one, close it and create its replacement.
 
 ## Orphans
 

@@ -50,7 +50,7 @@ export function parseKnown<T extends string>(values: readonly T[], value: string
 }
 
 function parseHistoryField(value: string): NodeHistoryRecord["field"] {
-  if (value === "title" || value === "body" || value === "occurred_at" || value === "deleted" || value === "done") {
+  if (value === "title" || value === "body" || value === "occurred_at" || value === "deleted" || value === "done" || value === "agent_id") {
     return value;
   }
   throw new YaadError(500, "internal_error", `invalid node_history field in database: ${value}`);

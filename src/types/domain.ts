@@ -77,7 +77,7 @@ export type EdgeRecord = {
 export type NodeHistoryRecord = {
   id: string;
   node_id: string;
-  field: "title" | "body" | "occurred_at" | "deleted" | "done";
+  field: "title" | "body" | "occurred_at" | "deleted" | "done" | "agent_id";
   old_value: string | null;
   new_value: string | null;
   changed_at: string;

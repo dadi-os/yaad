@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
 import { after, before, test } from "node:test";
 import { eq, isNull } from "drizzle-orm";
 import { buildApp } from "../src/app.js";
@@ -182,4 +183,25 @@ test("close_node ends the node's edges but keeps the people and places that were
   assert.deepEqual(result.orphans, []);
   assert.equal((await handle.db.select().from(node).where(eq(node.id, priya))).length, 1);
   assert.equal((await handle.db.select().from(node).where(eq(node.id, group))).length, 0);
+});
+
+test("a node's history serves the row an attribution change leaves, with the agent it moved from and to", async () => {
+  await resetGraph(handle.sql);
+  const id = await insertMemory(handle.db, { title: "CSE 380 uses AWS", embedding: axisVector(dim, 0), agentId: "education-specialist" });
+  await handle.db.insert(nodeHistory).values({
+    id: randomUUID(),
+    nodeId: id,
+    field: "agent_id",
+    oldValue: "education-specialist",
+    newValue: "cse-380-specialist",
+    embedding: null,
+    changedAt: new Date(),
+    source: "manual",
+    agentId: null,
+  });
+  const app = await buildApp(config, { db: handle.db, sql: handle.sql, dwar: mockDwar({ dimension: dim }) });
+  const res = await app.inject({ method: "GET", url: `/nodes/${id}/history` });
+  await app.close();
+  assert.equal(res.statusCode, 200, res.body);
+  assert.deepEqual(res.json().history.map((row: { field: string; old_value: string; new_value: string }) => [row.field, row.old_value, row.new_value]), [["agent_id", "education-specialist", "cse-380-specialist"]]);
 });
