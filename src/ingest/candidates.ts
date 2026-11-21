@@ -21,7 +21,7 @@ import {
 } from "../db/schema.js";
 import { YaadError } from "../errors.js";
 import { toEdgeRecord, toNodeRecord, toPersonDetail, toPlaceDetail, toPlanDetail, toTaskDetail } from "../serialize.js";
-import type { EdgeRecord, NodeAuthor, NodeRecord, PersonDetail, PlaceDetail, PlanDetail, TaskDetail } from "../types/domain.js";
+import type { EdgeRecord, AgentAuthor, NodeRecord, PersonDetail, PlaceDetail, PlanDetail, TaskDetail } from "../types/domain.js";
 import { PLAN_EDGE } from "../types/planner.js";
 import { isExpired } from "./expiry.js";
 
@@ -100,7 +100,7 @@ export async function assembleCandidates(opts: {
   segmentEmbeddings: number[][];
   participantIds: string[];
   /** Who is writing: the courses an agent wrote count as touched by its text. */
-  author: NodeAuthor;
+  author: AgentAuthor;
   extraIds: string[];
 }): Promise<CandidateState> {
   const byId = new Map<string, NodeRow>();

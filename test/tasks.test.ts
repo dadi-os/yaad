@@ -38,7 +38,7 @@ async function tasksOn(payload: Record<string, unknown>): Promise<TaskItem[]> {
 
 async function writes(operations: Operation[]) {
   await validateOperations({ timeZone: config.env.timezone, db: handle.db, operations });
-  return applyOperations({ db: handle.db, dwar: mockDwar({ dimension: dim }), operations, author: { source: "ingest", agentId: null }, config });
+  return applyOperations({ db: handle.db, dwar: mockDwar({ dimension: dim }), operations, author: { source: "agent", agentId: "test-agent" }, config });
 }
 
 test("a day shows the tasks open on it, past due, open-ended, and done that day; later and finished ones stay out", async () => {

@@ -8,10 +8,13 @@ export type NodeKind = "person" | "memory" | "plan" | "place" | "task";
 /** Provenance of a node write. */
 export type NodeSource = "manual" | "agent" | "ingest";
 
-/** Who wrote a node: an agent write names the Hath agent; other sources carry none. */
+/** Who made a change to a node: an agent write names the Hath agent; a hand mark of Ankur's carries none. */
 export type NodeAuthor =
   | { source: "agent"; agentId: string }
   | { source: "manual" | "ingest"; agentId: null };
+
+/** The agent that writes memory: every node a write creates belongs to it. */
+export type AgentAuthor = { source: "agent"; agentId: string };
 
 export type PersonDetail = {
   birthday: string | null;
@@ -100,7 +103,6 @@ export type LintRule =
   | "unaliased_person"
   | "place_without_address"
   | "floating"
-  | "no_agent"
   | "unknown_edge_type";
 
 /** One `GET /lint` finding: the nodes it concerns and what to check. Lint never changes the graph. */

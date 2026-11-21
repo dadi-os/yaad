@@ -3,7 +3,7 @@
  * wrong: status snapshots, agent working notes and instructions to agents stored as
  * permanent memory, plans at a placeholder noon, dated hubs, periods stored as plans,
  * duplicates, people missing their first-name alias, places
- * plans happen at that have no street address, nodes with no current edge, nodes no agent keeps,
+ * plans happen at that have no street address, nodes with no current edge,
  * and current edges whose type is not allowed.
  * It never changes the graph; someone reads the report and fixes what is really wrong.
  */
@@ -231,20 +231,6 @@ export async function registerLint(app: FastifyInstance): Promise<void> {
         node_ids: [row.id],
         title: row.title,
         note: "Has no current edge, so recall only reaches it by similarity; link it to its subject, hub, or Ankur, or delete it.",
-      });
-    }
-
-    const unattributed = await app.db
-      .select({ id: node.id, title: node.title })
-      .from(node)
-      .where(and(live, isNull(node.agentId)))
-      .orderBy(asc(node.createdAt));
-    if (unattributed.length > 0) {
-      findings.push({
-        rule: "no_agent",
-        node_ids: unattributed.map((row) => row.id),
-        title: unattributed[0]?.title ?? "",
-        note: `${unattributed.length} live node(s) have no agent, so Message agent has nobody to reach; give each the agent that owns its domain.`,
       });
     }
 

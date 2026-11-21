@@ -22,7 +22,7 @@ import {
 import { YaadError } from "../errors.js";
 import { parse } from "../routers/v1/schemas.js";
 import { historyEmbeddingText, sameInstant } from "../serialize.js";
-import type { NodeAuthor } from "../types/domain.js";
+import type { AgentAuthor } from "../types/domain.js";
 import { computeExpiresAt } from "./expiry.js";
 import {
   patchPersonDetailBody,
@@ -62,7 +62,7 @@ export async function applyOperations(opts: {
   db: Db;
   dwar: DwarClient;
   operations: Operation[];
-  author: NodeAuthor;
+  author: AgentAuthor;
   config: Config;
 }): Promise<ApplyResult> {
   const operations = await anchorAllDayPlans(opts.db, opts.operations);

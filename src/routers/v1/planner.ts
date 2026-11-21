@@ -206,7 +206,7 @@ async function toItems(db: Db, shown: PlanRow[], hubs: Map<string, Hub>): Promis
       attended: plain.attended,
       place: places.get(plan.id) ?? null,
       hub: hubs.get(plan.id) ?? null,
-      owner: plan.agentId ?? plan.source,
+      owner: plan.agentId,
       notes: notes.get(plan.id) ?? [],
     };
   });

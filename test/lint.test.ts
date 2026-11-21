@@ -142,15 +142,14 @@ test("GET /lint flags snapshots, working notes, agent instructions, noon placeho
   await app.close();
 });
 
-test("GET /lint flags nodes no agent keeps and current edges whose type is not allowed", async () => {
+test("GET /lint flags current edges whose type is not allowed", async () => {
   await resetGraph(handle.sql);
-  const kept = await insertMemory(handle.db, { title: "Ankur likes chai", embedding: axisVector(dim, 0), agentId: "networking-specialist" });
-  const orphan = await insertMemory(handle.db, { title: "Ankur uses a Mac", embedding: axisVector(dim, 1) });
-  await insertEdge(handle.db, { src: kept, dst: orphan, type: "LEARNED_FROM" });
+  const kept = await insertMemory(handle.db, { title: "Ankur likes chai", embedding: axisVector(dim, 0) });
+  const other = await insertMemory(handle.db, { title: "Ankur uses a Mac", embedding: axisVector(dim, 1) });
+  await insertEdge(handle.db, { src: kept, dst: other, type: "LEARNED_FROM" });
   const app = await buildApp(config, { db: handle.db, sql: handle.sql, dwar: mockDwar({ dimension: dim }) });
   const findings: LintFinding[] = (await app.inject({ method: "GET", url: "/lint" })).json().findings;
   await app.close();
-  assert.deepEqual(findings.filter((f) => f.rule === "no_agent").map((f) => f.node_ids), [[orphan]]);
   const stray = findings.filter((f) => f.rule === "unknown_edge_type");
-  assert.deepEqual(stray.map((f) => [f.title, [...f.node_ids].sort()]), [["LEARNED_FROM", [kept, orphan].sort()]]);
+  assert.deepEqual(stray.map((f) => [f.title, [...f.node_ids].sort()]), [["LEARNED_FROM", [kept, other].sort()]]);
 });

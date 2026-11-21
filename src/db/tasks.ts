@@ -138,7 +138,7 @@ export async function toTaskItems(db: Pick<Db, "select">, rows: Awaited<ReturnTy
     updated_at: task.updatedAt.toISOString(),
     past_due: !detail.done && detail.closesAt !== null && detail.closesAt < now,
     hub: hubs.get(task.id) ?? null,
-    owner: task.agentId ?? task.source,
+    owner: task.agentId,
   }));
   return items.sort((a, b) => {
     if (a.closes_at === null || b.closes_at === null) {

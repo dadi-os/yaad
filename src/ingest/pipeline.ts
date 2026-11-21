@@ -8,7 +8,7 @@ import type { Config } from "../config.js";
 import type { Db, Sql } from "../db/client.js";
 import type { DwarClient } from "../dwar/client.js";
 import { YaadError } from "../errors.js";
-import type { NodeAuthor } from "../types/domain.js";
+import type { AgentAuthor } from "../types/domain.js";
 import { applyOperations, type ApplyResult } from "./apply.js";
 import { assembleCandidates, segmentsOf } from "./candidates.js";
 import { findLookalikes } from "./duplicates.js";
@@ -26,7 +26,7 @@ export async function ingest(opts: {
   sourceText?: string | undefined;
   occurredAt: string;
   participantIds: string[];
-  author: NodeAuthor;
+  author: AgentAuthor;
 }): Promise<ApplyResult> {
   const segments = segmentsOf(opts.text, opts.config.ingest.segment_limit);
   const vectors = await opts.dwar.embed([opts.text, ...segments], "yaad/ingest");

@@ -10,7 +10,7 @@ import type { Operation } from "../src/ingest/operations.js";
 import { ingest } from "../src/ingest/pipeline.js";
 import { validateExtraction, validateOperations } from "../src/ingest/validate.js";
 const ZONE = "America/New_York";
-import type { NodeAuthor } from "../src/types/domain.js";
+import type { AgentAuthor } from "../src/types/domain.js";
 import {
   axisVector,
   countCurrentNodes,
@@ -28,7 +28,7 @@ import {
 const config = testConfig();
 const dim = config.embedding.dimension;
 const handle = await openTestDb();
-const INGEST: NodeAuthor = { source: "ingest", agentId: null };
+const INGEST: AgentAuthor = { source: "agent", agentId: "test-agent" };
 const QUIZ = "CSE 300 — Quiz: Source Citations due";
 const QUIZ_AT = "2026-10-02T23:59:00-04:00";
 
@@ -360,7 +360,7 @@ test("open tasks are candidates only under a course the text touches, an author'
   await insertEdge(handle.db, { src: touched, dst: inTouched, type: "HAS_ITEM" });
   await insertEdge(handle.db, { src: other, dst: inOther, type: "HAS_ITEM" });
   await insertEdge(handle.db, { src: owned, dst: inOwned, type: "HAS_ITEM" });
-  const candidateIds = async (text: string, author: NodeAuthor, embedAxisIndex: number) =>
+  const candidateIds = async (text: string, author: AgentAuthor, embedAxisIndex: number) =>
     (
       await assembleCandidates({
         db: handle.db,

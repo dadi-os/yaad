@@ -9,7 +9,7 @@ import { edge, node, planDetail } from "../db/schema.js";
 import { deleteNode, type Tx } from "../db/temporal.js";
 import { YaadError } from "../errors.js";
 import { addDays, dayStart, localDate, localInstant } from "../local-time.js";
-import type { NodeAuthor } from "../types/domain.js";
+import type { AgentAuthor } from "../types/domain.js";
 import { PLAN_EDGE } from "../types/planner.js";
 import type { SpawnPlansOp, UpdatePlansOp } from "./operations.js";
 
@@ -44,7 +44,7 @@ export async function spawnPlans(
     op: SpawnPlansOp;
     hubId: string;
     placeId: string | null;
-    author: NodeAuthor;
+    author: AgentAuthor;
     timeZone: string;
     at: Date;
   },
@@ -100,7 +100,7 @@ export async function spawnPlans(
  */
 export async function changePlans(
   tx: Tx,
-  opts: { op: UpdatePlansOp; timeZone: string; at: Date; author: NodeAuthor },
+  opts: { op: UpdatePlansOp; timeZone: string; at: Date; author: AgentAuthor },
 ): Promise<{ ids: string[]; neighbors: string[] }> {
   const { op, at } = opts;
   const from = dayStart(op.from_date, opts.timeZone);

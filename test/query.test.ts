@@ -165,7 +165,7 @@ test("place ingest with AT_LOCATION edge; GET /nodes/:id shows the edge", async 
   const result = await applyOperations({
     db: handle.db,
     dwar,
-    author: { source: "ingest", agentId: null },
+    author: { source: "agent", agentId: "test-agent" },
     config,
     operations: [
       {

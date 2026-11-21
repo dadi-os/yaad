@@ -18,7 +18,7 @@ export type TaskItem = {
   /** True when the task closed before now and is not done. */
   past_due: boolean;
   hub: Hub | null;
-  /** Who keeps it: the Hath agent that wrote it, or `manual` / `ingest`. */
+  /** The Hath agent that keeps it: who Message agent reaches. */
   owner: string;
 };
 

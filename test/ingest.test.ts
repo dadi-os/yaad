@@ -59,7 +59,7 @@ test("ingest apply creates a node and an edge via temp_id", async () => {
     db: handle.db,
     dwar,
     operations,
-    author: { source: "ingest", agentId: null },
+    author: { source: "agent", agentId: "test-agent" },
     config,
   });
   assert.equal(result.counts.create_node, 2);

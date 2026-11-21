@@ -32,7 +32,7 @@ export type PlanItem = {
   attended: boolean | null;
   place: PlanPlace | null;
   hub: Hub | null;
-  /** The Hath agent that keeps it (`manual` / `ingest` on rows no agent wrote). */
+  /** The Hath agent that keeps it: who Message agent reaches. */
   owner: string;
   notes: PlanNote[];
 };

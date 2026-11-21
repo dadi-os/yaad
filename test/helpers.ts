@@ -7,6 +7,9 @@ import type { DwarChatResponse, DwarClient } from "../src/dwar/client.js";
 import type { Operation } from "../src/ingest/operations.js";
 import type { Rsvp } from "../src/types/planner.js";
 
+/** The agent every test helper gives a node it inserts, unless the test names another. */
+export const TEST_AGENT = "test-agent";
+
 export function axisVector(dimension: number, axis: number): number[] {
   const values = Array.from({ length: dimension }, () => 0);
   const index = axis % dimension;
@@ -92,8 +95,8 @@ export async function insertMemory(
     embedding: args.embedding,
     occurredAt: args.occurredAt !== undefined ? args.occurredAt : now,
     expiresAt: args.expiresAt ?? null,
-    source: args.agentId !== undefined ? "agent" : "manual",
-    agentId: args.agentId ?? null,
+    source: "agent",
+    agentId: args.agentId ?? TEST_AGENT,
     createdAt: now,
     updatedAt: now,
   });
@@ -106,6 +109,7 @@ export async function insertPerson(
     title: string;
     embedding: number[];
     aliases?: string[];
+    agentId?: string;
   },
 ): Promise<string> {
   const id = randomUUID();
@@ -117,7 +121,8 @@ export async function insertPerson(
     body: null,
     embedding: args.embedding,
     occurredAt: null,
-    source: "manual",
+    source: "agent",
+    agentId: args.agentId ?? TEST_AGENT,
     createdAt: now,
     updatedAt: now,
   });
@@ -150,8 +155,8 @@ export async function insertPlan(
     body: null,
     embedding: args.embedding,
     occurredAt: args.occurredAt,
-    source: args.agentId !== undefined ? "agent" : "manual",
-    agentId: args.agentId ?? null,
+    source: "agent",
+    agentId: args.agentId ?? TEST_AGENT,
     createdAt: now,
     updatedAt: now,
   });
@@ -185,8 +190,8 @@ export async function insertTask(
     body: null,
     embedding: args.embedding,
     occurredAt: null,
-    source: args.agentId !== undefined ? "agent" : "manual",
-    agentId: args.agentId ?? null,
+    source: "agent",
+    agentId: args.agentId ?? TEST_AGENT,
     createdAt: now,
     updatedAt: now,
   });
@@ -207,6 +212,7 @@ export async function insertPlace(
     address?: string | null;
     latitude?: number | null;
     longitude?: number | null;
+    agentId?: string;
   },
 ): Promise<string> {
   const id = randomUUID();
@@ -218,7 +224,8 @@ export async function insertPlace(
     body: null,
     embedding: args.embedding,
     occurredAt: null,
-    source: "manual",
+    source: "agent",
+    agentId: args.agentId ?? TEST_AGENT,
     createdAt: now,
     updatedAt: now,
   });
