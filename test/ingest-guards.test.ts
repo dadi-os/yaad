@@ -19,6 +19,7 @@ import {
   insertPerson,
   insertPlan,
   insertTask,
+  TEST_AGENT,
   mockDwar,
   openTestDb,
   resetGraph,
@@ -345,18 +346,18 @@ test("history attributes a change to whoever made it, not to the node's creator"
   assert.equal(history?.source, "agent");
   assert.equal(history?.agentId, "cse-335-specialist");
   const [row] = await handle.db.select().from(node).where(eq(node.id, id));
-  assert.equal(row?.source, "manual");
+  assert.equal(row?.agentId, TEST_AGENT);
 });
 
 test("open tasks are candidates only under a course the text touches, an author's course, or by a shared title word", async () => {
   await resetGraph(handle.sql);
-  const touched = await insertMemory(handle.db, { title: "CSE 300 class", embedding: axisVector(dim, 1) });
-  const other = await insertMemory(handle.db, { title: "IBIO 150 class", embedding: axisVector(dim, 2) });
+  const touched = await insertMemory(handle.db, { title: "CSE 300 class", embedding: axisVector(dim, 1), agentId: "someone-else" });
+  const other = await insertMemory(handle.db, { title: "IBIO 150 class", embedding: axisVector(dim, 2), agentId: "someone-else" });
   const owned = await insertMemory(handle.db, { title: "IAH 241 class", embedding: axisVector(dim, 3), agentId: "iah-241-specialist" });
-  const inTouched = await insertTask(handle.db, { title: "Quiz one", embedding: axisVector(dim, 4) });
-  const inOther = await insertTask(handle.db, { title: "Lab report", embedding: axisVector(dim, 5) });
-  const inOwned = await insertTask(handle.db, { title: "Reading", embedding: axisVector(dim, 6) });
-  const byWord = await insertTask(handle.db, { title: "Lease renewal", embedding: axisVector(dim, 7) });
+  const inTouched = await insertTask(handle.db, { title: "Quiz one", embedding: axisVector(dim, 4), agentId: "someone-else" });
+  const inOther = await insertTask(handle.db, { title: "Lab report", embedding: axisVector(dim, 5), agentId: "someone-else" });
+  const inOwned = await insertTask(handle.db, { title: "Reading", embedding: axisVector(dim, 6), agentId: "iah-241-specialist" });
+  const byWord = await insertTask(handle.db, { title: "Lease renewal", embedding: axisVector(dim, 7), agentId: "someone-else" });
   await insertEdge(handle.db, { src: touched, dst: inTouched, type: "HAS_ITEM" });
   await insertEdge(handle.db, { src: other, dst: inOther, type: "HAS_ITEM" });
   await insertEdge(handle.db, { src: owned, dst: inOwned, type: "HAS_ITEM" });
